@@ -1,0 +1,50 @@
+{
+  "name": "@uniweb/runtime",
+  "version": "0.1.0",
+  "description": "Runtime loader and Vite plugins for Uniweb sites",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./vite": "./src/vite/index.js"
+  },
+  "files": [
+    "src"
+  ],
+  "keywords": [
+    "uniweb",
+    "runtime",
+    "vite",
+    "react",
+    "components"
+  ],
+  "author": "Proximify",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uniweb/runtime.git"
+  },
+  "homepage": "https://github.com/uniweb/runtime#readme",
+  "bugs": {
+    "url": "https://github.com/uniweb/runtime/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "react-router-dom": "^6.0.0 || ^7.0.0",
+    "vite": "^5.0.0 || ^6.0.0"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
+  },
+  "optionalDependencies": {
+    "@uniwebcms/content-reader": "^0.1.0"
+  }
+}

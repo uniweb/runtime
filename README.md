@@ -94,18 +94,23 @@ site/
 
 ### Section Markdown Format
 
-Each `.md` file is a section with YAML frontmatter:
+Each `.md` file is a section with YAML frontmatter for configuration and markdown body for content:
 
 ```markdown
 ---
 component: Hero
 preset: default
-title: Welcome to Our Site
-subtitle: Building the future together
+theme: dark
 ---
 
-Additional markdown content here...
+# Welcome to Our Site
+
+Building the future together.
+
+[Get Started](#features)
 ```
+
+The frontmatter specifies the component and configuration parameters. The markdown body contains the actual content, which is semantically parsed into structured data (headings → titles, paragraphs → descriptions, links → CTAs).
 
 ## API Reference
 

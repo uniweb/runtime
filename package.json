@@ -4,7 +4,7 @@
   "description": "Runtime loader and Vite plugins for Uniweb sites",
   "type": "module",
   "exports": {
-    ".": "./src/index.js",
+    ".": "./src/index.jsx",
     "./vite": "./src/vite/index.js"
   },
   "files": [

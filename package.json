@@ -31,6 +31,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@uniweb/semantic-parser": "workspace:*",
     "js-yaml": "^4.1.0"
   },
   "peerDependencies": {
@@ -45,6 +46,6 @@
     }
   },
   "optionalDependencies": {
-    "@uniwebcms/content-reader": "^0.1.0"
+    "@uniweb/content-reader": "workspace:*"
   }
 }

@@ -5,6 +5,8 @@
  * child blocks, and state management. Connects to foundation components.
  */
 
+import { parseContent as parseSemanticContent } from '@uniweb/semantic-parser'
+
 export default class Block {
   constructor(blockData, id) {
     this.id = id
@@ -45,13 +47,17 @@ export default class Block {
   }
 
   /**
-   * Parse content into structured format
+   * Parse content into structured format using semantic-parser
    * Supports multiple content formats:
-   * 1. Pre-parsed groups structure
-   * 2. ProseMirror document
+   * 1. Pre-parsed groups structure (from editor)
+   * 2. ProseMirror document (from markdown collection)
    * 3. Simple key-value content (PoC style)
    *
-   * TODO: Integrate @uniwebcms/semantic-parser for full parsing
+   * Uses @uniweb/semantic-parser for rich content extraction including:
+   * - Pretitle detection (H3 before H1)
+   * - Banner/background image detection
+   * - Semantic grouping (main + items)
+   * - Lists, links, buttons, etc.
    */
   parseContent(content) {
     // If content is already parsed with groups structure
@@ -59,7 +65,7 @@ export default class Block {
       return content.groups
     }
 
-    // ProseMirror document
+    // ProseMirror document - use semantic-parser
     if (content?.type === 'doc') {
       return this.extractFromProseMirror(content)
     }
@@ -83,10 +89,36 @@ export default class Block {
   }
 
   /**
-   * Basic extraction from ProseMirror content
-   * This is simplified - full implementation uses semantic-parser
+   * Extract structured content from ProseMirror document
+   * Uses @uniweb/semantic-parser for intelligent content extraction
    */
   extractFromProseMirror(doc) {
+    try {
+      // Parse with semantic-parser
+      const { groups, sequence, byType } = parseSemanticContent(doc)
+
+      // Transform groups structure to match expected format
+      const main = groups.main || { header: {}, body: {} }
+      const items = groups.items || []
+
+      return {
+        main,
+        items,
+        // Include additional data for advanced use cases
+        sequence,
+        byType,
+        metadata: groups.metadata
+      }
+    } catch (err) {
+      console.warn('[Block] Semantic parser error, using fallback:', err.message)
+      return this.extractFromProseMirrorFallback(doc)
+    }
+  }
+
+  /**
+   * Fallback extraction when semantic-parser fails
+   */
+  extractFromProseMirrorFallback(doc) {
     const main = { header: {}, body: {} }
     const items = []
 

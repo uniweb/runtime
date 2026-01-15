@@ -7,7 +7,7 @@
  *   - page.yml: Page metadata
  *   - *.md: Section content with YAML frontmatter
  *
- * Uses @uniwebcms/content-reader for markdown → ProseMirror conversion
+ * Uses @uniweb/content-reader for markdown → ProseMirror conversion
  * when available, otherwise uses a simplified parser.
  */
 
@@ -19,7 +19,7 @@ import yaml from 'js-yaml'
 // Try to import content-reader, fall back to simplified parser
 let markdownToProseMirror
 try {
-  const contentReader = await import('@uniwebcms/content-reader')
+  const contentReader = await import('@uniweb/content-reader')
   markdownToProseMirror = contentReader.markdownToProseMirror
 } catch {
   // Simplified fallback - just wraps content as text

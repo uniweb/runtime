@@ -86,18 +86,21 @@ export default function BlockRenderer({ block, pure = false, extra = {} }) {
   // Components expect content as a simple object with all data
   // Sources:
   // 1. parsedContent.raw - simple PoC format (hardcoded content)
-  // 2. block.properties - params from frontmatter (title, subtitle, features, etc.)
-  // 3. parsedContent - full ProseMirror structure (markdown body)
+  // 2. parsedContent - semantic parser output (main.header, main.body, items, etc.)
+  // 3. block.properties - params from frontmatter (theme, alignment, etc.)
   let content
 
   if (block.parsedContent?.raw) {
     // Simple PoC format - content was passed directly
     content = block.parsedContent.raw
   } else {
-    // Collected content - merge params (frontmatter) with parsed content
+    // Collected content - merge parsed content with frontmatter params
+    // Parsed content goes first so components can access content.main.header, etc.
+    // Frontmatter params overlay for things like content.title from YAML
     content = {
-      ...block.properties,  // Frontmatter data (title, subtitle, features, items, etc.)
-      _prosemirror: block.parsedContent  // Keep ProseMirror for components that need it
+      ...block.parsedContent,  // Semantic parser output (main, items, etc.)
+      ...block.properties,     // Frontmatter params overlay
+      _prosemirror: block.parsedContent  // Keep original for components that need raw access
     }
   }
 

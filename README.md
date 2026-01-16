@@ -46,42 +46,27 @@ import { initRuntime } from '@uniweb/runtime'
 initRuntime(Foundation)
 ```
 
-## API Reference
+## API
 
-### Runtime Functions
+### initRuntime(source, options)
 
-| Function | Description |
-|----------|-------------|
-| `initRuntime(source, options)` | Initialize runtime with foundation |
-| `initRTE(source, options)` | Alias for initRuntime |
+Initialize the runtime with a foundation.
 
-### Options
+**source** - One of:
+- URL string to foundation module
+- Object with `{ url, cssUrl }`
+- Foundation module object (for static bundling)
 
+**options:**
 ```js
-initRuntime(source, {
+{
   development: false,    // Enable dev mode (StrictMode, verbose errors)
   configData: null,      // Site content (or reads from DOM)
   basename: undefined    // React Router basename
-})
+}
 ```
 
-### Exported Components
-
-| Component | Description |
-|-----------|-------------|
-| `ChildBlocks` | Render child sections |
-| `ErrorBoundary` | Error boundary wrapper |
-
-### Core Classes (re-exported from @uniweb/core)
-
-| Class | Description |
-|-------|-------------|
-| `Uniweb` | Main runtime instance |
-| `Website` | Page and localization management |
-| `Page` | Page representation |
-| `Block` | Section/component representation |
-| `Input` | Form input handling |
-| `createUniweb(config)` | Factory to create Uniweb instance |
+For core classes (`Uniweb`, `Website`, `Block`, etc.), import from [`@uniweb/core`](https://github.com/uniweb/core).
 
 ## Architecture
 

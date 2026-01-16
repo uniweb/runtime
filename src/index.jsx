@@ -14,8 +14,8 @@ import { ChildBlocks } from './components/PageRenderer.jsx'
 import WebsiteRenderer from './components/WebsiteRenderer.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 
-// Core classes from @uniweb/core
-import { createUniweb, Uniweb, Website, Page, Block, Input } from '@uniweb/core'
+// Core factory from @uniweb/core
+import { createUniweb } from '@uniweb/core'
 
 /**
  * Load foundation CSS from URL
@@ -224,23 +224,5 @@ async function initRuntime(foundationSource, options = {}) {
   }
 }
 
-// Legacy alias
-const initRTE = initRuntime
-
-// Exports
-export {
-  initRuntime,
-  initRTE,
-  // Components for internal/advanced use
-  ChildBlocks,
-  ErrorBoundary,
-  // Core classes (re-exported from @uniweb/core)
-  Uniweb,
-  Website,
-  Page,
-  Block,
-  Input,
-  createUniweb
-}
-
+export { initRuntime }
 export default initRuntime

@@ -16,8 +16,8 @@ import SafeHtml from './components/SafeHtml.jsx'
 import WebsiteRenderer from './components/WebsiteRenderer.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 
-// Core
-import Uniweb from './core/uniweb.js'
+// Core classes from @uniweb/core
+import { createUniweb, Uniweb, Website, Page, Block, Input } from '@uniweb/core'
 
 /**
  * Load foundation CSS from URL
@@ -76,10 +76,8 @@ async function loadFoundation(source) {
  * @returns {Uniweb}
  */
 function initUniweb(configData) {
-  const uniwebInstance = new Uniweb(configData)
-
-  // Global assignment for component access
-  globalThis.uniweb = uniwebInstance
+  // Create singleton via @uniweb/core (also assigns to globalThis.uniweb)
+  const uniwebInstance = createUniweb(configData)
 
   // Set up child block renderer
   uniwebInstance.childBlockRenderer = ChildBlocks
@@ -238,8 +236,13 @@ export {
   SafeHtml,
   ChildBlocks,
   ErrorBoundary,
-  // Core classes
-  Uniweb
+  // Core classes (re-exported from @uniweb/core)
+  Uniweb,
+  Website,
+  Page,
+  Block,
+  Input,
+  createUniweb
 }
 
 export default initRuntime

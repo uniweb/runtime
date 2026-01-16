@@ -1,11 +1,10 @@
 {
   "name": "@uniweb/runtime",
-  "version": "0.1.2",
-  "description": "Runtime loader and Vite plugins for Uniweb sites",
+  "version": "0.2.0",
+  "description": "Minimal runtime for loading Uniweb foundations",
   "type": "module",
   "exports": {
-    ".": "./src/index.jsx",
-    "./vite": "./src/vite/index.js"
+    ".": "./src/index.jsx"
   },
   "files": [
     "src"
@@ -13,9 +12,8 @@
   "keywords": [
     "uniweb",
     "runtime",
-    "vite",
     "react",
-    "components"
+    "foundation"
   ],
   "author": "Proximify",
   "license": "Apache-2.0",
@@ -31,21 +29,11 @@
     "node": ">=20.19"
   },
   "dependencies": {
-    "@uniweb/core": "workspace:*",
-    "js-yaml": "^4.1.0"
+    "@uniweb/core": "workspace:*"
   },
   "peerDependencies": {
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0",
-    "react-router-dom": "^6.0.0 || ^7.0.0",
-    "vite": "^5.0.0 || ^6.0.0 || ^7.0.0"
-  },
-  "peerDependenciesMeta": {
-    "vite": {
-      "optional": true
-    }
-  },
-  "optionalDependencies": {
-    "@uniweb/content-reader": "workspace:*"
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0",
+    "react-router-dom": "^6.0.0 || ^7.0.0"
   }
 }

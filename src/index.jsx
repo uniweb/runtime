@@ -1,18 +1,16 @@
 /**
  * @uniweb/runtime - Main Entry Point
  *
- * This is the Vite/ESM-based runtime that loads foundations via dynamic import()
- * instead of Webpack Module Federation.
+ * Minimal runtime for loading foundations and orchestrating rendering.
+ * Foundations should import components from @uniweb/kit.
  */
 
 import React from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Routes, Route, useParams, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 
 // Components
 import { ChildBlocks } from './components/PageRenderer.jsx'
-import Link from './components/Link.jsx'
-import SafeHtml from './components/SafeHtml.jsx'
 import WebsiteRenderer from './components/WebsiteRenderer.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 
@@ -60,8 +58,10 @@ async function loadFoundation(source) {
       import(/* @vite-ignore */ url)
     ])
 
-    console.log('[Runtime] Foundation loaded. Available components:',
-      typeof foundation.listComponents === 'function' ? foundation.listComponents() : 'unknown')
+    console.log(
+      '[Runtime] Foundation loaded. Available components:',
+      typeof foundation.listComponents === 'function' ? foundation.listComponents() : 'unknown'
+    )
 
     return foundation
   } catch (error) {
@@ -79,17 +79,8 @@ function initUniweb(configData) {
   // Create singleton via @uniweb/core (also assigns to globalThis.uniweb)
   const uniwebInstance = createUniweb(configData)
 
-  // Set up child block renderer
+  // Set up child block renderer for nested blocks
   uniwebInstance.childBlockRenderer = ChildBlocks
-
-  // Set up routing components for foundation components to use
-  uniwebInstance.routingComponents = {
-    Link,
-    SafeHtml,
-    useNavigate,
-    useParams,
-    useLocation
-  }
 
   return uniwebInstance
 }
@@ -147,9 +138,10 @@ async function initRuntime(foundationSource, options = {}) {
   } = options
 
   // Get config data from options, DOM, or global
-  const configData = providedConfig
-    ?? JSON.parse(document.getElementById('__SITE_CONTENT__')?.textContent || 'null')
-    ?? globalThis.__SITE_CONTENT__
+  const configData =
+    providedConfig ??
+    JSON.parse(document.getElementById('__SITE_CONTENT__')?.textContent || 'null') ??
+    globalThis.__SITE_CONTENT__
 
   if (!configData) {
     console.error('[Runtime] No site configuration found')
@@ -203,7 +195,7 @@ async function initRuntime(foundationSource, options = {}) {
         '%c<%c>%c Uniweb Runtime',
         'color: #FA8400; font-weight: bold; font-size: 18px;',
         'color: #00ADFE; font-weight: bold; font-size: 18px;',
-        "color: #333; font-size: 18px; font-family: system-ui, sans-serif;"
+        'color: #333; font-size: 18px; font-family: system-ui, sans-serif;'
       )
     }
   } catch (error) {
@@ -214,7 +206,15 @@ async function initRuntime(foundationSource, options = {}) {
     if (container) {
       const root = createRoot(container)
       root.render(
-        <div style={{ padding: '2rem', margin: '1rem', background: '#fef2f2', borderRadius: '0.5rem', color: '#dc2626' }}>
+        <div
+          style={{
+            padding: '2rem',
+            margin: '1rem',
+            background: '#fef2f2',
+            borderRadius: '0.5rem',
+            color: '#dc2626'
+          }}
+        >
           <h2>Runtime Error</h2>
           <p>{error.message}</p>
           {development && <pre style={{ fontSize: '0.75rem', overflow: 'auto' }}>{error.stack}</pre>}
@@ -231,9 +231,7 @@ const initRTE = initRuntime
 export {
   initRuntime,
   initRTE,
-  // Components for external use
-  Link,
-  SafeHtml,
+  // Components for internal/advanced use
   ChildBlocks,
   ErrorBoundary,
   // Core classes (re-exported from @uniweb/core)

@@ -1,6 +1,6 @@
 {
   "name": "@uniweb/runtime",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Runtime loader and Vite plugins for Uniweb sites",
   "type": "module",
   "exports": {

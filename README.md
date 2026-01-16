@@ -21,7 +21,7 @@ npm install @uniweb/runtime
 Initialize the runtime with a Foundation URL:
 
 ```jsx
-import { initRuntime } from '@uniweb/runtime'
+import initRuntime from '@uniweb/runtime'
 
 // Load foundation from URL
 initRuntime('/foundation/foundation.js', {
@@ -41,7 +41,7 @@ Foundation imported directly and bundled with the site:
 
 ```jsx
 import * as Foundation from '@my-org/my-foundation'
-import { initRuntime } from '@uniweb/runtime'
+import initRuntime from '@uniweb/runtime'
 
 initRuntime(Foundation)
 ```

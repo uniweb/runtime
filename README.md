@@ -1,23 +1,18 @@
 # @uniweb/runtime
 
-Runtime loader and Vite plugins for Uniweb sites.
+Minimal runtime for loading Uniweb foundations and orchestrating rendering.
 
 ## Overview
 
-This package provides the runtime environment for Uniweb sites—content-driven websites that load Foundation components dynamically. It bridges site content with Foundation components and provides Vite plugins for development.
+This package provides the browser-side runtime for Uniweb sites. It loads foundations dynamically and renders content using React Router.
+
+For Vite build plugins, see [`@uniweb/build`](https://github.com/uniweb/build).
 
 ## Installation
 
 ```bash
 npm install @uniweb/runtime
 ```
-
-## Features
-
-- **Foundation Loading** - Load Foundations via dynamic import or import maps
-- **Content Rendering** - Render pages from structured content (JSON/YAML)
-- **Vite Plugins** - Collect site content and serve foundations in development
-- **React Integration** - Built on React with React Router for navigation
 
 ## Usage
 
@@ -40,77 +35,16 @@ initRuntime({
 })
 ```
 
-### Vite Plugins for Sites
+### Static Bundling
 
-Use the Vite plugins to collect content and optionally serve a foundation:
+Foundation imported directly and bundled with the site:
 
-```js
-// vite.config.js
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import { siteContentPlugin, foundationPlugin } from '@uniweb/runtime/vite'
+```jsx
+import * as Foundation from '@my-org/my-foundation'
+import { initRuntime } from '@uniweb/runtime'
 
-export default defineConfig({
-  plugins: [
-    react(),
-
-    // Collect content from pages/ directory
-    siteContentPlugin({
-      sitePath: './',
-      inject: true,  // Inject into HTML
-    }),
-
-    // Optional: Serve foundation in dev mode
-    foundationPlugin({
-      name: 'my-foundation',
-      path: '../my-foundation',
-      serve: '/foundation',
-    }),
-  ]
-})
+initRuntime(Foundation)
 ```
-
-### Site Content Structure
-
-Sites use a pages/ directory structure:
-
-```
-site/
-├── site.yml           # Site configuration
-├── theme.yml          # Theme configuration
-└── pages/
-    ├── @header/       # Special: header section
-    │   └── 1.md
-    ├── @footer/       # Special: footer section
-    │   └── 1.md
-    ├── home/          # Home page (route: /)
-    │   ├── page.yml   # Page metadata
-    │   ├── 1.md       # First section
-    │   └── 2.md       # Second section
-    └── about/         # About page (route: /about)
-        ├── page.yml
-        └── 1.md
-```
-
-### Section Markdown Format
-
-Each `.md` file is a section with YAML frontmatter for configuration and markdown body for content:
-
-```markdown
----
-component: Hero
-preset: default
-theme: dark
----
-
-# Welcome to Our Site
-
-Building the future together.
-
-[Get Started](#features)
-```
-
-The frontmatter specifies the component and configuration parameters. The markdown body contains the actual content, which is semantically parsed into structured data (headings → titles, paragraphs → descriptions, links → CTAs).
 
 ## API Reference
 
@@ -121,113 +55,71 @@ The frontmatter specifies the component and configuration parameters. The markdo
 | `initRuntime(source, options)` | Initialize runtime with foundation |
 | `initRTE(source, options)` | Alias for initRuntime |
 
+### Options
+
+```js
+initRuntime(source, {
+  development: false,    // Enable dev mode (StrictMode, verbose errors)
+  configData: null,      // Site content (or reads from DOM)
+  basename: undefined    // React Router basename
+})
+```
+
 ### Exported Components
 
 | Component | Description |
 |-----------|-------------|
-| `Link` | Router-aware link component |
-| `SafeHtml` | Safe HTML rendering |
 | `ChildBlocks` | Render child sections |
 | `ErrorBoundary` | Error boundary wrapper |
 
-### Vite Plugins
+### Core Classes (re-exported from @uniweb/core)
 
-| Plugin | Description |
-|--------|-------------|
-| `siteContentPlugin(options)` | Collect and inject site content |
-| `foundationPlugin(options)` | Build and serve foundation in dev |
-| `collectSiteContent(sitePath)` | Programmatic content collection |
+| Class | Description |
+|-------|-------------|
+| `Uniweb` | Main runtime instance |
+| `Website` | Page and localization management |
+| `Page` | Page representation |
+| `Block` | Section/component representation |
+| `Input` | Form input handling |
+| `createUniweb(config)` | Factory to create Uniweb instance |
 
-### Plugin Options
+## Architecture
 
-**siteContentPlugin:**
-```js
-{
-  sitePath: './',           // Path to site directory
-  pagesDir: 'pages',        // Pages subdirectory
-  inject: true,             // Inject into HTML
-  filename: 'site-content.json',  // Output filename
-  watch: true               // Watch for changes (dev)
-}
+```
+@uniweb/runtime (browser)
+    │
+    ├── Loads foundation dynamically
+    ├── Creates Uniweb instance via @uniweb/core
+    └── Orchestrates React/Router rendering
 ```
 
-**foundationPlugin:**
-```js
-{
-  name: 'foundation',       // Foundation name (for logs)
-  path: '../foundation',    // Path to foundation package
-  serve: '/foundation',     // URL path to serve from
-  watch: true,              // Watch for changes
-  buildOnStart: true        // Build when dev server starts
-}
-```
+Foundations should:
+- Import components from `@uniweb/kit` (bundled)
+- Mark `@uniweb/core` as external (provided by runtime)
 
-## Core Classes
+## Build Plugins
 
-### Uniweb
-
-The main runtime instance (available as `globalThis.uniweb`):
+Vite plugins have moved to `@uniweb/build`:
 
 ```js
-uniweb.getComponent(name)     // Get component from foundation
-uniweb.listComponents()       // List available components
-uniweb.activeWebsite          // Current website instance
-```
+// vite.config.js
+import { siteContentPlugin } from '@uniweb/build/site'
+import { foundationDevPlugin } from '@uniweb/build/dev'
 
-### Website
-
-Manages pages, theme, and localization:
-
-```js
-website.getPage(route)        // Get page by route
-website.setActivePage(route)  // Navigate to page
-website.localize(value)       // Localize a value
-website.getLanguage()         // Get current language
-```
-
-### Block
-
-Represents a section on a page:
-
-```js
-block.initComponent()         // Initialize foundation component
-block.getBlockContent()       // Get structured content
-block.getBlockProperties()    // Get configuration properties
-block.getBlockLinks()         // Get links from content
-```
-
-## Two Loading Modes
-
-### Runtime Loading (Import Maps)
-
-Foundation loaded at runtime via dynamic import. React provided by host via import map.
-
-```html
-<script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@18",
-    "react-dom": "https://esm.sh/react-dom@18"
-  }
-}
-</script>
-```
-
-### Static Bundling
-
-Foundation imported directly and bundled with the site.
-
-```jsx
-import * as Foundation from '@my-org/my-foundation'
-import { initRuntime } from '@uniweb/runtime'
-
-initRuntime(Foundation)
+export default defineConfig({
+  plugins: [
+    siteContentPlugin({ sitePath: './', inject: true }),
+    foundationDevPlugin({ path: '../foundation', serve: '/foundation' }),
+  ]
+})
 ```
 
 ## Related Packages
 
-- [`uniweb`](https://github.com/uniweb/cli) - CLI for creating Uniweb projects
-- [`@uniweb/build`](https://github.com/uniweb/build) - Foundation build tooling
+- [`@uniweb/core`](https://github.com/uniweb/core) - Core classes (Uniweb, Website, Block)
+- [`@uniweb/kit`](https://github.com/uniweb/kit) - Component library for foundations
+- [`@uniweb/build`](https://github.com/uniweb/build) - Vite build plugins
+- [`uniweb`](https://github.com/uniweb/cli) - CLI for creating projects
 
 ## License
 

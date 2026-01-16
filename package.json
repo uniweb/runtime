@@ -28,7 +28,7 @@
     "url": "https://github.com/uniweb/runtime/issues"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.19"
   },
   "dependencies": {
     "@uniweb/semantic-parser": "workspace:*",
@@ -38,7 +38,7 @@
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
     "react-router-dom": "^6.0.0 || ^7.0.0",
-    "vite": "^5.0.0 || ^6.0.0"
+    "vite": "^5.0.0 || ^6.0.0 || ^7.0.0"
   },
   "peerDependenciesMeta": {
     "vite": {

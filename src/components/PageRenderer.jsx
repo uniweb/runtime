@@ -2,10 +2,12 @@
  * PageRenderer
  *
  * Renders a page by iterating through its blocks.
+ * Manages head meta tags for SEO and social sharing.
  */
 
-import React, { useEffect } from 'react'
+import React from 'react'
 import BlockRenderer from './BlockRenderer.jsx'
+import { useHeadMeta } from '../hooks/useHeadMeta.js'
 
 /**
  * ChildBlocks - renders child blocks of a block
@@ -25,15 +27,18 @@ export function ChildBlocks({ block, childBlocks, pure = false, extra = {} }) {
  * PageRenderer component
  */
 export default function PageRenderer() {
-  const page = globalThis.uniweb?.activeWebsite?.activePage
-  const pageTitle = page?.title || 'Website'
+  const uniweb = globalThis.uniweb
+  const page = uniweb?.activeWebsite?.activePage
+  const siteName = uniweb?.activeWebsite?.name || ''
 
-  useEffect(() => {
-    document.title = pageTitle
-    return () => {
-      document.title = 'Website'
-    }
-  }, [pageTitle])
+  // Get head metadata from page (uses Page.getHeadMeta() if available)
+  const headMeta = page?.getHeadMeta?.() || {
+    title: page?.title || 'Website',
+    description: page?.description || ''
+  }
+
+  // Manage head meta tags
+  useHeadMeta(headMeta, { siteName })
 
   if (!page) {
     return (

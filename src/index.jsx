@@ -13,6 +13,8 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { ChildBlocks } from './components/PageRenderer.jsx'
 import WebsiteRenderer from './components/WebsiteRenderer.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
+import Layout from './components/Layout.jsx'
+import Blocks from './components/Blocks.jsx'
 
 // Core factory from @uniweb/core
 import { createUniweb } from '@uniweb/core'

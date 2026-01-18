@@ -1,12 +1,14 @@
 /**
  * PageRenderer
  *
- * Renders a page by iterating through its blocks.
+ * Renders a page using the Layout component for proper orchestration
+ * of header, body, footer, and panel areas.
  * Manages head meta tags for SEO and social sharing.
  */
 
 import React from 'react'
 import BlockRenderer from './BlockRenderer.jsx'
+import Layout from './Layout.jsx'
 import { useHeadMeta } from '../hooks/useHeadMeta.js'
 
 /**
@@ -25,11 +27,18 @@ export function ChildBlocks({ block, childBlocks, pure = false, extra = {} }) {
 
 /**
  * PageRenderer component
+ *
+ * Renders the current page using the Layout system which supports:
+ * - Header, body, footer areas
+ * - Left and right panels
+ * - Foundation-provided custom layouts
+ * - Per-page layout preferences
  */
 export default function PageRenderer() {
   const uniweb = globalThis.uniweb
-  const page = uniweb?.activeWebsite?.activePage
-  const siteName = uniweb?.activeWebsite?.name || ''
+  const website = uniweb?.activeWebsite
+  const page = website?.activePage
+  const siteName = website?.name || ''
 
   // Get head metadata from page (uses Page.getHeadMeta() if available)
   const headMeta = page?.getHeadMeta?.() || {
@@ -48,15 +57,6 @@ export default function PageRenderer() {
     )
   }
 
-  const blocks = page.getPageBlocks()
-
-  return (
-    <>
-      {blocks.map((block, index) => (
-        <React.Fragment key={block.id || index}>
-          <BlockRenderer block={block} />
-        </React.Fragment>
-      ))}
-    </>
-  )
+  // Use Layout component for proper orchestration
+  return <Layout page={page} website={website} />
 }

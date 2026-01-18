@@ -1,7 +1,7 @@
 /**
  * useScrollDepth Hook
  *
- * Tracks scroll depth and reports to analytics at milestones (25%, 50%, 75%, 100%).
+ * Tracks scroll depth and reports to uniweb.analytics at milestones (25%, 50%, 75%, 100%).
  * Only tracks if analytics is enabled.
  */
 
@@ -23,18 +23,21 @@ function getScrollDepth() {
 /**
  * useScrollDepth hook
  *
- * @param {Object} analytics - Analytics instance (optional)
+ * Uses globalThis.uniweb.analytics for tracking.
+ *
  * @param {Object} options
  * @param {boolean} options.enabled - Enable tracking (default: true)
  * @param {number} options.throttleMs - Throttle scroll events (default: 200)
  */
-export function useScrollDepth(analytics, options = {}) {
+export function useScrollDepth(options = {}) {
   const { enabled = true, throttleMs = 200 } = options
 
   const lastCheck = useRef(0)
   const reportedMilestones = useRef(new Set())
 
   useEffect(() => {
+    const analytics = globalThis.uniweb?.analytics
+
     // Skip if analytics not available or disabled
     if (!enabled || !analytics?.isEnabled?.()) return
 
@@ -62,7 +65,7 @@ export function useScrollDepth(analytics, options = {}) {
 
     window.addEventListener('scroll', handleScroll, { passive: true })
     return () => window.removeEventListener('scroll', handleScroll)
-  }, [analytics, enabled, throttleMs])
+  }, [enabled, throttleMs])
 }
 
 export default useScrollDepth

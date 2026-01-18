@@ -2,10 +2,12 @@
  * WebsiteRenderer
  *
  * Top-level renderer that sets up theme styles and renders pages.
+ * Manages scroll memory for navigation and optional analytics.
  */
 
 import React from 'react'
 import PageRenderer from './PageRenderer.jsx'
+import { useRememberScroll } from '../hooks/useRememberScroll.js'
 
 /**
  * Build CSS custom properties from theme data
@@ -56,6 +58,9 @@ function Fonts({ fontsData }) {
  */
 export default function WebsiteRenderer() {
   const website = globalThis.uniweb?.activeWebsite
+
+  // Enable scroll memory for navigation
+  useRememberScroll({ enabled: true })
 
   if (!website) {
     return (

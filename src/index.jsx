@@ -229,17 +229,22 @@ async function initRuntime(foundationSource, options = {}) {
 /**
  * Simplified entry point for sites
  *
- * Reads foundation configuration from __FOUNDATION_CONFIG__ which is injected
- * by the Vite config based on site.yml settings.
+ * Reads foundation configuration from:
+ * 1. DOM script tag (id="__FOUNDATION_CONFIG__") - for dynamic backends
+ * 2. Build-time __FOUNDATION_CONFIG__ from Vite's define option
  *
  * @param {Object} options
  * @param {Promise} options.foundation - Promise from import('#foundation')
  * @param {Promise} options.styles - Promise from import('#foundation/styles')
  */
 async function start({ foundation, styles } = {}) {
-  // Read config injected by Vite's define option (from site.yml)
-  const config =
-    typeof __FOUNDATION_CONFIG__ !== 'undefined' ? __FOUNDATION_CONFIG__ : { mode: 'bundled' }
+  // Read config - prefer DOM injection (for dynamic backends),
+  // fall back to build-time config from Vite's define option
+  const domConfig = JSON.parse(
+    document.getElementById('__FOUNDATION_CONFIG__')?.textContent || 'null'
+  )
+  const config = domConfig ??
+    (typeof __FOUNDATION_CONFIG__ !== 'undefined' ? __FOUNDATION_CONFIG__ : { mode: 'bundled' })
 
   if (config.mode === 'runtime') {
     // Runtime mode: load foundation dynamically from URL

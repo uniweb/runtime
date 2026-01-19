@@ -226,5 +226,33 @@ async function initRuntime(foundationSource, options = {}) {
   }
 }
 
-export { initRuntime }
+/**
+ * Simplified entry point for sites
+ *
+ * Reads foundation configuration from __FOUNDATION_CONFIG__ which is injected
+ * by the Vite config based on site.yml settings.
+ *
+ * @param {Object} options
+ * @param {Promise} options.foundation - Promise from import('#foundation')
+ * @param {Promise} options.styles - Promise from import('#foundation/styles')
+ */
+async function start({ foundation, styles } = {}) {
+  // Read config injected by Vite's define option (from site.yml)
+  const config =
+    typeof __FOUNDATION_CONFIG__ !== 'undefined' ? __FOUNDATION_CONFIG__ : { mode: 'bundled' }
+
+  if (config.mode === 'runtime') {
+    // Runtime mode: load foundation dynamically from URL
+    return initRuntime({
+      url: config.url,
+      cssUrl: config.cssUrl
+    })
+  } else {
+    // Bundled mode: await the foundation and styles imports
+    const [foundationModule] = await Promise.all([foundation, styles])
+    return initRuntime(foundationModule)
+  }
+}
+
+export { initRuntime, start }
 export default initRuntime

@@ -77,7 +77,7 @@ export default function BlockRenderer({ block, pure = false, extra = {} }) {
   if (!Component) {
     return (
       <div className="block-error" style={{ padding: '1rem', background: '#fef2f2', color: '#dc2626' }}>
-        Component not found: {block.component}
+        Component not found: {block.type}
       </div>
     )
   }

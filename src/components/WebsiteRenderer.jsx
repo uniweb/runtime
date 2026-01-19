@@ -8,6 +8,7 @@
 import React from 'react'
 import PageRenderer from './PageRenderer.jsx'
 import { useRememberScroll } from '../hooks/useRememberScroll.js'
+import { useLinkInterceptor } from '../hooks/useLinkInterceptor.js'
 
 /**
  * Build CSS custom properties from theme data
@@ -58,6 +59,9 @@ function Fonts({ fontsData }) {
  */
 export default function WebsiteRenderer() {
   const website = globalThis.uniweb?.activeWebsite
+
+  // Enable SPA navigation for links rendered as plain HTML
+  useLinkInterceptor({ enabled: true })
 
   // Enable scroll memory for navigation
   useRememberScroll({ enabled: true })

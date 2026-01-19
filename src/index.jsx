@@ -20,6 +20,53 @@ import Blocks from './components/Blocks.jsx'
 import { createUniweb } from '@uniweb/core'
 
 /**
+ * Decode combined data from __DATA__ element
+ *
+ * Encoding is signaled via MIME type:
+ * - application/json: plain JSON (no compression)
+ * - application/gzip: gzip + base64 encoded
+ *
+ * @returns {Promise<{foundation: Object, content: Object}|null>}
+ */
+async function decodeData() {
+  const el = document.getElementById('__DATA__')
+  if (!el?.textContent) return null
+
+  const raw = el.textContent
+
+  // Plain JSON (uncompressed)
+  if (el.type === 'application/json') {
+    try {
+      return JSON.parse(raw)
+    } catch {
+      return null
+    }
+  }
+
+  // Compressed (application/gzip or legacy application/octet-stream)
+  if (typeof DecompressionStream !== 'undefined') {
+    try {
+      const bytes = Uint8Array.from(atob(raw), c => c.charCodeAt(0))
+      const stream = new DecompressionStream('gzip')
+      const writer = stream.writable.getWriter()
+      writer.write(bytes)
+      writer.close()
+      const json = await new Response(stream.readable).text()
+      return JSON.parse(json)
+    } catch {
+      return null
+    }
+  }
+
+  // Fallback for old browsers: try plain JSON (server can detect User-Agent)
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+/**
  * Load foundation CSS from URL
  * @param {string} url - URL to foundation's CSS file
  */
@@ -229,31 +276,35 @@ async function initRuntime(foundationSource, options = {}) {
 /**
  * Simplified entry point for sites
  *
- * Reads foundation configuration from:
- * 1. DOM script tag (id="__FOUNDATION_CONFIG__") - for dynamic backends
- * 2. Build-time __FOUNDATION_CONFIG__ from Vite's define option
+ * Reads configuration from (in order of priority):
+ * 1. __DATA__ element (dynamic backends) - combined foundation config + site content
+ * 2. Build-time __FOUNDATION_CONFIG__ (static builds) - foundation config only
  *
  * @param {Object} options
  * @param {Promise} options.foundation - Promise from import('#foundation')
  * @param {Promise} options.styles - Promise from import('#foundation/styles')
  */
 async function start({ foundation, styles } = {}) {
-  // Read config - prefer DOM injection (for dynamic backends),
-  // fall back to build-time config from Vite's define option
-  const domConfig = JSON.parse(
-    document.getElementById('__FOUNDATION_CONFIG__')?.textContent || 'null'
-  )
-  const config = domConfig ??
-    (typeof __FOUNDATION_CONFIG__ !== 'undefined' ? __FOUNDATION_CONFIG__ : { mode: 'bundled' })
+  // Try __DATA__ first (dynamic backends inject combined config + content)
+  const data = await decodeData()
+
+  if (data) {
+    // Dynamic backend mode - foundation loaded from URL, content from data
+    return initRuntime(
+      { url: data.foundation.url, cssUrl: data.foundation.cssUrl },
+      { configData: data.content }
+    )
+  }
+
+  // Static build mode - use build-time config
+  const config =
+    typeof __FOUNDATION_CONFIG__ !== 'undefined' ? __FOUNDATION_CONFIG__ : { mode: 'bundled' }
 
   if (config.mode === 'runtime') {
-    // Runtime mode: load foundation dynamically from URL
-    return initRuntime({
-      url: config.url,
-      cssUrl: config.cssUrl
-    })
+    // Runtime mode (foundation URL in site.yml)
+    return initRuntime({ url: config.url, cssUrl: config.cssUrl })
   } else {
-    // Bundled mode: await the foundation and styles imports
+    // Bundled mode - foundation included in build
     const [foundationModule] = await Promise.all([foundation, styles])
     return initRuntime(foundationModule)
   }

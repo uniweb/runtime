@@ -7,6 +7,7 @@
  */
 
 import React from 'react'
+import { useLocation } from 'react-router-dom'
 import BlockRenderer from './BlockRenderer.jsx'
 import Layout from './Layout.jsx'
 import { useHeadMeta } from '../hooks/useHeadMeta.js'
@@ -35,10 +36,14 @@ export function ChildBlocks({ block, childBlocks, pure = false, extra = {} }) {
  * - Per-page layout preferences
  */
 export default function PageRenderer() {
+  const location = useLocation()
   const uniweb = globalThis.uniweb
   const website = uniweb?.activeWebsite
-  const page = website?.activePage
   const siteName = website?.name || ''
+
+  // Get page from current URL path (not the potentially stale website.activePage)
+  // This ensures correct page renders immediately on client-side navigation
+  const page = website?.getPage(location.pathname) || website?.activePage
 
   // Get head metadata from page (uses Page.getHeadMeta() if available)
   const headMeta = page?.getHeadMeta?.() || {

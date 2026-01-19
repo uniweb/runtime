@@ -36,10 +36,13 @@ export function useRememberScroll(options = {}) {
     const website = uniweb?.activeWebsite
     if (!website) return
 
-    // Get current and previous pages
-    const currentPage = website.activePage
     const previousPath = previousPathRef.current
     const currentPath = location.pathname
+
+    // Sync active page with current route
+    // This keeps website.activePage in sync for code that depends on it
+    website.setActivePage(currentPath)
+    const currentPage = website.activePage
 
     // Skip on first render
     if (isFirstRender.current) {

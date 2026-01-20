@@ -7,7 +7,15 @@
 
 import React from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Link as RouterLink,
+  useNavigate,
+  useParams,
+  useLocation
+} from 'react-router-dom'
 
 // Components
 import { ChildBlocks } from './components/PageRenderer.jsx'
@@ -130,6 +138,16 @@ function initUniweb(configData) {
 
   // Set up child block renderer for nested blocks
   uniwebInstance.childBlockRenderer = ChildBlocks
+
+  // Register routing components for kit and foundation components
+  // This enables the bridge pattern: components access routing via
+  // website.getRoutingComponents() instead of direct imports
+  uniwebInstance.routingComponents = {
+    Link: RouterLink,
+    useNavigate,
+    useParams,
+    useLocation
+  }
 
   return uniwebInstance
 }

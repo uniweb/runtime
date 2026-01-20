@@ -12,24 +12,26 @@
  * - right: Right sidebar/panel (from @right page)
  *
  * Custom Layouts:
- * Foundations can export a Layout component that receives pre-rendered areas as props:
+ * Foundations can provide a custom Layout via src/runtime.js:
  *
  * ```jsx
- * export const site = {
- *   Layout: ({ page, website, header, body, footer, left, right }) => (
- *     <div className="my-layout">
- *       <header>{header}</header>
- *       <aside>{left}</aside>
- *       <main>{body}</main>
- *       <aside>{right}</aside>
- *       <footer>{footer}</footer>
- *     </div>
- *   )
+ * // src/runtime.js
+ * import Layout from './components/Layout'
+ *
+ * export default {
+ *   Layout,
+ *   props: {
+ *     themeToggleEnabled: true,
+ *   }
  * }
  * ```
+ *
+ * The Layout component receives pre-rendered areas as props:
+ * - page, website: Runtime context
+ * - header, body, footer: Pre-rendered React elements
+ * - left, right (or leftPanel, rightPanel): Sidebar panels
  */
 
-import React from 'react'
 import Blocks from './Blocks.jsx'
 
 /**

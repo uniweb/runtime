@@ -230,9 +230,9 @@ async function initRuntime(foundationSource, options = {}) {
     // Set the foundation on the runtime
     uniwebInstance.setFoundation(foundation)
 
-    // Set foundation config if provided
-    if (foundation.config || foundation.site) {
-      uniwebInstance.setFoundationConfig(foundation.config || foundation.site)
+    // Set foundation config if provided (runtime is the new name, config/site are legacy)
+    if (foundation.runtime || foundation.config || foundation.site) {
+      uniwebInstance.setFoundationConfig(foundation.runtime || foundation.config || foundation.site)
     }
 
     // Render the app

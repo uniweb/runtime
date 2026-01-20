@@ -107,10 +107,10 @@ async function loadFoundation(source) {
       import(/* @vite-ignore */ url)
     ])
 
-    console.log(
-      '[Runtime] Foundation loaded. Available components:',
-      typeof foundation.listComponents === 'function' ? foundation.listComponents() : 'unknown'
-    )
+    const componentNames = foundation.components
+      ? Object.keys(foundation.components)
+      : 'unknown'
+    console.log('[Runtime] Foundation loaded. Available components:', componentNames)
 
     return foundation
   } catch (error) {
@@ -212,10 +212,9 @@ async function initRuntime(foundationSource, options = {}) {
       const remoteModule = await foundationSource
       // Handle double default wrapping
       const innerModule = remoteModule?.default?.default ? remoteModule.default : remoteModule
-      // Convert to foundation interface
+      // Convert to foundation interface with components object
       foundation = {
-        getComponent: (name) => innerModule.default?.[name],
-        listComponents: () => Object.keys(innerModule.default || {}),
+        components: innerModule.default || {},
         ...innerModule
       }
     } else if (foundationSource && typeof foundationSource === 'object') {
@@ -230,9 +229,9 @@ async function initRuntime(foundationSource, options = {}) {
     // Set the foundation on the runtime
     uniwebInstance.setFoundation(foundation)
 
-    // Set foundation config if provided (runtime is the new name, config/site are legacy)
-    if (foundation.runtime || foundation.config || foundation.site) {
-      uniwebInstance.setFoundationConfig(foundation.runtime || foundation.config || foundation.site)
+    // Set foundation config if provided
+    if (foundation.runtime) {
+      uniwebInstance.setFoundationConfig(foundation.runtime)
     }
 
     // Render the app

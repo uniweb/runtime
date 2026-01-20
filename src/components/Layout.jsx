@@ -12,10 +12,10 @@
  * - right: Right sidebar/panel (from @right page)
  *
  * Custom Layouts:
- * Foundations can provide a custom Layout via src/runtime.js:
+ * Foundations can provide a custom Layout via src/exports.js:
  *
  * ```jsx
- * // src/runtime.js
+ * // src/exports.js
  * import Layout from './components/Layout'
  *
  * export default {

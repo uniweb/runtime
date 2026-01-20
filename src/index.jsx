@@ -229,9 +229,9 @@ async function initRuntime(foundationSource, options = {}) {
     // Set the foundation on the runtime
     uniwebInstance.setFoundation(foundation)
 
-    // Set foundation config if provided
-    if (foundation.runtime) {
-      uniwebInstance.setFoundationConfig(foundation.runtime)
+    // Set foundation capabilities (Layout, props, etc.) if provided
+    if (foundation.capabilities) {
+      uniwebInstance.setFoundationConfig(foundation.capabilities)
     }
 
     // Render the app

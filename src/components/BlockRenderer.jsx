@@ -2,10 +2,11 @@
  * BlockRenderer
  *
  * Bridges Block data to foundation components.
- * Handles theming and wrapper props.
+ * Handles theming, wrapper props, and runtime guarantees.
  */
 
 import React from 'react'
+import { prepareProps, getComponentSchema } from '../prepare-props.js'
 
 /**
  * Convert hex color to rgba
@@ -82,31 +83,39 @@ export default function BlockRenderer({ block, pure = false, extra = {} }) {
     )
   }
 
-  // Build content for component
-  // Components expect content as a simple object with all data
+  // Build content and params with runtime guarantees
   // Sources:
   // 1. parsedContent.raw - simple PoC format (hardcoded content)
   // 2. parsedContent - semantic parser output (main.header, main.body, items, etc.)
   // 3. block.properties - params from frontmatter (theme, alignment, etc.)
-  let content
+  // 4. runtimeSchema - defaults from component meta.js
+  let content, params
 
   if (block.parsedContent?.raw) {
     // Simple PoC format - content was passed directly
     content = block.parsedContent.raw
+    params = block.properties
   } else {
-    // Collected content - merge parsed content with frontmatter params
-    // Parsed content goes first so components can access content.main.header, etc.
-    // Frontmatter params overlay for things like content.title from YAML
+    // Get runtime schema for this component (has defaults, data binding, etc.)
+    const schema = getComponentSchema(block.type)
+
+    // Prepare props with runtime guarantees:
+    // - Apply param defaults from meta.js
+    // - Guarantee content structure exists
+    const prepared = prepareProps(block, schema)
+    params = prepared.params
+
+    // Merge prepared content with raw access for components that need it
     content = {
-      ...block.parsedContent,  // Semantic parser output (main, items, etc.)
-      ...block.properties,     // Frontmatter params overlay
+      ...prepared.content,
+      ...block.properties,     // Frontmatter params overlay (legacy support)
       _prosemirror: block.parsedContent  // Keep original for components that need raw access
     }
   }
 
   const componentProps = {
     content,
-    params: block.properties,
+    params,
     block,
     page: globalThis.uniweb?.activeWebsite?.activePage,
     website: globalThis.uniweb?.activeWebsite,

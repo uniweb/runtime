@@ -63,12 +63,12 @@ export function applyDefaults(params, defaults) {
  * Prepare props for a component with runtime guarantees
  *
  * @param {Object} block - The block instance
- * @param {Object} schema - Runtime schema for the component (from runtimeSchema[componentName])
+ * @param {Object} meta - Runtime metadata for the component (from meta[componentName])
  * @returns {Object} Prepared props: { content, params }
  */
-export function prepareProps(block, schema) {
+export function prepareProps(block, meta) {
   // Apply param defaults
-  const defaults = schema?.defaults || {}
+  const defaults = meta?.defaults || {}
   const params = applyDefaults(block.properties, defaults)
 
   // Guarantee content structure
@@ -78,13 +78,13 @@ export function prepareProps(block, schema) {
 }
 
 /**
- * Get runtime schema for a component from the global uniweb instance
+ * Get runtime metadata for a component from the global uniweb instance
  *
  * @param {string} componentName
  * @returns {Object|null}
  */
-export function getComponentSchema(componentName) {
-  return globalThis.uniweb?.getComponentSchema?.(componentName) || null
+export function getComponentMeta(componentName) {
+  return globalThis.uniweb?.getComponentMeta?.(componentName) || null
 }
 
 /**

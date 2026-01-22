@@ -6,7 +6,7 @@
  */
 
 import React from 'react'
-import { prepareProps, getComponentSchema } from '../prepare-props.js'
+import { prepareProps, getComponentMeta } from '../prepare-props.js'
 
 /**
  * Convert hex color to rgba
@@ -88,7 +88,7 @@ export default function BlockRenderer({ block, pure = false, extra = {} }) {
   // 1. parsedContent.raw - simple PoC format (hardcoded content)
   // 2. parsedContent - semantic parser output (main.header, main.body, items, etc.)
   // 3. block.properties - params from frontmatter (theme, alignment, etc.)
-  // 4. runtimeSchema - defaults from component meta.js
+  // 4. meta - defaults from component meta.js
   let content, params
 
   if (block.parsedContent?.raw) {
@@ -96,13 +96,13 @@ export default function BlockRenderer({ block, pure = false, extra = {} }) {
     content = block.parsedContent.raw
     params = block.properties
   } else {
-    // Get runtime schema for this component (has defaults, data binding, etc.)
-    const schema = getComponentSchema(block.type)
+    // Get runtime metadata for this component (has defaults, data binding, etc.)
+    const meta = getComponentMeta(block.type)
 
     // Prepare props with runtime guarantees:
     // - Apply param defaults from meta.js
     // - Guarantee content structure exists
-    const prepared = prepareProps(block, schema)
+    const prepared = prepareProps(block, meta)
     params = prepared.params
 
     // Merge prepared content with raw access for components that need it

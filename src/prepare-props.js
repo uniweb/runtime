@@ -80,6 +80,85 @@ export function guaranteeContentStructure(parsedContent) {
 }
 
 /**
+ * Apply a schema to a single object
+ * Only processes fields defined in the schema, preserves unknown fields
+ *
+ * @param {Object} obj - The object to process
+ * @param {Object} schema - Schema definition (fieldName -> fieldDef)
+ * @returns {Object} Object with schema defaults applied
+ */
+function applySchemaToObject(obj, schema) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+    return obj
+  }
+
+  const result = { ...obj }
+
+  for (const [field, fieldDef] of Object.entries(schema)) {
+    // Get the default value - handle both shorthand and full form
+    const defaultValue = typeof fieldDef === 'object' ? fieldDef.default : undefined
+
+    // Apply default if field is missing and default exists
+    if (result[field] === undefined && defaultValue !== undefined) {
+      result[field] = defaultValue
+    }
+
+    // Handle nested object schema
+    if (typeof fieldDef === 'object' && fieldDef.type === 'object' && fieldDef.schema && result[field]) {
+      result[field] = applySchemaToObject(result[field], fieldDef.schema)
+    }
+
+    // Handle array with inline schema
+    if (typeof fieldDef === 'object' && fieldDef.type === 'array' && fieldDef.of && result[field]) {
+      if (typeof fieldDef.of === 'object') {
+        result[field] = result[field].map(item => applySchemaToObject(item, fieldDef.of))
+      }
+    }
+  }
+
+  return result
+}
+
+/**
+ * Apply a schema to a value (object or array of objects)
+ *
+ * @param {Object|Array} value - The value to process
+ * @param {Object} schema - Schema definition
+ * @returns {Object|Array} Value with schema defaults applied
+ */
+function applySchemaToValue(value, schema) {
+  if (Array.isArray(value)) {
+    return value.map(item => applySchemaToObject(item, schema))
+  }
+  return applySchemaToObject(value, schema)
+}
+
+/**
+ * Apply schemas to content.data
+ * Only processes tags that have a matching schema, leaves others untouched
+ *
+ * @param {Object} data - The data object from content
+ * @param {Object} schemas - Schema definitions from runtime meta
+ * @returns {Object} Data with schemas applied
+ */
+export function applySchemas(data, schemas) {
+  if (!schemas || !data || typeof data !== 'object') {
+    return data || {}
+  }
+
+  const result = { ...data }
+
+  for (const [tag, rawValue] of Object.entries(data)) {
+    const schema = schemas[tag]
+    if (!schema) continue  // No schema for this tag - leave as-is
+
+    result[tag] = applySchemaToValue(rawValue, schema)
+  }
+
+  return result
+}
+
+/**
  * Apply param defaults from runtime schema
  *
  * @param {Object} params - Params from frontmatter
@@ -111,6 +190,12 @@ export function prepareProps(block, meta) {
 
   // Guarantee content structure
   const content = guaranteeContentStructure(block.parsedContent)
+
+  // Apply schemas to content.data
+  const schemas = meta?.schemas || null
+  if (schemas && content.data) {
+    content.data = applySchemas(content.data, schemas)
+  }
 
   return { content, params }
 }

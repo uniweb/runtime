@@ -3,10 +3,12 @@
  *
  * Bridges Block data to foundation components.
  * Handles theming, wrapper props, and runtime guarantees.
+ * Supports runtime data fetching for prerender: false configs.
  */
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { prepareProps, getComponentMeta } from '../prepare-props.js'
+import { executeFetchClient, mergeIntoData } from '../data-fetcher-client.js'
 
 /**
  * Convert hex color to rgba
@@ -73,7 +75,39 @@ const getWrapperProps = (block) => {
  * BlockRenderer component
  */
 export default function BlockRenderer({ block, pure = false, extra = {} }) {
+  // State for runtime-fetched data (when prerender: false)
+  const [runtimeData, setRuntimeData] = useState(null)
+  const [fetchError, setFetchError] = useState(null)
+
   const Component = block.initComponent()
+
+  // Runtime fetch for prerender: false configurations
+  const fetchConfig = block.fetch
+  const shouldFetchAtRuntime = fetchConfig && fetchConfig.prerender === false
+
+  useEffect(() => {
+    if (!shouldFetchAtRuntime) return
+
+    let cancelled = false
+
+    async function doFetch() {
+      const result = await executeFetchClient(fetchConfig)
+      if (cancelled) return
+
+      if (result.error) {
+        setFetchError(result.error)
+      }
+      if (result.data) {
+        setRuntimeData({ [fetchConfig.schema]: result.data })
+      }
+    }
+
+    doFetch()
+
+    return () => {
+      cancelled = true
+    }
+  }, [shouldFetchAtRuntime, fetchConfig])
 
   if (!Component) {
     return (
@@ -102,6 +136,7 @@ export default function BlockRenderer({ block, pure = false, extra = {} }) {
     // Prepare props with runtime guarantees:
     // - Apply param defaults from meta.js
     // - Guarantee content structure exists
+    // - Apply cascaded data based on inheritData
     const prepared = prepareProps(block, meta)
     params = prepared.params
 
@@ -110,6 +145,11 @@ export default function BlockRenderer({ block, pure = false, extra = {} }) {
       ...prepared.content,
       ...block.properties,     // Frontmatter params overlay (legacy support)
       _prosemirror: block.parsedContent  // Keep original for components that need raw access
+    }
+
+    // Merge runtime-fetched data if available
+    if (runtimeData && shouldFetchAtRuntime) {
+      content.data = mergeIntoData(content.data, runtimeData[fetchConfig.schema], fetchConfig.schema, fetchConfig.merge)
     }
   }
 

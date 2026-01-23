@@ -85,15 +85,15 @@ export default function BlockRenderer({ block, pure = false, extra = {} }) {
 
   // Build content and params with runtime guarantees
   // Sources:
-  // 1. parsedContent.raw - simple PoC format (hardcoded content)
-  // 2. parsedContent - semantic parser output (main.header, main.body, items, etc.)
+  // 1. parsedContent._isPoc - simple PoC format (hardcoded content)
+  // 2. parsedContent - semantic parser output (flat: title, paragraphs, links, etc.)
   // 3. block.properties - params from frontmatter (theme, alignment, etc.)
   // 4. meta - defaults from component meta.js
   let content, params
 
-  if (block.parsedContent?.raw) {
+  if (block.parsedContent?._isPoc) {
     // Simple PoC format - content was passed directly
-    content = block.parsedContent.raw
+    content = block.parsedContent._pocContent
     params = block.properties
   } else {
     // Get runtime metadata for this component (has defaults, data binding, etc.)

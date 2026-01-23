@@ -9,35 +9,74 @@
  */
 
 /**
- * Guarantee content structure exists
- * Returns a content object with all standard paths guaranteed to exist
+ * Guarantee item has flat content structure
  *
- * @param {Object} parsedContent - Raw parsed content from semantic parser
- * @returns {Object} Content with guaranteed structure
+ * @param {Object} item - Raw item from parser
+ * @returns {Object} Item with guaranteed flat structure
+ */
+function guaranteeItemStructure(item) {
+  return {
+    title: item.title || '',
+    pretitle: item.pretitle || '',
+    subtitle: item.subtitle || '',
+    paragraphs: item.paragraphs || [],
+    links: item.links || [],
+    imgs: item.imgs || [],
+    lists: item.lists || [],
+    icons: item.icons || [],
+    videos: item.videos || [],
+    buttons: item.buttons || [],
+    properties: item.properties || {},
+    cards: item.cards || [],
+    documents: item.documents || [],
+    forms: item.forms || [],
+    quotes: item.quotes || [],
+    headings: item.headings || [],
+  }
+}
+
+/**
+ * Guarantee content structure exists
+ * Returns a flat content object with all standard fields guaranteed to exist
+ *
+ * @param {Object} parsedContent - Raw parsed content from semantic parser (flat structure)
+ * @returns {Object} Content with guaranteed flat structure
  */
 export function guaranteeContentStructure(parsedContent) {
   const content = parsedContent || {}
 
   return {
-    // Main content section
-    main: {
-      header: {
-        title: content.main?.header?.title || '',
-        pretitle: content.main?.header?.pretitle || '',
-        subtitle: content.main?.header?.subtitle || '',
-      },
-      body: {
-        paragraphs: content.main?.body?.paragraphs || [],
-        links: content.main?.body?.links || [],
-        imgs: content.main?.body?.imgs || [],
-        lists: content.main?.body?.lists || [],
-        icons: content.main?.body?.icons || [],
-      },
-    },
-    // Content items (H3 sections)
-    items: content.items || [],
-    // Preserve any additional fields from parser
-    ...content,
+    // Flat header fields
+    title: content.title || '',
+    pretitle: content.pretitle || '',
+    subtitle: content.subtitle || '',
+    subtitle2: content.subtitle2 || '',
+    alignment: content.alignment || null,
+
+    // Flat body fields
+    paragraphs: content.paragraphs || [],
+    links: content.links || [],
+    imgs: content.imgs || [],
+    lists: content.lists || [],
+    icons: content.icons || [],
+    videos: content.videos || [],
+    buttons: content.buttons || [],
+    properties: content.properties || {},
+    propertyBlocks: content.propertyBlocks || [],
+    cards: content.cards || [],
+    documents: content.documents || [],
+    forms: content.forms || [],
+    quotes: content.quotes || [],
+    headings: content.headings || [],
+
+    // Items with guaranteed structure
+    items: (content.items || []).map(guaranteeItemStructure),
+
+    // Sequence for ordered rendering
+    sequence: content.sequence || [],
+
+    // Preserve raw content if present
+    raw: content.raw,
   }
 }
 

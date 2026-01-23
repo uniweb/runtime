@@ -1,14 +1,20 @@
 {
   "name": "@uniweb/runtime",
-  "version": "0.2.13",
+  "version": "0.2.14",
   "description": "Minimal runtime for loading Uniweb foundations",
   "type": "module",
   "exports": {
-    ".": "./src/index.jsx"
+    ".": "./src/index.jsx",
+    "./ssr": "./dist/ssr.js"
   },
   "files": [
-    "src"
+    "src",
+    "dist"
   ],
+  "scripts": {
+    "build:ssr": "vite build --config vite.config.ssr.js",
+    "prepublishOnly": "npm run build:ssr"
+  },
   "keywords": [
     "uniweb",
     "runtime",
@@ -30,6 +36,10 @@
   },
   "dependencies": {
     "@uniweb/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.5.2",
+    "vite": "^7.3.1"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",

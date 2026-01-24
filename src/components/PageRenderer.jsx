@@ -43,11 +43,17 @@ export default function PageRenderer() {
 
   // Get page from current URL path (not the potentially stale website.activePage)
   // This ensures correct page renders immediately on client-side navigation
-  const page = website?.getPage(location.pathname) || website?.activePage
+  let page = website?.getPage(location.pathname)
+
+  // If no page found, try the 404 page
+  const isNotFound = !page
+  if (isNotFound) {
+    page = website?.getNotFoundPage?.() || website?.activePage
+  }
 
   // Get head metadata from page (uses Page.getHeadMeta() if available)
   const headMeta = page?.getHeadMeta?.() || {
-    title: page?.title || 'Website',
+    title: isNotFound ? 'Page Not Found' : (page?.title || 'Website'),
     description: page?.description || ''
   }
 
@@ -55,9 +61,12 @@ export default function PageRenderer() {
   useHeadMeta(headMeta, { siteName })
 
   if (!page) {
+    // No page and no 404 page defined - show minimal fallback
     return (
-      <div className="page-loading" style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
-        No page loaded
+      <div className="page-not-found" style={{ padding: '4rem 2rem', textAlign: 'center' }}>
+        <h1 style={{ fontSize: '3rem', fontWeight: 'bold', color: '#1f2937', marginBottom: '1rem' }}>404</h1>
+        <p style={{ color: '#64748b', marginBottom: '2rem' }}>Page not found</p>
+        <a href="/" style={{ color: '#3b82f6', textDecoration: 'underline' }}>Go to homepage</a>
       </div>
     )
   }

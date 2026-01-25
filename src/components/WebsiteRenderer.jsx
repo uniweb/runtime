@@ -7,36 +7,9 @@
 
 import React from 'react'
 import PageRenderer from './PageRenderer.jsx'
+import ThemeProvider from './ThemeProvider.jsx'
 import { useRememberScroll } from '../hooks/useRememberScroll.js'
 import { useLinkInterceptor } from '../hooks/useLinkInterceptor.js'
-
-/**
- * Build CSS custom properties from theme data
- */
-function buildThemeStyles(themeData) {
-  if (!themeData) return ''
-
-  const { contexts = {} } = themeData
-  const styles = []
-
-  // Generate CSS for each context (light, medium, dark)
-  for (const [contextName, contextData] of Object.entries(contexts)) {
-    const selector = `.context__${contextName}`
-    const vars = []
-
-    if (contextData.colors) {
-      for (const [key, value] of Object.entries(contextData.colors)) {
-        vars.push(`  --${key}: ${value};`)
-      }
-    }
-
-    if (vars.length > 0) {
-      styles.push(`${selector} {\n${vars.join('\n')}\n}`)
-    }
-  }
-
-  return styles.join('\n\n')
-}
 
 /**
  * Fonts component - loads custom fonts
@@ -74,20 +47,21 @@ export default function WebsiteRenderer() {
     )
   }
 
-  const themeStyles = buildThemeStyles(website.themeData)
+  // Get theme CSS from theme data (pre-generated during build)
+  // For SSG mode, CSS is already injected into HTML
+  // For federated mode, ThemeProvider injects it at runtime
+  const themeCSS = website.themeData?.css
+
+  // Get font imports from theme data
+  const fontImports = website.themeData?.fonts?.import
 
   return (
-    <>
+    <ThemeProvider css={themeCSS}>
       {/* Load custom fonts */}
-      <Fonts fontsData={website.themeData?.importedFonts} />
-
-      {/* Inject theme CSS variables */}
-      {themeStyles && (
-        <style dangerouslySetInnerHTML={{ __html: themeStyles }} />
-      )}
+      <Fonts fontsData={fontImports} />
 
       {/* Render the page */}
       <PageRenderer />
-    </>
+    </ThemeProvider>
   )
 }

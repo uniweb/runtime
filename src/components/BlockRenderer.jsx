@@ -9,16 +9,12 @@
 import React, { useState, useEffect } from 'react'
 import { prepareProps, getComponentMeta } from '../prepare-props.js'
 import { executeFetchClient, mergeIntoData } from '../data-fetcher-client.js'
+import Background from './Background.jsx'
 
 /**
- * Convert hex color to rgba
+ * Valid color contexts
  */
-const hexToRgba = (hex, opacity) => {
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  return `rgba(${r},${g},${b},${opacity})`
-}
+const VALID_CONTEXTS = ['light', 'medium', 'dark']
 
 /**
  * Build wrapper props from block configuration
@@ -27,47 +23,30 @@ const getWrapperProps = (block) => {
   const theme = block.themeName
   const blockClassName = block.state?.className || ''
 
-  let className = theme || ''
+  // Build context class (context-light, context-medium, context-dark)
+  let contextClass = ''
+  if (theme && VALID_CONTEXTS.includes(theme)) {
+    contextClass = `context-${theme}`
+  }
+
+  let className = contextClass
   if (blockClassName) {
     className = className ? `${className} ${blockClassName}` : blockClassName
   }
 
-  const { background = {}, colors = {} } = block.standardOptions
+  const { background = {} } = block.standardOptions
   const style = {}
 
-  // Handle background modes
-  if (background.mode === 'gradient') {
-    const {
-      enabled = false,
-      start = 'transparent',
-      end = 'transparent',
-      angle = 0,
-      startPosition = 0,
-      endPosition = 100,
-      startOpacity = 0.7,
-      endOpacity = 0.3
-    } = background.gradient || {}
-
-    if (enabled) {
-      style['--bg-color'] = `linear-gradient(${angle}deg,
-        ${hexToRgba(start, startOpacity)} ${startPosition}%,
-        ${hexToRgba(end, endOpacity)} ${endPosition}%)`
-    }
-  } else if (background.mode === 'image' || background.mode === 'video') {
-    const settings = background[background.mode] || {}
-    const { url = '', file = '' } = settings
-
-    if (url || file) {
-      style['--bg-color'] = 'transparent'
-      style.position = 'relative'
-      style.maxWidth = '100%'
-    }
+  // If background has content, ensure relative positioning for z-index stacking
+  if (background.mode) {
+    style.position = 'relative'
   }
 
   return {
-    id: `Section${block.id}`,
+    id: `section-${block.id}`,
     style,
-    className
+    className,
+    background
   }
 }
 
@@ -164,11 +143,35 @@ export default function BlockRenderer({ block, pure = false, extra = {} }) {
     return <Component {...componentProps} extra={extra} />
   }
 
-  const wrapperProps = getWrapperProps(block)
+  const { background, ...wrapperProps } = getWrapperProps(block)
+  const hasBackground = background?.mode
 
+  // Render with or without background
+  if (hasBackground) {
+    return (
+      <section {...wrapperProps}>
+        {/* Background layer (positioned absolutely) */}
+        <Background
+          mode={background.mode}
+          color={background.color}
+          gradient={background.gradient}
+          image={background.image}
+          video={background.video}
+          overlay={background.overlay}
+        />
+
+        {/* Content layer (above background) */}
+        <div className="relative z-10">
+          <Component {...componentProps} />
+        </div>
+      </section>
+    )
+  }
+
+  // No background - simpler render without extra wrapper
   return (
-    <div {...wrapperProps}>
+    <section {...wrapperProps}>
       <Component {...componentProps} />
-    </div>
+    </section>
   )
 }

@@ -42,8 +42,12 @@ const getWrapperProps = (block) => {
     style.position = 'relative'
   }
 
+  // Use stableId for DOM ID if available (stable across reordering)
+  // Falls back to positional id for backwards compatibility
+  const sectionId = block.stableId || block.id
+
   return {
-    id: `section-${block.id}`,
+    id: `section-${sectionId}`,
     style,
     className,
     background

@@ -7,10 +7,13 @@
  *
  * This enables SPA-style navigation for links that were rendered
  * as raw HTML via dangerouslySetInnerHTML.
+ *
+ * Also handles cross-page hash scrolling (e.g., /page#section)
+ * by scrolling to the target element after navigation completes.
  */
 
-import { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useCallback } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 
 /**
  * Check if a URL is internal (same origin, no external protocol)
@@ -71,6 +74,28 @@ function findAnchorElement(target) {
 }
 
 /**
+ * Scroll to element by ID with retry logic
+ * Retries a few times to handle elements that render asynchronously
+ *
+ * @param {string} elementId - The element ID to scroll to
+ * @param {number} retries - Number of retries remaining
+ */
+function scrollToElement(elementId, retries = 5) {
+  const element = document.getElementById(elementId)
+  if (element) {
+    element.scrollIntoView({ behavior: 'smooth' })
+    return
+  }
+
+  // Retry after a short delay if element not found yet
+  if (retries > 0) {
+    requestAnimationFrame(() => {
+      setTimeout(() => scrollToElement(elementId, retries - 1), 50)
+    })
+  }
+}
+
+/**
  * useLinkInterceptor hook
  *
  * @param {Object} options
@@ -79,6 +104,23 @@ function findAnchorElement(target) {
 export function useLinkInterceptor(options = {}) {
   const { enabled = true } = options
   const navigate = useNavigate()
+  const location = useLocation()
+
+  // Handle hash scrolling after navigation
+  // This effect runs when location changes and there's a hash
+  useEffect(() => {
+    if (!enabled) return
+    if (!location.hash) return
+
+    // Remove the # prefix
+    const elementId = location.hash.slice(1)
+    if (elementId) {
+      // Use requestAnimationFrame to wait for render, then scroll
+      requestAnimationFrame(() => {
+        scrollToElement(elementId)
+      })
+    }
+  }, [enabled, location.pathname, location.hash])
 
   useEffect(() => {
     if (!enabled) return
@@ -108,20 +150,20 @@ export function useLinkInterceptor(options = {}) {
       // Prevent the default browser navigation
       event.preventDefault()
 
-      // Handle hash-only links
+      // Handle hash-only links (same page scroll)
       if (href.startsWith('#')) {
-        // Scroll to element or top
         const elementId = href.slice(1)
         if (elementId) {
-          const element = document.getElementById(elementId)
-          if (element) {
-            element.scrollIntoView({ behavior: 'smooth' })
-          }
+          scrollToElement(elementId)
+          // Update URL hash without navigation
+          window.history.pushState(null, '', href)
         }
         return
       }
 
       // Use React Router navigation
+      // React Router will handle the path, and our useEffect above
+      // will handle scrolling to hash after navigation completes
       navigate(href)
     }
 

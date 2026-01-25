@@ -175,17 +175,34 @@ function ImageBackground({ image }) {
 }
 
 /**
+ * Check if user prefers reduced motion
+ */
+function prefersReducedMotion() {
+  if (typeof window === 'undefined') return false
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+/**
  * Video background
+ *
+ * Supports multiple source formats with automatic fallback.
+ * Respects prefers-reduced-motion by showing poster image instead.
  */
 function VideoBackground({ video }) {
   if (!video?.src) return null
 
   const {
     src,
+    sources,      // Array of { src, type } for multiple formats
     poster,
     loop = true,
     muted = true,
   } = video
+
+  // Respect reduced motion preference - show poster image instead
+  if (prefersReducedMotion() && poster) {
+    return <ImageBackground image={{ src: poster, size: 'cover', position: 'center' }} />
+  }
 
   const style = {
     position: 'absolute',
@@ -194,6 +211,9 @@ function VideoBackground({ video }) {
     height: '100%',
     objectFit: 'cover',
   }
+
+  // Build source list: explicit sources array, or infer from src
+  const sourceList = sources || inferSources(src)
 
   return (
     <video
@@ -206,9 +226,37 @@ function VideoBackground({ video }) {
       poster={poster}
       aria-hidden="true"
     >
-      <source src={src} type={getVideoMimeType(src)} />
+      {sourceList.map(({ src: sourceSrc, type }, index) => (
+        <source key={index} src={sourceSrc} type={type} />
+      ))}
     </video>
   )
+}
+
+/**
+ * Infer multiple source formats from a single src
+ *
+ * If given "video.mp4", also tries "video.webm" (better compression)
+ * Browser will use first supported format
+ */
+function inferSources(src) {
+  const sources = []
+  const ext = src.split('.').pop()?.toLowerCase()
+  const basePath = src.slice(0, src.lastIndexOf('.'))
+
+  // Prefer webm (better compression), fall back to original
+  if (ext === 'mp4') {
+    sources.push({ src: `${basePath}.webm`, type: 'video/webm' })
+    sources.push({ src, type: 'video/mp4' })
+  } else if (ext === 'webm') {
+    sources.push({ src, type: 'video/webm' })
+    sources.push({ src: `${basePath}.mp4`, type: 'video/mp4' })
+  } else {
+    // Single source for other formats
+    sources.push({ src, type: getVideoMimeType(src) })
+  }
+
+  return sources
 }
 
 /**

@@ -15,13 +15,20 @@ import { useHeadMeta } from '../hooks/useHeadMeta.js'
 /**
  * ChildBlocks - renders child blocks of a block
  * Exposed for use by foundation components
+ *
+ * @param {Object} props
+ * @param {Block} props.block - Parent block (used to get childBlocks if not provided)
+ * @param {Block[]} props.childBlocks - Optional explicit list of child blocks
+ * @param {boolean} props.pure - If true, render components without wrapper
+ * @param {string|false} props.as - Element type to render as (default: 'div' for nested blocks)
+ * @param {Object} props.extra - Extra props to pass to each component
  */
-export function ChildBlocks({ block, childBlocks, pure = false, extra = {} }) {
+export function ChildBlocks({ block, childBlocks, pure = false, as = 'div', extra = {} }) {
   const blocks = childBlocks || block?.childBlocks || []
 
   return blocks.map((childBlock, index) => (
     <React.Fragment key={childBlock.id || index}>
-      <BlockRenderer block={childBlock} pure={pure} extra={extra} />
+      <BlockRenderer block={childBlock} pure={pure} as={as} extra={extra} />
     </React.Fragment>
   ))
 }

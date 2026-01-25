@@ -52,8 +52,14 @@ const getWrapperProps = (block) => {
 
 /**
  * BlockRenderer component
+ *
+ * @param {Object} props
+ * @param {Block} props.block - Block instance to render
+ * @param {boolean} props.pure - If true, render component without wrapper
+ * @param {string|false} props.as - Element type to render as ('section', 'div', 'article', etc.) or false for Fragment
+ * @param {Object} props.extra - Extra props to pass to the component
  */
-export default function BlockRenderer({ block, pure = false, extra = {} }) {
+export default function BlockRenderer({ block, pure = false, as = 'section', extra = {} }) {
   // State for runtime-fetched data (when prerender: false)
   const [runtimeData, setRuntimeData] = useState(null)
   const [fetchError, setFetchError] = useState(null)
@@ -146,10 +152,15 @@ export default function BlockRenderer({ block, pure = false, extra = {} }) {
   const { background, ...wrapperProps } = getWrapperProps(block)
   const hasBackground = background?.mode
 
+  // Determine wrapper element: string tag name, or Fragment if false
+  const Wrapper = as === false ? React.Fragment : as
+  // Fragment doesn't accept props, so only pass them for real elements
+  const wrapperElementProps = as === false ? {} : wrapperProps
+
   // Render with or without background
   if (hasBackground) {
     return (
-      <section {...wrapperProps}>
+      <Wrapper {...wrapperElementProps}>
         {/* Background layer (positioned absolutely) */}
         <Background
           mode={background.mode}
@@ -164,14 +175,14 @@ export default function BlockRenderer({ block, pure = false, extra = {} }) {
         <div className="relative z-10">
           <Component {...componentProps} />
         </div>
-      </section>
+      </Wrapper>
     )
   }
 
   // No background - simpler render without extra wrapper
   return (
-    <section {...wrapperProps}>
+    <Wrapper {...wrapperElementProps}>
       <Component {...componentProps} />
-    </section>
+    </Wrapper>
   )
 }

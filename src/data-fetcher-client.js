@@ -52,12 +52,19 @@ export async function executeFetchClient(config) {
 
   try {
     // Determine the fetch URL
-    // For local paths, they're relative to the site root (served from public/)
-    // For remote URLs, use as-is
-    const fetchUrl = path || url
+    // For local paths, prepend base URL (for subpath deployments)
+    // For remote URLs (http/https), use as-is
+    let fetchUrl = path || url
 
     if (!fetchUrl) {
       return { data: [], error: 'No path or url specified' }
+    }
+
+    // Prepend base URL for relative paths (not absolute URLs)
+    if (fetchUrl.startsWith('/') && !fetchUrl.startsWith('//')) {
+      const baseUrl = import.meta.env?.BASE_URL || '/'
+      // BASE_URL has trailing slash, path has leading slash - remove one
+      fetchUrl = baseUrl.replace(/\/$/, '') + fetchUrl
     }
 
     const response = await fetch(fetchUrl)

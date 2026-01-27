@@ -153,6 +153,18 @@ function initUniweb(configData) {
 }
 
 /**
+ * Get the router basename from Vite's BASE_URL
+ * Vite sets this based on the `base` config option
+ * Returns undefined for root path ('/'), otherwise strips trailing slash
+ */
+function getBasename() {
+  const baseUrl = import.meta.env?.BASE_URL
+  if (!baseUrl || baseUrl === '/') return undefined
+  // Remove trailing slash for BrowserRouter compatibility
+  return baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
+}
+
+/**
  * Render the application
  * @param {Object} options
  */
@@ -162,6 +174,9 @@ function render({ development = false, basename } = {}) {
     console.error('[Runtime] Root element not found')
     return
   }
+
+  // Use provided basename, or derive from Vite's BASE_URL
+  const routerBasename = basename ?? getBasename()
 
   const root = createRoot(container)
 
@@ -174,7 +189,7 @@ function render({ development = false, basename } = {}) {
         </div>
       }
     >
-      <BrowserRouter basename={basename}>
+      <BrowserRouter basename={routerBasename}>
         <Routes>
           <Route path="/*" element={<WebsiteRenderer />} />
         </Routes>

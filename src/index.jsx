@@ -128,6 +128,95 @@ async function loadFoundation(source) {
 }
 
 /**
+ * Map friendly family names to react-icons codes
+ * The existing CDN uses react-icons structure: /{familyCode}/{familyCode}-{name}.svg
+ */
+const ICON_FAMILY_MAP = {
+  // Friendly names
+  lucide: 'lu',
+  heroicons: 'hi',
+  heroicons2: 'hi2',
+  phosphor: 'pi',
+  tabler: 'tb',
+  feather: 'fi',
+  // Font Awesome (multiple versions)
+  fa: 'fa',
+  fa6: 'fa6',
+  // Additional families from react-icons
+  bootstrap: 'bs',
+  'material-design': 'md',
+  'ant-design': 'ai',
+  remix: 'ri',
+  'simple-icons': 'si',
+  vscode: 'vsc',
+  weather: 'wi',
+  game: 'gi',
+  // Also support direct codes for power users
+  lu: 'lu',
+  hi: 'hi',
+  hi2: 'hi2',
+  pi: 'pi',
+  tb: 'tb',
+  fi: 'fi',
+  bs: 'bs',
+  md: 'md',
+  ai: 'ai',
+  ri: 'ri',
+  si: 'si',
+  vsc: 'vsc',
+  wi: 'wi',
+  gi: 'gi'
+}
+
+/**
+ * Create CDN-based icon resolver
+ * @param {Object} iconConfig - From site.yml icons:
+ * @returns {Function} Resolver: (library, name) => Promise<string|null>
+ */
+function createIconResolver(iconConfig = {}) {
+  const CDN_BASE = 'https://icons.uniweb.app'
+  const useCdn = iconConfig.cdn !== false
+
+  // Cache resolved icons
+  const cache = new Map()
+
+  return async function resolve(library, name) {
+    // Map friendly name to react-icons code
+    const familyCode = ICON_FAMILY_MAP[library.toLowerCase()]
+    if (!familyCode) {
+      console.warn(`[icons] Unknown family "${library}"`)
+      return null
+    }
+
+    // Check cache
+    const key = `${familyCode}:${name}`
+    if (cache.has(key)) return cache.get(key)
+
+    // Fetch from CDN
+    if (!useCdn) {
+      cache.set(key, null)
+      return null
+    }
+
+    try {
+      // CDN structure: /{familyCode}/{familyCode}-{name}.svg
+      // e.g., lucide:home → /lu/lu-home.svg
+      const iconFileName = `${familyCode}-${name}`
+      const url = `${CDN_BASE}/${familyCode}/${iconFileName}.svg`
+      const response = await fetch(url)
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      const svg = await response.text()
+      cache.set(key, svg)
+      return svg
+    } catch (err) {
+      console.warn(`[icons] Failed to load ${library}:${name}`, err.message)
+      cache.set(key, null)
+      return null
+    }
+  }
+}
+
+/**
  * Initialize the Uniweb instance
  * @param {Object} configData - Site configuration data
  * @returns {Uniweb}
@@ -148,6 +237,9 @@ function initUniweb(configData) {
     useParams,
     useLocation
   }
+
+  // Set up icon resolver based on site config
+  uniwebInstance.iconResolver = createIconResolver(configData.icons)
 
   return uniwebInstance
 }

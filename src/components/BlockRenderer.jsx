@@ -145,8 +145,7 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
   const componentProps = {
     content,
     params,
-    block,
-    input: block.input
+    block
   }
 
   if (pure) {

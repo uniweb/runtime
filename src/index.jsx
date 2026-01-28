@@ -174,7 +174,8 @@ const ICON_FAMILY_MAP = {
  * @returns {Function} Resolver: (library, name) => Promise<string|null>
  */
 function createIconResolver(iconConfig = {}) {
-  const CDN_BASE = 'https://icons.uniweb.app'
+  // Default to GitHub Pages CDN, can be overridden in site.yml
+  const CDN_BASE = iconConfig.cdnUrl || 'https://uniweb.github.io/icons'
   const useCdn = iconConfig.cdn !== false
 
   // Cache resolved icons

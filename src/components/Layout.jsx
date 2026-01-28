@@ -49,6 +49,21 @@ function DefaultLayout({ header, body, footer }) {
 }
 
 /**
+ * Initialize all blocks to ensure cross-block communication works.
+ * Must be called before rendering so getNextBlockInfo() can access sibling contexts.
+ *
+ * @param {Block[][]} blockGroups - Arrays of blocks from all layout areas
+ */
+function initializeAllBlocks(...blockGroups) {
+  for (const blocks of blockGroups) {
+    if (!blocks) continue
+    for (const block of blocks) {
+      block.initComponent()
+    }
+  }
+}
+
+/**
  * Layout component
  *
  * @param {Object} props
@@ -65,6 +80,11 @@ export default function Layout({ page, website }) {
   const footerBlocks = page.getFooterBlocks()
   const leftBlocks = page.getLeftBlocks()
   const rightBlocks = page.getRightBlocks()
+
+  // Pre-initialize all blocks before rendering any.
+  // This ensures cross-block communication (getNextBlockInfo, getPrevBlockInfo)
+  // can access sibling block contexts that are set in initComponent().
+  initializeAllBlocks(headerBlocks, bodyBlocks, footerBlocks, leftBlocks, rightBlocks)
 
   // Pre-render each area as React elements
   const headerElement = headerBlocks ? <Blocks blocks={headerBlocks} /> : null

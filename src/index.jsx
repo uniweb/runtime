@@ -246,6 +246,22 @@ function initUniweb(configData) {
   // Set up icon resolver based on site config
   uniwebInstance.iconResolver = createIconResolver(configData.icons)
 
+  // Populate icon cache from prerendered data (if available)
+  // This allows icons to render immediately without CDN fetches
+  if (typeof document !== 'undefined') {
+    try {
+      const cacheEl = document.getElementById('__ICON_CACHE__')
+      if (cacheEl) {
+        const cached = JSON.parse(cacheEl.textContent)
+        for (const [key, svg] of Object.entries(cached)) {
+          uniwebInstance.iconCache.set(key, svg)
+        }
+      }
+    } catch (e) {
+      // Ignore parse errors
+    }
+  }
+
   return uniwebInstance
 }
 

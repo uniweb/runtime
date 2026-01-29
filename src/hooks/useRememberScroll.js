@@ -6,13 +6,13 @@
  *
  * Behavior:
  * - Saves scroll position when navigating away from a page
- * - Restores scroll position when returning to a previously visited page
- * - Scrolls to top for newly visited pages
+ * - Restores scroll position on back/forward (POP) navigation
+ * - Scrolls to top on new navigation (PUSH/REPLACE, e.g. link clicks)
  * - Optionally resets block states on scroll restoration
  */
 
 import { useEffect, useRef } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigationType } from 'react-router-dom'
 
 /**
  * useRememberScroll hook
@@ -26,6 +26,7 @@ export function useRememberScroll(options = {}) {
   const { enabled = true, resetBlockStates = true, scrollDelay = 0 } = options
 
   const location = useLocation()
+  const navigationType = useNavigationType()
   const previousPathRef = useRef(location.pathname)
   const isFirstRender = useRef(true)
 
@@ -62,16 +63,18 @@ export function useRememberScroll(options = {}) {
       previousPage.scrollY = window.scrollY
     }
 
-    // Restore or reset scroll for current page
+    // Determine scroll target:
+    // - POP (back/forward): restore saved position
+    // - PUSH/REPLACE (link click, programmatic): scroll to top
     if (currentPage) {
-      const targetScroll = currentPage.scrollY || 0
+      const targetScroll = navigationType === 'POP' ? (currentPage.scrollY || 0) : 0
 
       // Reset block states if requested (for animations, etc.)
       if (resetBlockStates && typeof currentPage.resetBlockStates === 'function') {
         currentPage.resetBlockStates()
       }
 
-      // Restore scroll position
+      // Apply scroll position
       const restore = () => {
         window.scrollTo(0, targetScroll)
       }
@@ -86,7 +89,7 @@ export function useRememberScroll(options = {}) {
 
     // Update previous path ref
     previousPathRef.current = currentPath
-  }, [location.pathname, enabled, resetBlockStates, scrollDelay])
+  }, [location.pathname, navigationType, enabled, resetBlockStates, scrollDelay])
 
   // Save scroll position before page unload
   useEffect(() => {

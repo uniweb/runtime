@@ -154,9 +154,11 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
 
   const { background, ...wrapperProps } = getWrapperProps(block)
 
-  // Check if component handles its own background (background: 'manual' in meta.js)
+  // Check if component handles its own background (background: 'self' in meta.js)
+  // Components that render their own background layer (solid colors, insets, effects)
+  // opt out so the runtime doesn't render an occluded layer underneath.
   const meta = getComponentMeta(block.type)
-  const hasBackground = background?.mode && meta?.background !== 'manual'
+  const hasBackground = background?.mode && meta?.background !== 'self'
 
   // Determine wrapper element: string tag name, or Fragment if false
   const Wrapper = as === false ? React.Fragment : as

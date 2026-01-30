@@ -153,7 +153,10 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
   }
 
   const { background, ...wrapperProps } = getWrapperProps(block)
-  const hasBackground = background?.mode
+
+  // Check if component handles its own background (background: 'manual' in meta.js)
+  const meta = getComponentMeta(block.type)
+  const hasBackground = background?.mode && meta?.background !== 'manual'
 
   // Determine wrapper element: string tag name, or Fragment if false
   const Wrapper = as === false ? React.Fragment : as

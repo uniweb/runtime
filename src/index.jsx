@@ -291,6 +291,17 @@ function render({ development = false, basename } = {}) {
   // Use provided basename, or derive from Vite's BASE_URL
   const routerBasename = basename ?? getBasename()
 
+  // Set initial active page from browser URL so getLocaleUrl() works on first render
+  const website = globalThis.uniweb?.activeWebsite
+  if (website && typeof window !== 'undefined') {
+    const rawPath = window.location.pathname
+    const basePath = routerBasename || ''
+    const routePath = basePath && rawPath.startsWith(basePath)
+      ? rawPath.slice(basePath.length) || '/'
+      : rawPath
+    website.setActivePage(routePath)
+  }
+
   const root = createRoot(container)
 
   const app = (

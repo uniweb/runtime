@@ -60,10 +60,10 @@ export default function PageRenderer() {
   // This ensures correct page renders immediately on client-side navigation
   let page = website?.getPage(location.pathname)
 
-  // If no page found, try the 404 page
+  // If no page found, try the 404 page (do NOT fall back to activePage/homepage)
   const isNotFound = !page
   if (isNotFound) {
-    page = website?.getNotFoundPage?.() || website?.activePage
+    page = website?.getNotFoundPage?.() || null
   }
 
   // Get head metadata from page (uses Page.getHeadMeta() if available)
@@ -76,12 +76,23 @@ export default function PageRenderer() {
   useHeadMeta(headMeta, { siteName })
 
   if (!page) {
-    // No page and no 404 page defined - show minimal fallback
+    // No page and no 404 page defined - show minimal fallback with debug info
+    const requestedPath = location.pathname
+    const isDev = import.meta.env?.DEV
     return (
       <div className="page-not-found" style={{ padding: '4rem 2rem', textAlign: 'center' }}>
         <h1 style={{ fontSize: '3rem', fontWeight: 'bold', color: '#1f2937', marginBottom: '1rem' }}>404</h1>
         <p style={{ color: '#64748b', marginBottom: '2rem' }}>Page not found</p>
         <a href="/" style={{ color: '#3b82f6', textDecoration: 'underline' }}>Go to homepage</a>
+        {isDev && (
+          <div style={{ marginTop: '2rem', padding: '1rem', background: '#f1f5f9', borderRadius: '0.5rem', textAlign: 'left', maxWidth: '32rem', margin: '2rem auto 0' }}>
+            <p style={{ fontWeight: '600', color: '#475569', marginBottom: '0.5rem' }}>Debug info</p>
+            <p style={{ fontSize: '0.875rem', color: '#64748b' }}>Path: {requestedPath}</p>
+            <p style={{ fontSize: '0.875rem', color: '#64748b' }}>Locale: {website?.getActiveLocale?.() || 'unknown'}</p>
+            <p style={{ fontSize: '0.875rem', color: '#64748b' }}>Known routes: {website?.pageRoutes?.join(', ') || 'none'}</p>
+            <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.5rem' }}>Tip: Create a pages/404/ folder with a page.yml and content to customize this page.</p>
+          </div>
+        )}
       </div>
     )
   }

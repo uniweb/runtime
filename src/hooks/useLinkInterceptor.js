@@ -147,6 +147,25 @@ export function useLinkInterceptor(options = {}) {
       const target = anchor.getAttribute('target')
       if (target && target !== '_self') return
 
+      // Check if this link switches locale (requires full page reload)
+      const website = globalThis.uniweb?.activeWebsite
+      if (website?.hasMultipleLocales()) {
+        const activeLocale = website.getActiveLocale()
+        const defaultLocale = website.getDefaultLocale()
+        const localeCodes = website.getLocales().map(l => l.code)
+        const hrefMatch = href.match(/^\/([a-z]{2,3}(?:-[A-Z]{2})?)(?:\/|$)/)
+        const hrefLocale = hrefMatch?.[1]
+
+        let isLocaleSwitch = false
+        if (hrefLocale && localeCodes.includes(hrefLocale)) {
+          isLocaleSwitch = hrefLocale !== activeLocale
+        } else {
+          // No locale prefix = targets default locale
+          isLocaleSwitch = activeLocale !== defaultLocale
+        }
+        if (isLocaleSwitch) return  // Allow full page reload
+      }
+
       // Prevent the default browser navigation
       event.preventDefault()
 

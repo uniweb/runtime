@@ -147,13 +147,23 @@ export function useLinkInterceptor(options = {}) {
       const target = anchor.getAttribute('target')
       if (target && target !== '_self') return
 
-      // Check if this link switches locale (requires full page reload)
+      // Strip basePath from href for internal processing
+      // Links from <Link reload> include the basePath, but React Router
+      // and locale detection work with router-relative paths
       const website = globalThis.uniweb?.activeWebsite
+      const basePath = website?.basePath || ''
+
+      let routeHref = href
+      if (basePath && href.startsWith(basePath)) {
+        routeHref = href.slice(basePath.length) || '/'
+      }
+
+      // Check if this link switches locale (requires full page reload)
       if (website?.hasMultipleLocales()) {
         const activeLocale = website.getActiveLocale()
         const defaultLocale = website.getDefaultLocale()
         const localeCodes = website.getLocales().map(l => l.code)
-        const hrefMatch = href.match(/^\/([a-z]{2,3}(?:-[A-Z]{2})?)(?:\/|$)/)
+        const hrefMatch = routeHref.match(/^\/([a-z]{2,3}(?:-[A-Z]{2})?)(?:\/|$)/)
         const hrefLocale = hrefMatch?.[1]
 
         let isLocaleSwitch = false
@@ -170,8 +180,8 @@ export function useLinkInterceptor(options = {}) {
       event.preventDefault()
 
       // Handle hash-only links (same page scroll)
-      if (href.startsWith('#')) {
-        const elementId = href.slice(1)
+      if (routeHref.startsWith('#')) {
+        const elementId = routeHref.slice(1)
         if (elementId) {
           scrollToElement(elementId)
           // Update URL hash without navigation
@@ -180,10 +190,10 @@ export function useLinkInterceptor(options = {}) {
         return
       }
 
-      // Use React Router navigation
+      // Use React Router navigation (with router-relative path)
       // React Router will handle the path, and our useEffect above
       // will handle scrolling to hash after navigation completes
-      navigate(href)
+      navigate(routeHref)
     }
 
     // Add click listener to document

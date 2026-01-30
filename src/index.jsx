@@ -300,6 +300,11 @@ function render({ development = false, basename } = {}) {
       ? rawPath.slice(basePath.length) || '/'
       : rawPath
     website.setActivePage(routePath)
+
+    // Store base path on Website for components that need it (e.g., Link reload)
+    if (website.setBasePath) {
+      website.setBasePath(routerBasename || '')
+    }
   }
 
   const root = createRoot(container)

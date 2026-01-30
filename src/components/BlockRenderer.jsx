@@ -142,6 +142,21 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
     }
   }
 
+  const { background, ...wrapperProps } = getWrapperProps(block)
+
+  // Check if component handles its own background (background: 'self' in meta.js)
+  // Components that render their own background layer (solid colors, insets, effects)
+  // opt out so the runtime doesn't render an occluded layer underneath.
+  const meta = getComponentMeta(block.type)
+  const hasBackground = background?.mode && meta?.background !== 'self'
+
+  // Signal to the component that the author set a background in frontmatter.
+  // Components can check params._hasBackground to skip their own opaque bg color
+  // and let the engine background show through.
+  if (hasBackground) {
+    params = { ...params, _hasBackground: true }
+  }
+
   const componentProps = {
     content,
     params,
@@ -151,14 +166,6 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
   if (pure) {
     return <Component {...componentProps} extra={extra} />
   }
-
-  const { background, ...wrapperProps } = getWrapperProps(block)
-
-  // Check if component handles its own background (background: 'self' in meta.js)
-  // Components that render their own background layer (solid colors, insets, effects)
-  // opt out so the runtime doesn't render an occluded layer underneath.
-  const meta = getComponentMeta(block.type)
-  const hasBackground = background?.mode && meta?.background !== 'self'
 
   // Determine wrapper element: string tag name, or Fragment if false
   const Wrapper = as === false ? React.Fragment : as

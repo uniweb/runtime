@@ -28,6 +28,20 @@ const OVERLAY_COLORS = {
 }
 
 /**
+ * Resolve a URL against the site's base path
+ * Prepends basePath to absolute URLs (starting with /) so they work
+ * under subdirectory deployments (e.g., /templates/international/)
+ */
+function resolveUrl(url) {
+  if (!url || !url.startsWith('/')) return url
+  const basePath = globalThis.uniweb?.activeWebsite?.basePath || ''
+  if (!basePath) return url
+  // Avoid double-prepending
+  if (url.startsWith(basePath + '/') || url === basePath) return url
+  return basePath + url
+}
+
+/**
  * Render gradient overlay
  */
 function GradientOverlay({ gradient, opacity = 0.5 }) {
@@ -161,7 +175,7 @@ function ImageBackground({ image }) {
   const style = {
     position: 'absolute',
     inset: 0,
-    backgroundImage: `url(${src})`,
+    backgroundImage: `url(${resolveUrl(src)})`,
     backgroundPosition: position,
     backgroundSize: size,
     backgroundRepeat: 'no-repeat',
@@ -213,7 +227,10 @@ function VideoBackground({ video }) {
   }
 
   // Build source list: explicit sources array, or infer from src
-  const sourceList = sources || inferSources(src)
+  const sourceList = (sources || inferSources(src)).map(s => ({
+    ...s,
+    src: resolveUrl(s.src)
+  }))
 
   return (
     <video
@@ -223,7 +240,7 @@ function VideoBackground({ video }) {
       loop={loop}
       muted={muted}
       playsInline
-      poster={poster}
+      poster={resolveUrl(poster)}
       aria-hidden="true"
     >
       {sourceList.map(({ src: sourceSrc, type }, index) => (

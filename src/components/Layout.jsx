@@ -41,9 +41,9 @@ import Blocks from './Blocks.jsx'
 function DefaultLayout({ header, body, footer }) {
   return (
     <>
-      {header}
-      {body}
-      {footer}
+      {header && <header>{header}</header>}
+      {body && <main>{body}</main>}
+      {footer && <footer>{footer}</footer>}
     </>
   )
 }

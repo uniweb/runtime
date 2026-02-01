@@ -233,6 +233,13 @@ function initUniweb(configData) {
   // Create singleton via @uniweb/core (also assigns to globalThis.uniweb)
   const uniwebInstance = createUniweb(configData)
 
+  // Pre-populate DataStore from build-time fetched data
+  if (configData.fetchedData && uniwebInstance.activeWebsite?.dataStore) {
+    for (const entry of configData.fetchedData) {
+      uniwebInstance.activeWebsite.dataStore.set(entry.config, entry.data)
+    }
+  }
+
   // Set up child block renderer for nested blocks
   uniwebInstance.childBlockRenderer = ChildBlocks
 

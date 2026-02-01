@@ -66,9 +66,9 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
   const Component = block.initComponent()
 
   // Entity-aware data resolution via EntityStore
-  const entityStore = block.website?.entityStore
+  const entityStore = block.website.entityStore
   const meta = getComponentMeta(block.type)
-  const resolved = entityStore?.resolve(block, meta)
+  const resolved = entityStore.resolve(block, meta)
 
   // Async data for when resolve returns 'pending' (runtime fetches)
   const [asyncData, setAsyncData] = useState(null)
@@ -80,20 +80,20 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
 
   // Fetch missing data asynchronously
   useEffect(() => {
-    if (!entityStore || resolved?.status !== 'pending') return
+    if (resolved.status !== 'pending') return
 
     let cancelled = false
     entityStore.fetch(block, meta).then((result) => {
       if (!cancelled && result.data) setAsyncData(result.data)
     })
     return () => { cancelled = true }
-  }, [entityStore, block])
+  }, [block])
 
   // Use sync resolved data when available, fall back to async
-  const entityData = resolved?.status === 'ready' ? resolved.data : asyncData
+  const entityData = resolved.status === 'ready' ? resolved.data : asyncData
 
   // Signal to component that data is loading
-  block.dataLoading = resolved?.status === 'pending' && !entityData
+  block.dataLoading = resolved.status === 'pending' && !entityData
 
   if (!Component) {
     return (

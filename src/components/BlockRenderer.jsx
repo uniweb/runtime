@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { prepareProps, getComponentMeta } from '../prepare-props.js'
-import { executeFetchClient, mergeIntoData } from '../data-fetcher-client.js'
+import { mergeIntoData } from '../data-fetcher-client.js'
 import Background from './Background.jsx'
 
 /**
@@ -64,23 +64,30 @@ const getWrapperProps = (block) => {
  * @param {Object} props.extra - Extra props to pass to the component
  */
 export default function BlockRenderer({ block, pure = false, as = 'section', extra = {} }) {
-  // State for runtime-fetched data (when prerender: false)
-  const [runtimeData, setRuntimeData] = useState(null)
-  const [fetchError, setFetchError] = useState(null)
-
   const Component = block.initComponent()
 
   // Runtime fetch for prerender: false configurations
   const fetchConfig = block.fetch
   const shouldFetchAtRuntime = fetchConfig && fetchConfig.prerender === false
+  const dataStore = block.website?.dataStore
+
+  // Initialize state from cache (instant render on SPA back-navigation)
+  const cachedData = shouldFetchAtRuntime && dataStore?.has(fetchConfig)
+    ? { [fetchConfig.schema]: dataStore.get(fetchConfig) }
+    : null
+
+  const [runtimeData, setRuntimeData] = useState(cachedData)
+  const [fetchError, setFetchError] = useState(null)
 
   useEffect(() => {
-    if (!shouldFetchAtRuntime) return
+    if (!shouldFetchAtRuntime || !dataStore) return
+    // Already have data from cache — nothing to do
+    if (runtimeData) return
 
     let cancelled = false
 
     async function doFetch() {
-      const result = await executeFetchClient(fetchConfig)
+      const result = await dataStore.fetch(fetchConfig)
       if (cancelled) return
 
       if (result.error) {
@@ -96,10 +103,10 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
     return () => {
       cancelled = true
     }
-  }, [shouldFetchAtRuntime, fetchConfig])
+  }, [shouldFetchAtRuntime, fetchConfig, dataStore, runtimeData])
 
   // Signal to component that a runtime fetch is in progress
-  // Set synchronously so the first render sees dataLoading = true
+  // On cache hit runtimeData is set from the start, so dataLoading is never true
   if (shouldFetchAtRuntime && !runtimeData && !fetchError) {
     block.dataLoading = true
   } else if (shouldFetchAtRuntime) {

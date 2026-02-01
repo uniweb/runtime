@@ -17,6 +17,9 @@ import {
   useLocation
 } from 'react-router-dom'
 
+// Data fetcher (registered on dataStore so core can call it without importing runtime)
+import { executeFetchClient } from './data-fetcher-client.js'
+
 // Components
 import { ChildBlocks } from './components/PageRenderer.jsx'
 import WebsiteRenderer from './components/WebsiteRenderer.jsx'
@@ -304,6 +307,11 @@ function render({ development = false, basename } = {}) {
     // Store base path on Website for components that need it (e.g., Link reload)
     if (website.setBasePath) {
       website.setBasePath(routerBasename || '')
+    }
+
+    // Register data fetcher on the DataStore so BlockRenderer can use it
+    if (website.dataStore) {
+      website.dataStore.registerFetcher(executeFetchClient)
     }
   }
 

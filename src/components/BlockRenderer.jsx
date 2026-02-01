@@ -3,12 +3,11 @@
  *
  * Bridges Block data to foundation components.
  * Handles theming, wrapper props, and runtime guarantees.
- * Supports runtime data fetching for prerender: false configs.
+ * Uses EntityStore for entity-aware data resolution.
  */
 
 import React, { useState, useEffect } from 'react'
 import { prepareProps, getComponentMeta } from '../prepare-props.js'
-import { mergeIntoData } from '../data-fetcher-client.js'
 import Background from './Background.jsx'
 
 /**
@@ -66,52 +65,28 @@ const getWrapperProps = (block) => {
 export default function BlockRenderer({ block, pure = false, as = 'section', extra = {} }) {
   const Component = block.initComponent()
 
-  // Runtime fetch for prerender: false configurations
-  const fetchConfig = block.fetch
-  const shouldFetchAtRuntime = fetchConfig && fetchConfig.prerender === false
-  const dataStore = block.website?.dataStore
+  // Entity-aware data resolution via EntityStore
+  const entityStore = block.website?.entityStore
+  const meta = getComponentMeta(block.type)
+  const resolved = entityStore?.resolve(block, meta)
 
-  // Initialize state from cache (instant render on SPA back-navigation)
-  const cachedData = shouldFetchAtRuntime && dataStore?.has(fetchConfig)
-    ? { [fetchConfig.schema]: dataStore.get(fetchConfig) }
-    : null
-
-  const [runtimeData, setRuntimeData] = useState(cachedData)
-  const [fetchError, setFetchError] = useState(null)
+  const [entityData, setEntityData] = useState(
+    resolved?.status === 'ready' ? resolved.data : null
+  )
 
   useEffect(() => {
-    if (!shouldFetchAtRuntime || !dataStore) return
-    // Already have data from cache — nothing to do
-    if (runtimeData) return
+    if (entityData || !entityStore) return
+    if (resolved?.status !== 'pending') return
 
     let cancelled = false
+    entityStore.fetch(block, meta).then((result) => {
+      if (!cancelled && result.data) setEntityData(result.data)
+    })
+    return () => { cancelled = true }
+  }, [entityStore, entityData])
 
-    async function doFetch() {
-      const result = await dataStore.fetch(fetchConfig)
-      if (cancelled) return
-
-      if (result.error) {
-        setFetchError(result.error)
-      }
-      if (result.data) {
-        setRuntimeData({ [fetchConfig.schema]: result.data })
-      }
-    }
-
-    doFetch()
-
-    return () => {
-      cancelled = true
-    }
-  }, [shouldFetchAtRuntime, fetchConfig, dataStore, runtimeData])
-
-  // Signal to component that a runtime fetch is in progress
-  // On cache hit runtimeData is set from the start, so dataLoading is never true
-  if (shouldFetchAtRuntime && !runtimeData && !fetchError) {
-    block.dataLoading = true
-  } else if (shouldFetchAtRuntime) {
-    block.dataLoading = false
-  }
+  // Signal to component that data is loading
+  block.dataLoading = resolved?.status === 'pending' && !entityData
 
   if (!Component) {
     return (
@@ -126,12 +101,6 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
   // 1. parsedContent - semantic parser output (flat: title, paragraphs, links, etc.)
   // 2. block.properties - params from frontmatter (theme, alignment, etc.)
   // 3. meta - defaults from component meta.js
-  const meta = getComponentMeta(block.type)
-
-  // Prepare props with runtime guarantees:
-  // - Apply param defaults from meta.js
-  // - Guarantee content structure exists
-  // - Apply cascaded data based on inheritData
   const prepared = prepareProps(block, meta)
   let params = prepared.params
 
@@ -140,9 +109,9 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
     ...block.properties,     // Frontmatter params overlay (legacy support)
   }
 
-  // Merge runtime-fetched data if available
-  if (runtimeData && shouldFetchAtRuntime) {
-    content.data = mergeIntoData(content.data, runtimeData[fetchConfig.schema], fetchConfig.schema, fetchConfig.merge)
+  // Merge entity data resolved by EntityStore
+  if (entityData) {
+    content.data = { ...content.data, ...entityData }
   }
 
   const { background, ...wrapperProps } = getWrapperProps(block)

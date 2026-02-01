@@ -187,38 +187,6 @@ export function applyDefaults(params, defaults) {
 }
 
 /**
- * Apply cascaded data based on component's inheritData setting
- *
- * @param {Object} localData - content.data from the section itself
- * @param {Object} cascadedData - Data from page/site level fetches
- * @param {boolean|Array} inheritData - Component's inheritData setting
- * @returns {Object} Merged data object
- */
-function applyCascadedData(localData, cascadedData, inheritData) {
-  if (!inheritData || !cascadedData || Object.keys(cascadedData).length === 0) {
-    return localData
-  }
-
-  if (inheritData === true) {
-    // Inherit all: cascaded data as base, local data overrides
-    return { ...cascadedData, ...localData }
-  }
-
-  if (Array.isArray(inheritData)) {
-    // Selective: only specified schemas, local data takes precedence
-    const result = { ...localData }
-    for (const key of inheritData) {
-      if (cascadedData[key] !== undefined && result[key] === undefined) {
-        result[key] = cascadedData[key]
-      }
-    }
-    return result
-  }
-
-  return localData
-}
-
-/**
  * Prepare props for a component with runtime guarantees
  *
  * @param {Object} block - The block instance
@@ -232,13 +200,6 @@ export function prepareProps(block, meta) {
 
   // Guarantee content structure
   const content = guaranteeContentStructure(block.parsedContent)
-
-  // Apply cascaded data based on component's inheritData setting
-  const inheritData = meta?.inheritData
-  const cascadedData = block.cascadedData || {}
-  if (inheritData) {
-    content.data = applyCascadedData(content.data, cascadedData, inheritData)
-  }
 
   // Apply schemas to content.data
   const schemas = meta?.schemas || null

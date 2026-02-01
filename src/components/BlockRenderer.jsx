@@ -137,12 +137,10 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
   // opt out so the runtime doesn't render an occluded layer underneath.
   const hasBackground = background?.mode && meta?.background !== 'self'
 
-  // Signal to the component that the author set a background in frontmatter.
-  // Components can check params._hasBackground to skip their own opaque bg color
+  // Signal to the component that the engine is rendering a background.
+  // Components check block.hasBackground to skip their own opaque bg
   // and let the engine background show through.
-  if (hasBackground) {
-    params = { ...params, _hasBackground: true }
-  }
+  block.hasBackground = hasBackground
 
   const componentProps = {
     content,

@@ -70,20 +70,27 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
   const meta = getComponentMeta(block.type)
   const resolved = entityStore?.resolve(block, meta)
 
-  const [entityData, setEntityData] = useState(
-    resolved?.status === 'ready' ? resolved.data : null
-  )
+  // Async data for when resolve returns 'pending' (runtime fetches)
+  const [asyncData, setAsyncData] = useState(null)
 
+  // Reset async data when block changes (SPA navigation)
   useEffect(() => {
-    if (entityData || !entityStore) return
-    if (resolved?.status !== 'pending') return
+    setAsyncData(null)
+  }, [block])
+
+  // Fetch missing data asynchronously
+  useEffect(() => {
+    if (!entityStore || resolved?.status !== 'pending') return
 
     let cancelled = false
     entityStore.fetch(block, meta).then((result) => {
-      if (!cancelled && result.data) setEntityData(result.data)
+      if (!cancelled && result.data) setAsyncData(result.data)
     })
     return () => { cancelled = true }
-  }, [entityStore, entityData])
+  }, [entityStore, block])
+
+  // Use sync resolved data when available, fall back to async
+  const entityData = resolved?.status === 'ready' ? resolved.data : asyncData
 
   // Signal to component that data is loading
   block.dataLoading = resolved?.status === 'pending' && !entityData
@@ -110,8 +117,16 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
   }
 
   // Merge entity data resolved by EntityStore
+  // Only fill in keys that don't already exist — section-level fetch data
+  // (already in content.data from parsedContent) takes priority over inherited data.
   if (entityData) {
-    content.data = { ...content.data, ...entityData }
+    const merged = { ...content.data }
+    for (const key of Object.keys(entityData)) {
+      if (merged[key] === undefined) {
+        merged[key] = entityData[key]
+      }
+    }
+    content.data = merged
   }
 
   const { background, ...wrapperProps } = getWrapperProps(block)

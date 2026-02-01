@@ -108,38 +108,26 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
 
   // Build content and params with runtime guarantees
   // Sources:
-  // 1. parsedContent._isPoc - simple PoC format (hardcoded content)
-  // 2. parsedContent - semantic parser output (flat: title, paragraphs, links, etc.)
-  // 3. block.properties - params from frontmatter (theme, alignment, etc.)
-  // 4. meta - defaults from component meta.js
-  let content, params
+  // 1. parsedContent - semantic parser output (flat: title, paragraphs, links, etc.)
+  // 2. block.properties - params from frontmatter (theme, alignment, etc.)
+  // 3. meta - defaults from component meta.js
+  const meta = getComponentMeta(block.type)
 
-  if (block.parsedContent?._isPoc) {
-    // Simple PoC format - content was passed directly
-    content = block.parsedContent._pocContent
-    params = block.properties
-  } else {
-    // Get runtime metadata for this component (has defaults, data binding, etc.)
-    const meta = getComponentMeta(block.type)
+  // Prepare props with runtime guarantees:
+  // - Apply param defaults from meta.js
+  // - Guarantee content structure exists
+  // - Apply cascaded data based on inheritData
+  const prepared = prepareProps(block, meta)
+  let params = prepared.params
 
-    // Prepare props with runtime guarantees:
-    // - Apply param defaults from meta.js
-    // - Guarantee content structure exists
-    // - Apply cascaded data based on inheritData
-    const prepared = prepareProps(block, meta)
-    params = prepared.params
+  let content = {
+    ...prepared.content,
+    ...block.properties,     // Frontmatter params overlay (legacy support)
+  }
 
-    // Merge prepared content with raw access for components that need it
-    content = {
-      ...prepared.content,
-      ...block.properties,     // Frontmatter params overlay (legacy support)
-      _prosemirror: block.parsedContent  // Keep original for components that need raw access
-    }
-
-    // Merge runtime-fetched data if available
-    if (runtimeData && shouldFetchAtRuntime) {
-      content.data = mergeIntoData(content.data, runtimeData[fetchConfig.schema], fetchConfig.schema, fetchConfig.merge)
-    }
+  // Merge runtime-fetched data if available
+  if (runtimeData && shouldFetchAtRuntime) {
+    content.data = mergeIntoData(content.data, runtimeData[fetchConfig.schema], fetchConfig.schema, fetchConfig.merge)
   }
 
   const { background, ...wrapperProps } = getWrapperProps(block)
@@ -147,7 +135,6 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
   // Check if component handles its own background (background: 'self' in meta.js)
   // Components that render their own background layer (solid colors, insets, effects)
   // opt out so the runtime doesn't render an occluded layer underneath.
-  const meta = getComponentMeta(block.type)
   const hasBackground = background?.mode && meta?.background !== 'self'
 
   // Signal to the component that the author set a background in frontmatter.

@@ -40,9 +40,8 @@ export function useRememberScroll(options = {}) {
     const previousPath = previousPathRef.current
     const currentPath = location.pathname
 
-    // Sync active page with current route
-    // This keeps website.activePage in sync for code that depends on it
-    website.setActivePage(currentPath)
+    // website.activePage is synced by PageRenderer during render.
+    // By the time this effect runs, activePage is already correct.
     const currentPage = website.activePage
 
     // Skip on first render

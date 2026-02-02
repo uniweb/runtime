@@ -56,9 +56,11 @@ export default function PageRenderer() {
   const website = uniweb?.activeWebsite
   const siteName = website?.name || ''
 
-  // Get page from current URL path (not the potentially stale website.activePage)
-  // This ensures correct page renders immediately on client-side navigation
+  // Resolve page from current URL and sync website.activePage immediately.
+  // This must happen synchronously (not in an effect) so child components
+  // like Header see the correct activePage during the same render cycle.
   let page = website?.getPage(location.pathname)
+  if (page && website) website.setActivePage(location.pathname)
 
   // If no page found, try the 404 page (do NOT fall back to activePage/homepage)
   const isNotFound = !page

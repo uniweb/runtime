@@ -131,6 +131,15 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
 
   const { background, ...wrapperProps } = getWrapperProps(block)
 
+  // Merge Component.className (static classes declared on the component function)
+  // Order: context-{theme} + block.state.className + Component.className
+  const componentClassName = Component.className
+  if (componentClassName) {
+    wrapperProps.className = wrapperProps.className
+      ? `${wrapperProps.className} ${componentClassName}`
+      : componentClassName
+  }
+
   // Check if component handles its own background (background: 'self' in meta.js)
   // Components that render their own background layer (solid colors, insets, effects)
   // opt out so the runtime doesn't render an occluded layer underneath.
@@ -151,8 +160,13 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
     return <Component {...componentProps} extra={extra} />
   }
 
-  // Determine wrapper element: string tag name, or Fragment if false
-  const Wrapper = as === false ? React.Fragment : as
+  // Determine wrapper element:
+  // - as={false} → Fragment (no wrapper)
+  // - as prop explicitly set (not default 'section') → use as prop
+  // - Component.as → use component's declared tag
+  // - fallback → 'section'
+  const componentAs = Component.as
+  const Wrapper = as === false ? React.Fragment : (as !== 'section' ? as : componentAs || 'section')
   // Fragment doesn't accept props, so only pass them for real elements
   const wrapperElementProps = as === false ? {} : wrapperProps
 

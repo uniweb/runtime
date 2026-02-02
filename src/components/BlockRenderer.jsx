@@ -41,6 +41,14 @@ const getWrapperProps = (block) => {
     style.position = 'relative'
   }
 
+  // Apply context overrides as inline CSS custom properties.
+  // These override the context class tokens for this specific section.
+  if (block.contextOverrides) {
+    for (const [key, value] of Object.entries(block.contextOverrides)) {
+      style[`--${key}`] = value
+    }
+  }
+
   // Use stableId for DOM ID if available (stable across reordering)
   // Falls back to positional id for backwards compatibility
   const sectionId = block.stableId || block.id

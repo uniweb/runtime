@@ -114,6 +114,12 @@ function ColorBackground({ color }) {
 function GradientBackground({ gradient }) {
   if (!gradient) return null
 
+  // Raw CSS gradient string (e.g., "linear-gradient(to bottom, #000, #333)")
+  if (typeof gradient === 'string') {
+    const style = { position: 'absolute', inset: 0, background: gradient }
+    return <div className="background-gradient" style={style} aria-hidden="true" />
+  }
+
   const {
     start = 'transparent',
     end = 'transparent',

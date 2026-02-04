@@ -107,7 +107,9 @@ async function loadFoundationCSS(url) {
  */
 async function loadFoundation(source) {
   const url = typeof source === 'string' ? source : source.url
-  const cssUrl = typeof source === 'object' ? source.cssUrl : null
+  // Auto-derive CSS URL from JS URL by convention: foundation.js → assets/foundation.css
+  const cssUrl = typeof source === 'object' ? source.cssUrl
+    : url.replace(/[^/]+\.js$/, 'assets/foundation.css')
 
   console.log(`[Runtime] Loading foundation from: ${url}`)
 

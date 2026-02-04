@@ -480,15 +480,23 @@ async function initRuntime(foundationSource, options = {}) {
 /**
  * Simplified entry point for sites
  *
- * Reads configuration from (in order of priority):
- * 1. __DATA__ element (dynamic backends) - combined foundation config + site content
- * 2. Build-time __FOUNDATION_CONFIG__ (static builds) - foundation config only
+ * Template main.js calls this with config + foundation/styles promises:
+ *
+ *   start({
+ *     config: __FOUNDATION_CONFIG__,
+ *     styles: import('#foundation/styles'),
+ *     foundation: import('#foundation')
+ *   })
+ *
+ * In runtime mode, the foundation/styles promises resolve to noop modules
+ * (configured by the site Vite plugin) and are ignored.
  *
  * @param {Object} options
+ * @param {Object} options.config - Build-time config from __FOUNDATION_CONFIG__
  * @param {Promise} options.foundation - Promise from import('#foundation')
  * @param {Promise} options.styles - Promise from import('#foundation/styles')
  */
-async function start({ foundation, styles } = {}) {
+async function start({ config, foundation, styles } = {}) {
   // Try __DATA__ first (dynamic backends inject combined config + content)
   const data = await decodeData()
 
@@ -500,15 +508,14 @@ async function start({ foundation, styles } = {}) {
     )
   }
 
-  // Static build mode - use build-time config
-  const config =
-    typeof __FOUNDATION_CONFIG__ !== 'undefined' ? __FOUNDATION_CONFIG__ : { mode: 'bundled' }
+  // Use provided config, or fall back to bundled mode
+  const mode = config?.mode ?? 'bundled'
 
-  if (config.mode === 'runtime') {
-    // Runtime mode (foundation URL in site.yml)
+  if (mode === 'runtime') {
+    // Runtime mode - foundation loaded from URL
     return initRuntime({ url: config.url, cssUrl: config.cssUrl })
   } else {
-    // Bundled mode - foundation included in build
+    // Bundled mode - use the provided foundation/styles promises
     const [foundationModule] = await Promise.all([foundation, styles])
     return initRuntime(foundationModule)
   }

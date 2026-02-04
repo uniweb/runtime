@@ -131,6 +131,28 @@ async function loadFoundation(source) {
 }
 
 /**
+ * Load extensions (secondary foundations) in parallel
+ * @param {Array<string|Object>} urls - Extension URLs or {url, cssUrl} objects
+ * @param {Object} uniwebInstance - The Uniweb instance to register extensions on
+ */
+async function loadExtensions(urls, uniwebInstance) {
+  if (!urls?.length) return
+
+  const results = await Promise.allSettled(
+    urls.map(url => loadFoundation(url))
+  )
+
+  for (let i = 0; i < results.length; i++) {
+    if (results[i].status === 'fulfilled') {
+      uniwebInstance.registerExtension(results[i].value)
+      console.log(`[Runtime] Extension loaded: ${urls[i]}`)
+    } else {
+      console.warn(`[Runtime] Extension failed to load: ${urls[i]}`, results[i].reason)
+    }
+  }
+}
+
+/**
  * Map friendly family names to react-icons codes
  * The existing CDN uses react-icons structure: /{familyCode}/{familyCode}-{name}.svg
  */
@@ -409,6 +431,12 @@ async function initRuntime(foundationSource, options = {}) {
     // Set foundation capabilities (Layout, props, etc.) if provided
     if (foundation.capabilities) {
       uniwebInstance.setFoundationConfig(foundation.capabilities)
+    }
+
+    // Load extensions (secondary foundations)
+    const extensions = configData?.config?.extensions
+    if (extensions?.length) {
+      await loadExtensions(extensions, uniwebInstance)
     }
 
     // Render the app

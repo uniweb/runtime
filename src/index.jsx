@@ -138,8 +138,22 @@ async function loadFoundation(source) {
 async function loadExtensions(urls, uniwebInstance) {
   if (!urls?.length) return
 
+  // Resolve extension URLs against base path for subdirectory deployments
+  // e.g., /effects/foundation.js → /templates/extensions/effects/foundation.js
+  const basePath = import.meta.env?.BASE_URL || '/'
+  function resolveUrl(source) {
+    if (basePath === '/') return source
+    if (typeof source === 'string' && source.startsWith('/')) {
+      return basePath + source.slice(1)
+    }
+    if (typeof source === 'object' && source.url?.startsWith('/')) {
+      return { ...source, url: basePath + source.url.slice(1) }
+    }
+    return source
+  }
+
   const results = await Promise.allSettled(
-    urls.map(url => loadFoundation(url))
+    urls.map(url => loadFoundation(resolveUrl(url)))
   )
 
   for (let i = 0; i < results.length; i++) {

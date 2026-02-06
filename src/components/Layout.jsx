@@ -71,8 +71,8 @@ function initializeAllBlocks(...blockGroups) {
  * @param {Website} props.website - Website instance
  */
 export default function Layout({ page, website }) {
-  // Check if foundation provides a custom Layout
-  const RemoteLayout = website.getRemoteLayout()
+  // Check if foundation provides a custom Layout (named or single)
+  const RemoteLayout = website.getRemoteLayout(page.getLayoutName())
 
   // Get block groups from page (respects layout preferences)
   const headerBlocks = page.getHeaderBlocks()

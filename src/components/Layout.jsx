@@ -95,8 +95,10 @@ export default function Layout({ page, website }) {
 
   // Use foundation's custom Layout if provided
   if (RemoteLayout) {
+    const layoutName = page.getLayoutName()
     return (
       <RemoteLayout
+        key={layoutName}
         page={page}
         website={website}
         header={headerElement}

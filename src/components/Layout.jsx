@@ -5,11 +5,11 @@
  * Supports foundation-provided custom Layout components via website.getRemoteLayout().
  *
  * Layout Areas:
- * - header: Top navigation, branding (from @header page)
+ * - header: Top navigation, branding (from layout/header.md)
  * - body: Main page content (from page sections)
- * - footer: Bottom navigation, copyright (from @footer page)
- * - left: Left sidebar/panel (from @left page)
- * - right: Right sidebar/panel (from @right page)
+ * - footer: Bottom navigation, copyright (from layout/footer.md)
+ * - left: Left sidebar/panel (from layout/left.md)
+ * - right: Right sidebar/panel (from layout/right.md)
  *
  * Custom Layouts:
  * Foundations can provide a custom Layout via src/exports.js:

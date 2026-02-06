@@ -1,10 +1,12 @@
 /**
  * Layout
  *
- * Orchestrates page rendering by assembling layout areas (header, body, footer, panels).
+ * Orchestrates page rendering by assembling layout areas (header, body, footer, and
+ * any custom areas defined in the layout directory).
  * Supports foundation-provided custom Layout components via website.getRemoteLayout().
  *
  * Layout Areas:
+ * Areas are general — any name works. Common conventions:
  * - header: Top navigation, branding (from layout/header.md)
  * - body: Main page content (from page sections)
  * - footer: Bottom navigation, copyright (from layout/footer.md)
@@ -12,24 +14,21 @@
  * - right: Right sidebar/panel (from layout/right.md)
  *
  * Custom Layouts:
- * Foundations can provide a custom Layout via src/exports.js:
+ * Foundations provide custom layouts via src/layouts/:
  *
- * ```jsx
- * // src/exports.js
- * import Layout from './components/Layout'
- *
- * export default {
- *   Layout,
- *   props: {
- *     themeToggleEnabled: true,
- *   }
- * }
+ * ```
+ * src/layouts/
+ * ├── DocsLayout/
+ * │   ├── index.jsx
+ * │   └── meta.js
+ * └── MarketingLayout.jsx
  * ```
  *
  * The Layout component receives pre-rendered areas as props:
  * - page, website: Runtime context
- * - header, body, footer: Pre-rendered React elements
- * - left, right (or leftPanel, rightPanel): Sidebar panels
+ * - params: Layout params (merged with meta.js defaults)
+ * - body: Pre-rendered body React element
+ * - header, footer, left, right, ...: Pre-rendered area React elements
  */
 
 import Blocks from './Blocks.jsx'
@@ -64,6 +63,13 @@ function initializeAllBlocks(...blockGroups) {
 }
 
 /**
+ * Merge page-level layout params with meta.js defaults
+ */
+function mergeParams(pageParams = {}, defaults = {}) {
+  return { ...defaults, ...pageParams }
+}
+
+/**
  * Layout component
  *
  * @param {Object} props
@@ -71,44 +77,38 @@ function initializeAllBlocks(...blockGroups) {
  * @param {Website} props.website - Website instance
  */
 export default function Layout({ page, website }) {
-  // Check if foundation provides a custom Layout (named or single)
-  const RemoteLayout = website.getRemoteLayout(page.getLayoutName())
+  const layoutName = page.getLayoutName()
+  const RemoteLayout = website.getRemoteLayout(layoutName)
+  const layoutMeta = website.getLayoutMeta(layoutName)
 
-  // Get block groups from page (respects layout preferences)
-  const headerBlocks = page.getHeaderBlocks()
   const bodyBlocks = page.getBodyBlocks()
-  const footerBlocks = page.getFooterBlocks()
-  const leftBlocks = page.getLeftBlocks()
-  const rightBlocks = page.getRightBlocks()
+  const areas = page.getLayoutAreas()
 
   // Pre-initialize all blocks before rendering any.
   // This ensures cross-block communication (getNextBlockInfo, getPrevBlockInfo)
   // can access sibling block contexts that are set in initComponent().
-  initializeAllBlocks(headerBlocks, bodyBlocks, footerBlocks, leftBlocks, rightBlocks)
+  const allBlockGroups = [bodyBlocks, ...Object.values(areas)]
+  initializeAllBlocks(...allBlockGroups)
 
   // Pre-render each area as React elements
-  const headerElement = headerBlocks ? <Blocks blocks={headerBlocks} /> : null
   const bodyElement = bodyBlocks ? <Blocks blocks={bodyBlocks} /> : null
-  const footerElement = footerBlocks ? <Blocks blocks={footerBlocks} /> : null
-  const leftElement = leftBlocks ? <Blocks blocks={leftBlocks} /> : null
-  const rightElement = rightBlocks ? <Blocks blocks={rightBlocks} /> : null
+  const areaElements = {}
+  for (const [name, blocks] of Object.entries(areas)) {
+    areaElements[name] = <Blocks blocks={blocks} />
+  }
 
   // Use foundation's custom Layout if provided
   if (RemoteLayout) {
-    const layoutName = page.getLayoutName()
+    const params = mergeParams(page.getLayoutParams(), layoutMeta?.defaults)
+
     return (
       <RemoteLayout
         key={layoutName}
         page={page}
         website={website}
-        header={headerElement}
+        params={params}
         body={bodyElement}
-        footer={footerElement}
-        left={leftElement}
-        right={rightElement}
-        // Aliases for backwards compatibility
-        leftPanel={leftElement}
-        rightPanel={rightElement}
+        {...areaElements}
       />
     )
   }
@@ -116,9 +116,8 @@ export default function Layout({ page, website }) {
   // Default layout
   return (
     <DefaultLayout
-      header={headerElement}
       body={bodyElement}
-      footer={footerElement}
+      {...areaElements}
     />
   )
 }

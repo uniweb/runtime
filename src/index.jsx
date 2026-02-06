@@ -442,9 +442,14 @@ async function initRuntime(foundationSource, options = {}) {
     // Set the foundation on the runtime
     uniwebInstance.setFoundation(foundation)
 
-    // Set foundation capabilities (Layout, props, etc.) if provided
+    // Set foundation capabilities (layouts, props, etc.) if provided
     if (foundation.capabilities) {
       uniwebInstance.setFoundationConfig(foundation.capabilities)
+    }
+
+    // Attach layout metadata (areas, transitions, defaults) from foundation entry point
+    if (foundation.layoutMeta && uniwebInstance.foundationConfig) {
+      uniwebInstance.foundationConfig.layoutMeta = foundation.layoutMeta
     }
 
     // Load extensions (secondary foundations)

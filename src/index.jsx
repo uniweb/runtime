@@ -118,9 +118,7 @@ async function loadFoundation(source) {
       import(/* @vite-ignore */ url)
     ])
 
-    const componentNames = foundation.components
-      ? Object.keys(foundation.components)
-      : 'unknown'
+    const componentNames = Object.keys(foundation).filter(k => k !== 'default')
     console.log('[Runtime] Foundation loaded. Available components:', componentNames)
 
     return foundation
@@ -424,12 +422,7 @@ async function initRuntime(foundationSource, options = {}) {
       // Promise (legacy Module Federation support)
       const remoteModule = await foundationSource
       // Handle double default wrapping
-      const innerModule = remoteModule?.default?.default ? remoteModule.default : remoteModule
-      // Convert to foundation interface with components object
-      foundation = {
-        components: innerModule.default || {},
-        ...innerModule
-      }
+      foundation = remoteModule?.default?.default ? remoteModule.default : remoteModule
     } else if (foundationSource && typeof foundationSource === 'object') {
       // Already a foundation module
       foundation = foundationSource
@@ -443,13 +436,13 @@ async function initRuntime(foundationSource, options = {}) {
     uniwebInstance.setFoundation(foundation)
 
     // Set foundation capabilities (layouts, props, etc.) if provided
-    if (foundation.capabilities) {
-      uniwebInstance.setFoundationConfig(foundation.capabilities)
+    if (foundation.default?.capabilities) {
+      uniwebInstance.setFoundationConfig(foundation.default.capabilities)
     }
 
     // Attach layout metadata (areas, transitions, defaults) from foundation entry point
-    if (foundation.layoutMeta && uniwebInstance.foundationConfig) {
-      uniwebInstance.foundationConfig.layoutMeta = foundation.layoutMeta
+    if (foundation.default?.layoutMeta && uniwebInstance.foundationConfig) {
+      uniwebInstance.foundationConfig.layoutMeta = foundation.default.layoutMeta
     }
 
     // Load extensions (secondary foundations)

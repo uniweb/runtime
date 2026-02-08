@@ -60,6 +60,7 @@ export function guaranteeContentStructure(parsedContent) {
     lists: content.lists || [],
     icons: content.icons || [],
     videos: content.videos || [],
+    insets: content.insets || [],
     buttons: content.buttons || [],
     data: content.data || {},
     cards: content.cards || [],

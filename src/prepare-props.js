@@ -51,7 +51,6 @@ export function guaranteeContentStructure(parsedContent) {
     title: content.title || '',
     pretitle: content.pretitle || '',
     subtitle: content.subtitle || '',
-    subtitle2: content.subtitle2 || '',
     alignment: content.alignment || null,
 
     // Flat body fields

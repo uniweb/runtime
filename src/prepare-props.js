@@ -21,7 +21,7 @@ function guaranteeItemStructure(item) {
     subtitle: item.subtitle || '',
     paragraphs: item.paragraphs || [],
     links: item.links || [],
-    imgs: item.imgs || [],
+    images: item.images || [],
     lists: item.lists || [],
     icons: item.icons || [],
     videos: item.videos || [],
@@ -56,7 +56,7 @@ export function guaranteeContentStructure(parsedContent) {
     // Flat body fields
     paragraphs: content.paragraphs || [],
     links: content.links || [],
-    imgs: content.imgs || [],
+    images: content.images || [],
     lists: content.lists || [],
     icons: content.icons || [],
     videos: content.videos || [],

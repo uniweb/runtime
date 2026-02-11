@@ -7,307 +7,10 @@
 
 import React from 'react'
 import { createRoot } from 'react-dom/client'
-import {
-  BrowserRouter,
-  Routes,
-  Route,
-  Link as RouterLink,
-  useNavigate,
-  useParams,
-  useLocation
-} from 'react-router-dom'
 
-// Data fetcher (registered on dataStore so core can call it without importing runtime)
-import { executeFetchClient } from './data-fetcher-client.js'
-
-// Components
-import { ChildBlocks } from './components/PageRenderer.jsx'
-import WebsiteRenderer from './components/WebsiteRenderer.jsx'
-import ErrorBoundary from './components/ErrorBoundary.jsx'
-
-// Core factory from @uniweb/core
-import { createUniweb } from '@uniweb/core'
-
-/**
- * Decode combined data from __DATA__ element
- *
- * Encoding is signaled via MIME type:
- * - application/json: plain JSON (no compression)
- * - application/gzip: gzip + base64 encoded
- *
- * @returns {Promise<{foundation: Object, content: Object}|null>}
- */
-async function decodeData() {
-  const el = document.getElementById('__DATA__')
-  if (!el?.textContent) return null
-
-  const raw = el.textContent
-
-  // Plain JSON (uncompressed)
-  if (el.type === 'application/json') {
-    try {
-      return JSON.parse(raw)
-    } catch {
-      return null
-    }
-  }
-
-  // Compressed (application/gzip or legacy application/octet-stream)
-  if (typeof DecompressionStream !== 'undefined') {
-    try {
-      const bytes = Uint8Array.from(atob(raw), c => c.charCodeAt(0))
-      const stream = new DecompressionStream('gzip')
-      const writer = stream.writable.getWriter()
-      writer.write(bytes)
-      writer.close()
-      const json = await new Response(stream.readable).text()
-      return JSON.parse(json)
-    } catch {
-      return null
-    }
-  }
-
-  // Fallback for old browsers: try plain JSON (server can detect User-Agent)
-  try {
-    return JSON.parse(raw)
-  } catch {
-    return null
-  }
-}
-
-/**
- * Load foundation CSS from URL
- * @param {string} url - URL to foundation's CSS file
- */
-async function loadFoundationCSS(url) {
-  if (!url) return
-
-  return new Promise((resolve) => {
-    const link = document.createElement('link')
-    link.rel = 'stylesheet'
-    link.href = url
-    link.onload = () => {
-      console.log('[Runtime] Foundation CSS loaded')
-      resolve()
-    }
-    link.onerror = () => {
-      console.warn('[Runtime] Could not load foundation CSS from:', url)
-      resolve() // Don't fail for CSS
-    }
-    document.head.appendChild(link)
-  })
-}
-
-/**
- * Load a foundation module via dynamic import
- * @param {string|Object} source - URL string or {url, cssUrl} object
- * @returns {Promise<Object>} The loaded foundation module
- */
-async function loadFoundation(source) {
-  const url = typeof source === 'string' ? source : source.url
-  // Auto-derive CSS URL from JS URL by convention: foundation.js → assets/foundation.css
-  const cssUrl = typeof source === 'object' ? source.cssUrl
-    : url.replace(/[^/]+\.js$/, 'assets/foundation.css')
-
-  console.log(`[Runtime] Loading foundation from: ${url}`)
-
-  try {
-    // Load CSS and JS in parallel
-    const [, foundation] = await Promise.all([
-      cssUrl ? loadFoundationCSS(cssUrl) : Promise.resolve(),
-      import(/* @vite-ignore */ url)
-    ])
-
-    const componentNames = Object.keys(foundation).filter(k => k !== 'default')
-    console.log('[Runtime] Foundation loaded. Available components:', componentNames)
-
-    return foundation
-  } catch (error) {
-    console.error('[Runtime] Failed to load foundation:', error)
-    throw error
-  }
-}
-
-/**
- * Load extensions (secondary foundations) in parallel
- * @param {Array<string|Object>} urls - Extension URLs or {url, cssUrl} objects
- * @param {Object} uniwebInstance - The Uniweb instance to register extensions on
- */
-async function loadExtensions(urls, uniwebInstance) {
-  if (!urls?.length) return
-
-  // Resolve extension URLs against base path for subdirectory deployments
-  // e.g., /effects/foundation.js → /templates/extensions/effects/foundation.js
-  const basePath = import.meta.env?.BASE_URL || '/'
-  function resolveUrl(source) {
-    if (basePath === '/') return source
-    if (typeof source === 'string' && source.startsWith('/')) {
-      return basePath + source.slice(1)
-    }
-    if (typeof source === 'object' && source.url?.startsWith('/')) {
-      return { ...source, url: basePath + source.url.slice(1) }
-    }
-    return source
-  }
-
-  const results = await Promise.allSettled(
-    urls.map(url => loadFoundation(resolveUrl(url)))
-  )
-
-  for (let i = 0; i < results.length; i++) {
-    if (results[i].status === 'fulfilled') {
-      uniwebInstance.registerExtension(results[i].value)
-      console.log(`[Runtime] Extension loaded: ${urls[i]}`)
-    } else {
-      console.warn(`[Runtime] Extension failed to load: ${urls[i]}`, results[i].reason)
-    }
-  }
-}
-
-/**
- * Map friendly family names to react-icons codes
- * The existing CDN uses react-icons structure: /{familyCode}/{familyCode}-{name}.svg
- */
-const ICON_FAMILY_MAP = {
-  // Friendly names
-  lucide: 'lu',
-  heroicons: 'hi',
-  heroicons2: 'hi2',
-  phosphor: 'pi',
-  tabler: 'tb',
-  feather: 'fi',
-  // Font Awesome (multiple versions)
-  fa: 'fa',
-  fa6: 'fa6',
-  // Additional families from react-icons
-  bootstrap: 'bs',
-  'material-design': 'md',
-  'ant-design': 'ai',
-  remix: 'ri',
-  'simple-icons': 'si',
-  ionicons: 'io5',
-  boxicons: 'bi',
-  vscode: 'vsc',
-  weather: 'wi',
-  game: 'gi',
-  // Also support direct codes for power users
-  lu: 'lu',
-  hi: 'hi',
-  hi2: 'hi2',
-  pi: 'pi',
-  tb: 'tb',
-  fi: 'fi',
-  bs: 'bs',
-  md: 'md',
-  ai: 'ai',
-  ri: 'ri',
-  io5: 'io5',
-  bi: 'bi',
-  si: 'si',
-  vsc: 'vsc',
-  wi: 'wi',
-  gi: 'gi'
-}
-
-/**
- * Create CDN-based icon resolver
- * @param {Object} iconConfig - From site.yml icons:
- * @returns {Function} Resolver: (library, name) => Promise<string|null>
- */
-function createIconResolver(iconConfig = {}) {
-  // Default to GitHub Pages CDN, can be overridden in site.yml
-  const CDN_BASE = iconConfig.cdnUrl || 'https://uniweb.github.io/icons'
-  const useCdn = iconConfig.cdn !== false
-
-  // Cache resolved icons
-  const cache = new Map()
-
-  return async function resolve(library, name) {
-    // Map friendly name to react-icons code
-    const familyCode = ICON_FAMILY_MAP[library.toLowerCase()]
-    if (!familyCode) {
-      console.warn(`[icons] Unknown family "${library}"`)
-      return null
-    }
-
-    // Check cache
-    const key = `${familyCode}:${name}`
-    if (cache.has(key)) return cache.get(key)
-
-    // Fetch from CDN
-    if (!useCdn) {
-      cache.set(key, null)
-      return null
-    }
-
-    try {
-      // CDN structure: /{familyCode}/{familyCode}-{name}.svg
-      // e.g., lucide:home → /lu/lu-home.svg
-      const iconFileName = `${familyCode}-${name}`
-      const url = `${CDN_BASE}/${familyCode}/${iconFileName}.svg`
-      const response = await fetch(url)
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      const svg = await response.text()
-      cache.set(key, svg)
-      return svg
-    } catch (err) {
-      console.warn(`[icons] Failed to load ${library}:${name}`, err.message)
-      cache.set(key, null)
-      return null
-    }
-  }
-}
-
-/**
- * Initialize the Uniweb instance
- * @param {Object} configData - Site configuration data
- * @returns {Uniweb}
- */
-function initUniweb(configData) {
-  // Create singleton via @uniweb/core (also assigns to globalThis.uniweb)
-  const uniwebInstance = createUniweb(configData)
-
-  // Pre-populate DataStore from build-time fetched data
-  if (configData.fetchedData && uniwebInstance.activeWebsite?.dataStore) {
-    for (const entry of configData.fetchedData) {
-      uniwebInstance.activeWebsite.dataStore.set(entry.config, entry.data)
-    }
-  }
-
-  // Set up child block renderer for nested blocks
-  uniwebInstance.childBlockRenderer = ChildBlocks
-
-  // Register routing components for kit and foundation components
-  // This enables the bridge pattern: components access routing via
-  // website.getRoutingComponents() instead of direct imports
-  uniwebInstance.routingComponents = {
-    Link: RouterLink,
-    useNavigate,
-    useParams,
-    useLocation
-  }
-
-  // Set up icon resolver based on site config
-  uniwebInstance.iconResolver = createIconResolver(configData.icons)
-
-  // Populate icon cache from prerendered data (if available)
-  // This allows icons to render immediately without CDN fetches
-  if (typeof document !== 'undefined') {
-    try {
-      const cacheEl = document.getElementById('__ICON_CACHE__')
-      if (cacheEl) {
-        const cached = JSON.parse(cacheEl.textContent)
-        for (const [key, svg] of Object.entries(cached)) {
-          uniwebInstance.iconCache.set(key, svg)
-        }
-      }
-    } catch (e) {
-      // Ignore parse errors
-    }
-  }
-
-  return uniwebInstance
-}
+import { setupUniweb, registerFoundation, decodeData } from './setup.js'
+import { loadFoundation, loadExtensions } from './foundation-loader.js'
+import RuntimeProvider from './RuntimeProvider.jsx'
 
 /**
  * Get the router basename from Vite's BASE_URL
@@ -319,63 +22,6 @@ function getBasename() {
   if (!baseUrl || baseUrl === '/') return undefined
   // Remove trailing slash for BrowserRouter compatibility
   return baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
-}
-
-/**
- * Render the application
- * @param {Object} options
- */
-function render({ development = false, basename } = {}) {
-  const container = document.getElementById('root')
-  if (!container) {
-    console.error('[Runtime] Root element not found')
-    return
-  }
-
-  // Use provided basename, or derive from Vite's BASE_URL
-  const routerBasename = basename ?? getBasename()
-
-  // Set initial active page from browser URL so getLocaleUrl() works on first render
-  const website = globalThis.uniweb?.activeWebsite
-  if (website && typeof window !== 'undefined') {
-    const rawPath = window.location.pathname
-    const basePath = routerBasename || ''
-    const routePath = basePath && rawPath.startsWith(basePath)
-      ? rawPath.slice(basePath.length) || '/'
-      : rawPath
-    website.setActivePage(routePath)
-
-    // Store base path on Website for components that need it (e.g., Link reload)
-    if (website.setBasePath) {
-      website.setBasePath(routerBasename || '')
-    }
-
-    // Register data fetcher on the DataStore so BlockRenderer can use it
-    if (website.dataStore) {
-      website.dataStore.registerFetcher(executeFetchClient)
-    }
-  }
-
-  const root = createRoot(container)
-
-  const app = (
-    <ErrorBoundary
-      fallback={
-        <div style={{ padding: '2rem', textAlign: 'center' }}>
-          <h2>Something went wrong</h2>
-          <p>Please try refreshing the page</p>
-        </div>
-      }
-    >
-      <BrowserRouter basename={routerBasename}>
-        <Routes>
-          <Route path="/*" element={<WebsiteRenderer />} />
-        </Routes>
-      </BrowserRouter>
-    </ErrorBoundary>
-  )
-
-  root.render(development ? <React.StrictMode>{app}</React.StrictMode> : app)
 }
 
 /**
@@ -409,7 +55,7 @@ async function initRuntime(foundationSource, options = {}) {
   }
 
   // Initialize core runtime
-  const uniwebInstance = initUniweb(configData)
+  const uniwebInstance = setupUniweb(configData)
 
   try {
     let foundation
@@ -432,18 +78,8 @@ async function initRuntime(foundationSource, options = {}) {
       throw new Error('Failed to load foundation')
     }
 
-    // Set the foundation on the runtime
-    uniwebInstance.setFoundation(foundation)
-
-    // Set foundation capabilities (layouts, props, etc.) if provided
-    if (foundation.default?.capabilities) {
-      uniwebInstance.setFoundationConfig(foundation.default.capabilities)
-    }
-
-    // Attach layout metadata (areas, transitions, defaults) from foundation entry point
-    if (foundation.default?.layoutMeta && uniwebInstance.foundationConfig) {
-      uniwebInstance.foundationConfig.layoutMeta = foundation.default.layoutMeta
-    }
+    // Register foundation on the runtime
+    registerFoundation(uniwebInstance, foundation)
 
     // Load extensions (secondary foundations)
     const extensions = configData?.config?.extensions
@@ -451,8 +87,31 @@ async function initRuntime(foundationSource, options = {}) {
       await loadExtensions(extensions, uniwebInstance)
     }
 
+    // Derive basename
+    const routerBasename = basename ?? getBasename()
+
+    // Set initial active page from browser URL so getLocaleUrl() works on first render
+    const website = uniwebInstance.activeWebsite
+    if (website && typeof window !== 'undefined') {
+      const rawPath = window.location.pathname
+      const basePath = routerBasename || ''
+      const routePath = basePath && rawPath.startsWith(basePath)
+        ? rawPath.slice(basePath.length) || '/'
+        : rawPath
+      website.setActivePage(routePath)
+    }
+
     // Render the app
-    render({ development, basename })
+    const container = document.getElementById('root')
+    if (!container) {
+      console.error('[Runtime] Root element not found')
+      return
+    }
+
+    const root = createRoot(container)
+    root.render(
+      <RuntimeProvider basename={routerBasename} development={development} />
+    )
 
     // Log success
     if (!development) {

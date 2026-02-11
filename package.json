@@ -5,7 +5,10 @@
   "type": "module",
   "exports": {
     ".": "./src/index.jsx",
-    "./ssr": "./dist/ssr.js"
+    "./ssr": "./dist/ssr.js",
+    "./provider": "./src/RuntimeProvider.jsx",
+    "./setup": "./src/setup.js",
+    "./foundation-loader": "./src/foundation-loader.js"
   },
   "files": [
     "src",

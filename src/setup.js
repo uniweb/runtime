@@ -5,7 +5,7 @@
  * with routing components, icon resolver, data fetcher, etc.
  */
 
-import { createUniweb } from '@uniweb/core'
+import { createUniweb, Website } from '@uniweb/core'
 import {
   Link as RouterLink,
   useNavigate,
@@ -168,6 +168,24 @@ export function setupUniweb(configData) {
   }
 
   return uniwebInstance
+}
+
+/**
+ * Rebuild the Website within the existing singleton.
+ *
+ * For live editing: creates a new Website from modified configData
+ * and assigns it to the singleton. The singleton itself (foundation,
+ * icon resolver, routing components) stays unchanged.
+ *
+ * @param {Object} configData - Modified site configuration data
+ * @returns {Website} The new Website instance
+ */
+export function rebuildWebsite(configData) {
+  const uniweb = globalThis.uniweb
+  const newWebsite = new Website(configData)
+  newWebsite.dataStore.registerFetcher(executeFetchClient)
+  uniweb.activeWebsite = newWebsite
+  return newWebsite
 }
 
 /**

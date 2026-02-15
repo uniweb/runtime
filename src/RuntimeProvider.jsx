@@ -2,7 +2,7 @@
  * RuntimeProvider
  *
  * Encapsulates the full React rendering tree for a Uniweb site:
- * ErrorBoundary → BrowserRouter → Routes → WebsiteRenderer.
+ * ErrorBoundary → Router → Routes → WebsiteRenderer.
  *
  * The Uniweb singleton (globalThis.uniweb) must be set up BEFORE rendering
  * this component. RuntimeProvider reads from the singleton — it does not
@@ -12,14 +12,32 @@
  * @param {Object} props
  * @param {string} [props.basename] - Router basename for subdirectory deployments
  * @param {boolean} [props.development] - Enable React StrictMode
+ * @param {string[]} [props.memoryRouter] - Use MemoryRouter with these initial entries
+ *   instead of BrowserRouter. Required for srcdoc iframes where the History API
+ *   is unavailable. When provided, also exposes window.__uniweb_navigate for
+ *   programmatic navigation from outside React.
  */
 
-import React from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import React, { useEffect } from 'react'
+import { BrowserRouter, MemoryRouter, Routes, Route, useNavigate } from 'react-router-dom'
 import WebsiteRenderer from './components/WebsiteRenderer.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 
-export default function RuntimeProvider({ basename, development = false }) {
+/**
+ * NavigationBridge — exposes React Router's navigate function on the window
+ * so that code outside the React tree (e.g., Frame Bridge handlers) can
+ * trigger navigation programmatically.
+ */
+function NavigationBridge() {
+  const navigate = useNavigate()
+  useEffect(() => {
+    window.__uniweb_navigate = navigate
+    return () => { delete window.__uniweb_navigate }
+  }, [navigate])
+  return null
+}
+
+export default function RuntimeProvider({ basename, development = false, memoryRouter }) {
   const website = globalThis.uniweb?.activeWebsite
   if (!website) return null
 
@@ -28,13 +46,19 @@ export default function RuntimeProvider({ basename, development = false }) {
     website.setBasePath(basename || '')
   }
 
+  const Router = memoryRouter ? MemoryRouter : BrowserRouter
+  const routerProps = memoryRouter
+    ? { initialEntries: memoryRouter, basename }
+    : { basename }
+
   const app = (
     <ErrorBoundary>
-      <BrowserRouter basename={basename}>
+      <Router {...routerProps}>
+        {memoryRouter && <NavigationBridge />}
         <Routes>
           <Route path="/*" element={<WebsiteRenderer />} />
         </Routes>
-      </BrowserRouter>
+      </Router>
     </ErrorBoundary>
   )
 

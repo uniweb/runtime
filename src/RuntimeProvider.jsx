@@ -19,7 +19,7 @@
  */
 
 import React, { useEffect } from 'react'
-import { BrowserRouter, MemoryRouter, Routes, Route, useNavigate } from 'react-router-dom'
+import { BrowserRouter, MemoryRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import WebsiteRenderer from './components/WebsiteRenderer.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 
@@ -34,6 +34,20 @@ function NavigationBridge() {
     window.__uniweb_navigate = navigate
     return () => { delete window.__uniweb_navigate }
   }, [navigate])
+  return null
+}
+
+/**
+ * LocationReporter — notifies code outside the React tree when the route
+ * changes. Required for MemoryRouter where the History API is not involved
+ * and Frame Bridge's RouteReporter (which intercepts pushState/popstate)
+ * cannot detect navigation.
+ */
+function LocationReporter() {
+  const location = useLocation()
+  useEffect(() => {
+    window.__uniweb_onRouteChange?.(location.pathname)
+  }, [location.pathname])
   return null
 }
 
@@ -55,6 +69,7 @@ export default function RuntimeProvider({ basename, development = false, memoryR
     <ErrorBoundary>
       <Router {...routerProps}>
         {memoryRouter && <NavigationBridge />}
+        {memoryRouter && <LocationReporter />}
         <Routes>
           <Route path="/*" element={<WebsiteRenderer />} />
         </Routes>

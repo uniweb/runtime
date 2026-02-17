@@ -173,9 +173,12 @@ async function start({ config, foundation, styles } = {}) {
 
   if (data) {
     // Dynamic backend mode - foundation loaded from URL, content from data
+    // The serving layer may inject config.base for subdirectory deployments
+    const base = data.content?.config?.base
+    const basename = base ? (base.endsWith('/') ? base.slice(0, -1) : base) : undefined
     return initRuntime(
       { url: data.foundation.url, cssUrl: data.foundation.cssUrl },
-      { configData: data.content }
+      { configData: data.content, basename }
     )
   }
 

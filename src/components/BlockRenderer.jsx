@@ -23,6 +23,8 @@ const getWrapperProps = (block) => {
   const blockClassName = block.state?.className || ''
 
   // Build context class (context-light, context-medium, context-dark)
+  // Empty themeName = Auto → no context class → inherits tokens from :root
+  // Non-empty = Pinned → context class sets tokens directly on the element
   let contextClass = ''
   if (theme && VALID_CONTEXTS.includes(theme)) {
     contextClass = `context-${theme}`

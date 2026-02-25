@@ -38,7 +38,8 @@
     "node": ">=20.19"
   },
   "dependencies": {
-    "@uniweb/core": "workspace:*"
+    "@uniweb/core": "workspace:*",
+    "@uniweb/theming": "workspace:*"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.5.2",

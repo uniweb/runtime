@@ -5,11 +5,12 @@
  * Manages scroll memory for navigation and optional analytics.
  */
 
-import React from 'react'
+import React, { useMemo, useEffect, useRef } from 'react'
 import PageRenderer from './PageRenderer.jsx'
 import ThemeProvider from './ThemeProvider.jsx'
 import { useRememberScroll } from '../hooks/useRememberScroll.js'
 import { useLinkInterceptor } from '../hooks/useLinkInterceptor.js'
+import { buildSectionOverrides } from '@uniweb/theming'
 
 /**
  * Fonts component - loads custom fonts
@@ -25,6 +26,59 @@ function Fonts({ fontsData }) {
   })
 
   return <>{fontLinks.filter(Boolean)}</>
+}
+
+/**
+ * Section override styles — pre-built CSS for all section-level overrides on the active page.
+ * Injects a <style> tag into <head> (after uniweb-theme) so overrides
+ * cascade correctly and don't live inside the React root.
+ */
+function SectionOverrideStyles({ website }) {
+  const page = website.activePage
+  const appearance = website.themeData?.config?.appearance
+  const styleRef = useRef(null)
+
+  const css = useMemo(() => {
+    if (!page) return ''
+    const blocks = page.getPageBlocks()
+    return buildSectionOverrides(blocks, appearance)
+  }, [page, appearance])
+
+  useEffect(() => {
+    if (!css) {
+      // Remove existing tag if CSS is empty
+      if (styleRef.current) {
+        styleRef.current.remove()
+        styleRef.current = null
+      }
+      return
+    }
+
+    if (!styleRef.current) {
+      styleRef.current = document.createElement('style')
+      styleRef.current.id = 'uniweb-page-overrides'
+      // Insert after uniweb-theme if it exists, otherwise append to head
+      const themeStyle = document.getElementById('uniweb-theme')
+      if (themeStyle && themeStyle.nextSibling) {
+        themeStyle.parentNode.insertBefore(styleRef.current, themeStyle.nextSibling)
+      } else if (themeStyle) {
+        themeStyle.parentNode.appendChild(styleRef.current)
+      } else {
+        document.head.appendChild(styleRef.current)
+      }
+    }
+
+    styleRef.current.textContent = css
+
+    return () => {
+      if (styleRef.current) {
+        styleRef.current.remove()
+        styleRef.current = null
+      }
+    }
+  }, [css])
+
+  return null
 }
 
 /**
@@ -59,6 +113,9 @@ export default function WebsiteRenderer() {
     <ThemeProvider css={themeCSS}>
       {/* Load custom fonts */}
       <Fonts fontsData={fontImports} />
+
+      {/* Section override CSS (per-page, pre-built) */}
+      <SectionOverrideStyles website={website} />
 
       {/* Render the page */}
       <PageRenderer />

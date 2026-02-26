@@ -35,7 +35,7 @@ function Fonts({ fontsData }) {
  */
 function SectionOverrideStyles({ website }) {
   const page = website.activePage
-  const appearance = website.themeData?.config?.appearance
+  const appearance = website.themeData?.appearance
   const styleRef = useRef(null)
 
   const css = useMemo(() => {
@@ -86,6 +86,25 @@ function SectionOverrideStyles({ website }) {
  */
 export default function WebsiteRenderer() {
   const website = globalThis.uniweb?.activeWebsite
+
+  // Apply default appearance scheme (light/dark/system) on mount
+  useEffect(() => {
+    const appearance = website?.themeData?.appearance
+    if (!appearance) return
+
+    const defaultScheme = appearance.default || 'light'
+    const root = document.documentElement
+    if (defaultScheme === 'dark') {
+      root.classList.add('scheme-dark')
+      root.classList.remove('scheme-light')
+    } else if (defaultScheme === 'system') {
+      // No explicit class — CSS media query decides based on OS preference
+      root.classList.remove('scheme-dark')
+      root.classList.remove('scheme-light')
+    } else {
+      root.classList.remove('scheme-dark')
+    }
+  }, [website?.themeData?.appearance?.default])
 
   // Enable SPA navigation for links rendered as plain HTML
   useLinkInterceptor({ enabled: true })

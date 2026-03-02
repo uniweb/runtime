@@ -6,11 +6,12 @@
  * Manages head meta tags for SEO and social sharing.
  */
 
-import React from 'react'
+import React, { useMemo, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import BlockRenderer from './BlockRenderer.jsx'
 import Layout from './Layout.jsx'
 import { useHeadMeta } from '../hooks/useHeadMeta.js'
+import { buildSectionOverrides } from '@uniweb/theming'
 
 /**
  * ChildBlocks - renders child blocks of a block
@@ -39,6 +40,56 @@ export function ChildBlocks({ blocks, from, pure = false, as = 'div', extra = {}
       <BlockRenderer block={childBlock} pure={pure} as={as} extra={extra} />
     </React.Fragment>
   ))
+}
+
+/**
+ * Section override styles — pre-built CSS for all section-level overrides on the active page.
+ * Injects a <style> tag into <head> (after uniweb-theme) so overrides
+ * cascade correctly and don't live inside the React root.
+ */
+function SectionOverrideStyles({ page, appearance }) {
+  const styleRef = useRef(null)
+
+  const css = useMemo(() => {
+    if (!page) return ''
+    const blocks = page.getPageBlocks()
+    return buildSectionOverrides(blocks, appearance)
+  }, [page, appearance])
+
+  useEffect(() => {
+    if (!css) {
+      if (styleRef.current) {
+        styleRef.current.remove()
+        styleRef.current = null
+      }
+      return
+    }
+
+    if (!styleRef.current) {
+      styleRef.current = document.createElement('style')
+      styleRef.current.id = 'uniweb-page-overrides'
+      // Insert after uniweb-theme if it exists, otherwise append to head
+      const themeStyle = document.getElementById('uniweb-theme')
+      if (themeStyle && themeStyle.nextSibling) {
+        themeStyle.parentNode.insertBefore(styleRef.current, themeStyle.nextSibling)
+      } else if (themeStyle) {
+        themeStyle.parentNode.appendChild(styleRef.current)
+      } else {
+        document.head.appendChild(styleRef.current)
+      }
+    }
+
+    styleRef.current.textContent = css
+
+    return () => {
+      if (styleRef.current) {
+        styleRef.current.remove()
+        styleRef.current = null
+      }
+    }
+  }, [css])
+
+  return null
 }
 
 /**
@@ -99,6 +150,13 @@ export default function PageRenderer() {
     )
   }
 
+  const appearance = website?.themeData?.appearance
+
   // Use Layout component for proper orchestration
-  return <Layout page={page} website={website} />
+  return (
+    <>
+      <SectionOverrideStyles page={page} appearance={appearance} />
+      <Layout page={page} website={website} />
+    </>
+  )
 }

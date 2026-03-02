@@ -38,9 +38,11 @@ const getWrapperProps = (block) => {
   const { background = {} } = block.standardOptions
   const style = {}
 
-  // If background has content, ensure relative positioning for z-index stacking
+  // If background has content, ensure relative positioning and a stacking context
+  // so the background's z-index stays contained within this section.
   if (background.mode) {
     style.position = 'relative'
+    style.isolation = 'isolate'
   }
 
   // Apply context overrides as inline CSS custom properties.
@@ -195,7 +197,7 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
         />
 
         {/* Content layer (above background) */}
-        <div className="relative z-10">
+        <div style={{ position: 'relative', zIndex: 10 }}>
           <Component {...componentProps} />
         </div>
       </Wrapper>

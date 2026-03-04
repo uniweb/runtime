@@ -12,22 +12,6 @@ import { useRememberScroll } from '../hooks/useRememberScroll.js'
 import { useLinkInterceptor } from '../hooks/useLinkInterceptor.js'
 
 /**
- * Fonts component - loads custom fonts
- */
-function Fonts({ fontsData }) {
-  if (!fontsData || !fontsData.length) return null
-
-  const fontLinks = fontsData.map((font, index) => {
-    if (font.url) {
-      return <link key={index} rel="stylesheet" href={font.url} />
-    }
-    return null
-  })
-
-  return <>{fontLinks.filter(Boolean)}</>
-}
-
-/**
  * WebsiteRenderer component
  */
 export default function WebsiteRenderer() {
@@ -66,20 +50,13 @@ export default function WebsiteRenderer() {
     )
   }
 
-  // Get theme CSS from theme data (pre-generated during build)
-  // For SSG mode, CSS is already injected into HTML
-  // For federated mode, ThemeProvider injects it at runtime
+  // Theme CSS (pre-generated during build).
+  // Font <link> tags are injected into <head> by the build pipeline (assembler)
+  // or by DynamicApp.jsx (editor preview) — not handled by React.
   const themeCSS = website.themeData?.css
-
-  // Get font imports from theme data
-  const fontImports = website.themeData?.fonts?.import
 
   return (
     <ThemeProvider css={themeCSS}>
-      {/* Load custom fonts */}
-      <Fonts fontsData={fontImports} />
-
-      {/* Render the page */}
       <PageRenderer />
     </ThemeProvider>
   )

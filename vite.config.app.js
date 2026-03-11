@@ -20,9 +20,59 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
+import { readFileSync, writeFileSync } from 'fs'
 // Relative import avoids a cyclic workspace dependency
 // (@uniweb/build optionally depends on @uniweb/runtime)
-import { importMapPlugin } from '../build/src/import-map-plugin.js'
+import { importMapPlugin, DEFAULT_EXTERNALS } from '../build/src/import-map-plugin.js'
+
+/**
+ * Emit manifest.json after the build completes.
+ *
+ * The manifest describes the build output so consumers (unicloud, PHP)
+ * can generate HTML programmatically without parsing index.html.
+ * See: kb/plans/runtime-shell-and-cdn.md (Phase 2)
+ */
+function manifestPlugin() {
+  return {
+    name: 'runtime-shell:manifest',
+    writeBundle(options, bundle) {
+      const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'))
+
+      // Entry: the shell's main chunk (in assets/, not _importmap/ bridge modules
+      // which are also marked isEntry by the import map plugin's emitFile)
+      const entryChunk = Object.values(bundle)
+        .find(c => c.type === 'chunk' && c.isEntry && c.fileName.startsWith('assets/'))
+
+      // Preloadable chunks: non-entry JS in assets/ (Vite already adds these
+      // as <link rel="modulepreload"> in index.html — the manifest lists them
+      // so programmatic HTML generation can do the same)
+      const preloads = Object.values(bundle)
+        .filter(c => c.type === 'chunk' && !c.isEntry && c.fileName.startsWith('assets/'))
+        .map(c => c.fileName)
+
+      // Import map: bare specifier → relative path to bridge module
+      const importMap = {}
+      for (const specifier of DEFAULT_EXTERNALS) {
+        const fileName = `_importmap/${specifier.replace(/\//g, '-')}.js`
+        if (bundle[fileName]) {
+          importMap[specifier] = fileName
+        }
+      }
+
+      const manifest = {
+        version: pkg.version,
+        entry: entryChunk.fileName,
+        preloads,
+        importMap,
+      }
+
+      writeFileSync(
+        resolve(options.dir, 'manifest.json'),
+        JSON.stringify(manifest, null, 2) + '\n'
+      )
+    },
+  }
+}
 
 export default defineConfig({
   // Root set to shell directory so index.html lands at dist/app/index.html
@@ -34,6 +84,7 @@ export default defineConfig({
     importMapPlugin({
       name: 'runtime-shell:import-map',
     }),
+    manifestPlugin(),
   ],
 
   resolve: {

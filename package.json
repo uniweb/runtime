@@ -16,6 +16,8 @@
   ],
   "scripts": {
     "build:ssr": "vite build --config vite.config.ssr.js",
+    "build:app": "vite build --config vite.config.app.js",
+    "build": "npm run build:ssr && npm run build:app",
     "prepublishOnly": "npm run build:ssr"
   },
   "keywords": [

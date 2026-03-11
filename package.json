@@ -44,6 +44,7 @@
     "@uniweb/theming": "workspace:*"
   },
   "devDependencies": {
+    "@uniweb/build": "workspace:*",
     "@vitejs/plugin-react": "^4.5.2",
     "vite": "^7.3.1"
   },

@@ -21,9 +21,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 import { readFileSync, writeFileSync } from 'fs'
-// Relative import avoids a cyclic workspace dependency
-// (@uniweb/build optionally depends on @uniweb/runtime)
-import { importMapPlugin, DEFAULT_EXTERNALS } from '../build/src/import-map-plugin.js'
+import { importMapPlugin, DEFAULT_EXTERNALS } from '@uniweb/build/import-map-plugin'
 
 /**
  * Emit manifest.json after the build completes.

@@ -5,11 +5,13 @@
  * This module is built to a standalone bundle that can be imported
  * directly by Node.js without Vite transpilation.
  *
- * Usage in prerender.js:
- *   import { renderPage, Blocks, BlockRenderer } from '@uniweb/runtime/ssr'
+ * Provides three layers:
+ *   1. Rendering functions (renderBlock, renderBlocks, renderLayout, renderBackground)
+ *   2. Initialization (initPrerender, prefetchIcons)
+ *   3. Per-page rendering (renderPage, classifyRenderError, injectPageContent, escapeHtml)
+ *
+ * Plus the existing prepare-props utilities (prepareProps, getComponentMeta, etc.)
  */
-
-import React from 'react'
 
 // Props preparation (no browser APIs)
 export {
@@ -21,29 +23,24 @@ export {
   getComponentDefaults
 } from './prepare-props.js'
 
-// Components for rendering
-export { default as BlockRenderer } from './components/BlockRenderer.jsx'
-export { default as Blocks } from './components/Blocks.jsx'
-export { default as Layout } from './components/Layout.jsx'
+// SSR rendering pipeline (no hooks, no JSX)
+export {
+  // Layer 1: Rendering
+  getWrapperProps,
+  renderBackground,
+  renderBlock,
+  renderBlocks,
+  renderLayout,
 
-// Re-export Layout's DefaultLayout for direct use
-import LayoutComponent from './components/Layout.jsx'
+  // Layer 2: Initialization
+  initPrerender,
+  prefetchIcons,
 
-/**
- * Render a page to React elements
- *
- * This is the main entry point for SSG. It returns a React element
- * that can be passed to renderToString().
- *
- * @param {Object} props
- * @param {Page} props.page - The page instance to render
- * @param {Website} props.website - The website instance
- * @returns {React.ReactElement}
- */
-export function PageElement({ page, website }) {
-  return React.createElement(
-    'main',
-    null,
-    React.createElement(LayoutComponent, { page, website })
-  )
-}
+  // Layer 3: Per-page rendering
+  renderPage,
+  classifyRenderError,
+
+  // HTML injection
+  injectPageContent,
+  escapeHtml,
+} from './ssr-renderer.js'

@@ -37,7 +37,8 @@ export default defineConfig({
         'react-dom/server',
         'react-router-dom',
         '@uniweb/core',
-        '@uniweb/semantic-parser'
+        '@uniweb/semantic-parser',
+        '@uniweb/theming'
       ],
       output: {
         // Preserve module structure for better debugging

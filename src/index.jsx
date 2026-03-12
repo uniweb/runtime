@@ -108,10 +108,9 @@ async function initRuntime(foundationSource, options = {}) {
       return
     }
 
-    const root = createRoot(container)
-    root.render(
-      <RuntimeProvider basename={routerBasename} development={development} />
-    )
+    const app = <RuntimeProvider basename={routerBasename} development={development} />
+
+    createRoot(container).render(app)
 
     // Log success
     if (!development) {

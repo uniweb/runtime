@@ -233,7 +233,7 @@ export function renderBackground(background) {
  * @param {boolean} [options.pure=false] - Render component without section wrapper (used by ChildBlocks)
  * @returns {React.ReactElement}
  */
-export function renderBlock(block, { pure = false } = {}) {
+export function renderBlock(block, { pure = false, as = undefined } = {}) {
   const Component = block.initComponent()
 
   if (!Component) {
@@ -287,8 +287,10 @@ export function renderBlock(block, { pure = false } = {}) {
   const hasBackground = background?.mode && meta?.background !== 'self'
   block.hasBackground = hasBackground
 
-  // Use Component.as as the wrapper tag (default: 'section')
-  const wrapperTag = Component.as || 'section'
+  // Use Component.as as the wrapper tag (default: 'section').
+  // An explicit `as` prop (e.g. 'div' from ChildBlocks) overrides Component.as,
+  // mirroring the BlockRenderer.jsx Wrapper resolution logic.
+  const wrapperTag = (as !== undefined && as !== 'section') ? as : (Component.as || 'section')
 
   if (hasBackground) {
     return React.createElement(wrapperTag, wrapperProps,
@@ -396,12 +398,15 @@ export function initPrerender(content, foundation, options = {}) {
     uniweb.activeWebsite.setBasePath(content.config.base)
   }
 
-  // Set childBlockRenderer so ChildBlocks/Visual/Render work during prerender
-  uniweb.childBlockRenderer = function InlineChildBlocks({ blocks, from, pure = false }) {
+  // Set childBlockRenderer so ChildBlocks/Visual/Render work during prerender.
+  // Mirrors the client's ChildBlocks component in PageRenderer.jsx:
+  // - default as='div' so nested blocks use <div> wrapper (not <section>)
+  //   matching the client and avoiding React hydration mismatch (error #418)
+  uniweb.childBlockRenderer = function InlineChildBlocks({ blocks, from, pure = false, as = 'div' }) {
     const blockList = blocks || from?.childBlocks || []
     return blockList.map((childBlock, index) =>
       React.createElement(React.Fragment, { key: childBlock.id || index },
-        renderBlock(childBlock, { pure })
+        renderBlock(childBlock, { pure, as })
       )
     )
   }

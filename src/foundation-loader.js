@@ -12,6 +12,9 @@
 async function loadFoundationCSS(url) {
   if (!url) return
 
+  // Skip if already present (e.g., injected by SSR into the static HTML)
+  if (document.querySelector(`link[rel="stylesheet"][href="${url}"]`)) return
+
   return new Promise((resolve) => {
     const link = document.createElement('link')
     link.rel = 'stylesheet'

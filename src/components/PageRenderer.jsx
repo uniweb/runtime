@@ -66,16 +66,19 @@ function SectionOverrideStyles({ page, appearance }) {
     }
 
     if (!styleRef.current) {
-      styleRef.current = document.createElement('style')
+      // Reuse the SSR-injected element if present to avoid duplicates
+      styleRef.current = document.getElementById('uniweb-page-overrides') || document.createElement('style')
       styleRef.current.id = 'uniweb-page-overrides'
-      // Insert after uniweb-theme if it exists, otherwise append to head
-      const themeStyle = document.getElementById('uniweb-theme')
-      if (themeStyle && themeStyle.nextSibling) {
-        themeStyle.parentNode.insertBefore(styleRef.current, themeStyle.nextSibling)
-      } else if (themeStyle) {
-        themeStyle.parentNode.appendChild(styleRef.current)
-      } else {
-        document.head.appendChild(styleRef.current)
+      if (!styleRef.current.parentNode) {
+        // Not yet in the DOM — insert after uniweb-theme if it exists, otherwise append to head
+        const themeStyle = document.getElementById('uniweb-theme')
+        if (themeStyle && themeStyle.nextSibling) {
+          themeStyle.parentNode.insertBefore(styleRef.current, themeStyle.nextSibling)
+        } else if (themeStyle) {
+          themeStyle.parentNode.appendChild(styleRef.current)
+        } else {
+          document.head.appendChild(styleRef.current)
+        }
       }
     }
 

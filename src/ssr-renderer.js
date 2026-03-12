@@ -568,11 +568,12 @@ export function injectPageContent(html, renderedContent, page, options = {}) {
     `<div id="root">${renderedContent}</div>`
   )
 
-  // Update page title
-  if (page.title) {
+  // Update page title (use getTitle() so isIndex pages inherit parent title)
+  const pageTitle = page.getTitle?.() || page.title
+  if (pageTitle) {
     result = result.replace(
       /<title>.*?<\/title>/,
-      `<title>${escapeHtml(page.title)}</title>`
+      `<title>${escapeHtml(pageTitle)}</title>`
     )
   }
 

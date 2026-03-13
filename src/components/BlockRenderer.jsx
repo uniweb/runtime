@@ -80,6 +80,14 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
   // Entity-aware data resolution via EntityStore
   const entityStore = block.website.entityStore
   const meta = getComponentMeta(block.type)
+
+  // DEBUG: trace data pipeline
+  console.log(`[BlockRenderer] ${block.type}`, {
+    'block.fetch': block.fetch,
+    'meta?.inheritData': meta?.inheritData,
+    'meta?.data': meta?.data,
+  })
+
   const resolved = entityStore.resolve(block, meta)
 
   // Async data for when resolve returns 'pending' (runtime fetches)

@@ -184,6 +184,7 @@ export function rebuildWebsite(configData) {
   const uniweb = globalThis.uniweb
   const newWebsite = new Website(configData)
   newWebsite.dataStore.registerFetcher(executeFetchClient)
+
   uniweb.activeWebsite = newWebsite
   return newWebsite
 }

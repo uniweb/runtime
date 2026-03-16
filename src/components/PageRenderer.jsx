@@ -6,7 +6,7 @@
  * Manages head meta tags for SEO and social sharing.
  */
 
-import React, { useMemo, useEffect, useRef } from 'react'
+import React, { useMemo, useEffect, useReducer, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import BlockRenderer from './BlockRenderer.jsx'
 import Layout from './Layout.jsx'
@@ -110,6 +110,9 @@ export default function PageRenderer() {
   const website = uniweb?.activeWebsite
   const siteName = website?.name || ''
 
+  // Force re-render counter — incremented by DataStore listener below
+  const [, forceUpdate] = useReducer((x) => x + 1, 0)
+
   // Resolve page from current URL and sync website.activePage immediately.
   // This must happen synchronously (not in an effect) so child components
   // like Header see the correct activePage during the same render cycle.
@@ -130,6 +133,16 @@ export default function PageRenderer() {
 
   // Manage head meta tags
   useHeadMeta(headMeta, { siteName })
+
+  // For dynamic pages created before collection data was available (hard reload),
+  // the page title starts as the template name (e.g. '[id]'). Subscribe to
+  // DataStore updates so we re-render once the collection loads — _createDynamicPage
+  // then runs again with fresh data and sets the correct title/notFound state.
+  const isDynamicPending = !!(page?.dynamicContext && !website?._dynamicPageCache?.has(location.pathname))
+  useEffect(() => {
+    if (!isDynamicPending || !website?.dataStore) return
+    return website.dataStore.onUpdate(forceUpdate)
+  }, [isDynamicPending, website])
 
   if (!page) {
     // No page and no 404 page defined - show minimal fallback with debug info

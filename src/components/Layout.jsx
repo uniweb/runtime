@@ -39,11 +39,11 @@ import Blocks from './Blocks.jsx'
  */
 function DefaultLayout({ header, body, footer }) {
   return (
-    <>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       {header && <header>{header}</header>}
-      {body && <main>{body}</main>}
+      {body && <main style={{ flex: 1 }}>{body}</main>}
       {footer && <footer>{footer}</footer>}
-    </>
+    </div>
   )
 }
 

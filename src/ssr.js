@@ -43,4 +43,7 @@ export {
   // HTML injection
   injectPageContent,
   escapeHtml,
+
+  // 404 fallback
+  generate404Html,
 } from './ssr-renderer.js'

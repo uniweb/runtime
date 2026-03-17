@@ -12,6 +12,7 @@ import BlockRenderer from './BlockRenderer.jsx'
 import Layout from './Layout.jsx'
 import { useHeadMeta } from '../hooks/useHeadMeta.js'
 import { buildSectionOverrides } from '@uniweb/theming'
+import { Default404 } from '../default-404.js'
 
 /**
  * ChildBlocks - renders child blocks of a block
@@ -145,16 +146,14 @@ export default function PageRenderer() {
   }, [isDynamicPending, website])
 
   if (!page) {
-    // No page and no 404 page defined - show minimal fallback with debug info
+    // No page and no 404 page defined - show shared fallback + dev debug info
     const requestedPath = location.pathname
     const isDev = import.meta.env?.DEV
     return (
-      <div className="page-not-found" style={{ padding: '4rem 2rem', textAlign: 'center' }}>
-        <h1 style={{ fontSize: '3rem', fontWeight: 'bold', color: '#1f2937', marginBottom: '1rem' }}>404</h1>
-        <p style={{ color: '#64748b', marginBottom: '2rem' }}>Page not found</p>
-        <a href="/" style={{ color: '#3b82f6', textDecoration: 'underline' }}>Go to homepage</a>
+      <>
+        <Default404 />
         {isDev && (
-          <div style={{ marginTop: '2rem', padding: '1rem', background: '#f1f5f9', borderRadius: '0.5rem', textAlign: 'left', maxWidth: '32rem', margin: '2rem auto 0' }}>
+          <div style={{ marginTop: '0', padding: '1rem', background: '#f1f5f9', borderRadius: '0.5rem', textAlign: 'left', maxWidth: '32rem', margin: '0 auto' }}>
             <p style={{ fontWeight: '600', color: '#475569', marginBottom: '0.5rem' }}>Debug info</p>
             <p style={{ fontSize: '0.875rem', color: '#64748b' }}>Path: {requestedPath}</p>
             <p style={{ fontSize: '0.875rem', color: '#64748b' }}>Locale: {website?.getActiveLocale?.() || 'unknown'}</p>
@@ -162,7 +161,7 @@ export default function PageRenderer() {
             <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.5rem' }}>Tip: Create a pages/404/ folder with a page.yml and content to customize this page.</p>
           </div>
         )}
-      </div>
+      </>
     )
   }
 

@@ -120,8 +120,43 @@ function createIconResolver(iconConfig = {}) {
  * @returns {Uniweb}
  */
 export function setupUniweb(configData) {
+  // For edge-hosted multilingual sites, detect locale from URL and swap in
+  // locale-specific pages BEFORE creating the Website. This ensures page
+  // titles, labels, and content match the active locale from the start.
+  // Safe across all modes: edge (bare paths), local publish (/sites/{id}/fr/...),
+  // and editor (no-op since editor URLs don't have locale prefixes or locales data).
+  let effectiveData = configData
+
+  if (typeof window !== 'undefined' && configData.locales) {
+    const basePath = configData.config?.base || ''
+    const pathname = window.location.pathname
+    const routePath = basePath && pathname.startsWith(basePath)
+      ? pathname.slice(basePath.length) || '/'
+      : pathname
+    const localeMatch = routePath.match(/^\/([a-z]{2,3}(?:-[A-Z]{2})?)(?:\/|$)/)
+
+    if (localeMatch) {
+      const urlLocale = localeMatch[1]
+      const defaultLang = configData.config?.defaultLanguage || 'en'
+      const localeContent = configData.locales[urlLocale]
+
+      if (localeContent && urlLocale !== defaultLang) {
+        effectiveData = {
+          ...localeContent,
+          config: {
+            ...localeContent.config,
+            i18n: configData.config?.i18n,
+            base: configData.config?.base,
+            extensions: configData.config?.extensions,
+            activeLocale: urlLocale,
+          },
+        }
+      }
+    }
+  }
+
   // Create singleton via @uniweb/core (also assigns to globalThis.uniweb)
-  const uniwebInstance = createUniweb(configData)
+  const uniwebInstance = createUniweb(effectiveData)
 
   // Pre-populate DataStore from build-time fetched data
   if (configData.fetchedData && uniwebInstance.activeWebsite?.dataStore) {

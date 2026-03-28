@@ -15,7 +15,7 @@ import { useLinkInterceptor } from '../hooks/useLinkInterceptor.js'
  * WebsiteRenderer component
  */
 export default function WebsiteRenderer() {
-  const website = globalThis.uniweb?.activeWebsite
+  const website = globalThis.uniweb.activeWebsite
 
   // Apply default appearance scheme (light/dark/system) on mount
   useEffect(() => {

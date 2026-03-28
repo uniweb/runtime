@@ -11,9 +11,16 @@
  * - Scrolls to top on new navigation (PUSH/REPLACE)
  * - Skips when location.hash is present (defers to useLinkInterceptor)
  * - Optionally resets block states on scroll restoration
+ *
+ * Implementation note:
+ * Uniweb scrolls `window` (not a fixed-size container). When React swaps
+ * page content, the browser may clamp scrollY and fire scroll events BEFORE
+ * useEffect runs. To prevent those events from corrupting the saved position
+ * of the page we're leaving, useLayoutEffect captures the target value and
+ * updates the location key ref synchronously — before any scroll events.
  */
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import { useLocation, useNavigationType } from 'react-router-dom'
 
 /** In-memory scroll positions keyed by React Router's location.key. */
@@ -32,6 +39,7 @@ export function useRememberScroll(options = {}) {
   const location = useLocation()
   const navigationType = useNavigationType()
   const locationKeyRef = useRef(location.key)
+  const savedScrollRef = useRef(null)
 
   // Continuously save scroll position for the current location
   const handleScroll = useCallback(() => {
@@ -45,12 +53,20 @@ export function useRememberScroll(options = {}) {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [enabled, handleScroll])
 
+  // Synchronously capture saved scroll and update key BEFORE browser
+  // scroll events can fire (which would corrupt the previous page's value)
+  useLayoutEffect(() => {
+    if (navigationType === 'POP') {
+      savedScrollRef.current = scrollPositions.get(location.key) ?? null
+    } else {
+      savedScrollRef.current = null
+    }
+    locationKeyRef.current = location.key
+  }, [location.key, navigationType])
+
   // On navigation: restore on POP, scroll to top on PUSH/REPLACE
   useEffect(() => {
     if (!enabled) return
-
-    // Update ref so the scroll listener saves under the new key
-    locationKeyRef.current = location.key
 
     // Reset block states if requested (for animations, etc.)
     if (resetBlockStates) {
@@ -64,7 +80,7 @@ export function useRememberScroll(options = {}) {
     if (location.hash) return
 
     if (navigationType === 'POP') {
-      const saved = scrollPositions.get(location.key)
+      const saved = savedScrollRef.current
       if (saved == null) return
 
       // Retry scroll restoration as content may load asynchronously.

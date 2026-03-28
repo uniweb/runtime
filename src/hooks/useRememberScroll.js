@@ -1,18 +1,23 @@
 /**
  * useRememberScroll Hook
  *
- * Remembers scroll position per page and restores it on navigation.
- * Works with Page.scrollY property for persistence.
+ * Remembers scroll position per history entry and restores it on navigation.
+ * Uses React Router's location.key to track positions per history entry
+ * (not per page path), so back→forward navigations restore correctly.
  *
  * Behavior:
- * - Saves scroll position when navigating away from a page
- * - Restores scroll position on back/forward (POP) navigation
- * - Scrolls to top on new navigation (PUSH/REPLACE, e.g. link clicks)
+ * - Continuously saves scroll position via a passive scroll listener
+ * - Restores scroll position on back/forward (POP) navigation with retry
+ * - Scrolls to top on new navigation (PUSH/REPLACE)
+ * - Skips when location.hash is present (defers to useLinkInterceptor)
  * - Optionally resets block states on scroll restoration
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { useLocation, useNavigationType } from 'react-router-dom'
+
+/** In-memory scroll positions keyed by React Router's location.key. */
+const scrollPositions = new Map()
 
 /**
  * useRememberScroll hook
@@ -20,91 +25,67 @@ import { useLocation, useNavigationType } from 'react-router-dom'
  * @param {Object} options
  * @param {boolean} options.enabled - Enable scroll memory (default: true)
  * @param {boolean} options.resetBlockStates - Reset block states on restore (default: true)
- * @param {number} options.scrollDelay - Delay before restoring scroll (default: 0)
  */
 export function useRememberScroll(options = {}) {
-  const { enabled = true, resetBlockStates = true, scrollDelay = 0 } = options
+  const { enabled = true, resetBlockStates = true } = options
 
   const location = useLocation()
   const navigationType = useNavigationType()
-  const previousPathRef = useRef(location.pathname)
-  const isFirstRender = useRef(true)
+  const locationKeyRef = useRef(location.key)
+
+  // Continuously save scroll position for the current location
+  const handleScroll = useCallback(() => {
+    scrollPositions.set(locationKeyRef.current, window.scrollY)
+  }, [])
 
   useEffect(() => {
     if (!enabled) return
 
-    const uniweb = globalThis.uniweb
-    const website = uniweb?.activeWebsite
-    if (!website) return
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [enabled, handleScroll])
 
-    const previousPath = previousPathRef.current
-    const currentPath = location.pathname
-
-    // website.activePage is synced by PageRenderer during render.
-    // By the time this effect runs, activePage is already correct.
-    const currentPage = website.activePage
-
-    // Skip on first render
-    if (isFirstRender.current) {
-      isFirstRender.current = false
-      previousPathRef.current = currentPath
-      return
-    }
-
-    // Path hasn't changed (might be hash or search change)
-    if (previousPath === currentPath) {
-      return
-    }
-
-    // Save scroll position from previous page
-    const previousPage = website.getPage(previousPath)
-    if (previousPage) {
-      previousPage.scrollY = window.scrollY
-    }
-
-    // Determine scroll target:
-    // - POP (back/forward): restore saved position
-    // - PUSH/REPLACE (link click, programmatic): scroll to top
-    if (currentPage) {
-      const targetScroll = navigationType === 'POP' ? (currentPage.scrollY || 0) : 0
-
-      // Reset block states if requested (for animations, etc.)
-      if (resetBlockStates && typeof currentPage.resetBlockStates === 'function') {
-        currentPage.resetBlockStates()
-      }
-
-      // Apply scroll position
-      const restore = () => {
-        window.scrollTo(0, targetScroll)
-      }
-
-      if (scrollDelay > 0) {
-        setTimeout(restore, scrollDelay)
-      } else {
-        // Use requestAnimationFrame for smoother restoration
-        requestAnimationFrame(restore)
-      }
-    }
-
-    // Update previous path ref
-    previousPathRef.current = currentPath
-  }, [location.pathname, navigationType, enabled, resetBlockStates, scrollDelay])
-
-  // Save scroll position before page unload
+  // On navigation: restore on POP, scroll to top on PUSH/REPLACE
   useEffect(() => {
     if (!enabled) return
 
-    const handleBeforeUnload = () => {
-      const uniweb = globalThis.uniweb
-      const page = uniweb?.activeWebsite?.activePage
-      if (page) {
-        page.scrollY = window.scrollY
+    // Update ref so the scroll listener saves under the new key
+    locationKeyRef.current = location.key
+
+    // Reset block states if requested (for animations, etc.)
+    if (resetBlockStates) {
+      const page = globalThis.uniweb?.activeWebsite?.activePage
+      if (page && typeof page.resetBlockStates === 'function') {
+        page.resetBlockStates()
       }
     }
 
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [enabled])
+    // When hash is present, let useLinkInterceptor handle scrolling
+    if (location.hash) return
+
+    if (navigationType === 'POP') {
+      const saved = scrollPositions.get(location.key)
+      if (saved == null) return
+
+      // Retry scroll restoration as content may load asynchronously.
+      // Each frame: scroll, check if it landed, retry if the page
+      // wasn't tall enough yet (up to ~500ms at 60fps).
+      let raf
+      let attempts = 0
+      const tryRestore = () => {
+        window.scrollTo(0, saved)
+        if (Math.abs(window.scrollY - saved) > 5 && attempts < 30) {
+          attempts++
+          raf = requestAnimationFrame(tryRestore)
+        }
+      }
+      raf = requestAnimationFrame(tryRestore)
+
+      return () => cancelAnimationFrame(raf)
+    } else {
+      window.scrollTo(0, 0)
+    }
+  }, [location.key, navigationType, enabled, resetBlockStates, location.hash])
 }
 
 export default useRememberScroll

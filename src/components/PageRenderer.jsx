@@ -135,9 +135,11 @@ export default function PageRenderer() {
 
   if (redirectTarget) return null
 
-  // Rewrite pages are served by an external site — navigate there
+  // Rewrite pages are served by an external site — the host handles routing.
+  // In SPA mode this shouldn't be reached (host proxies before JS loads),
+  // but if it is (e.g., dev mode), do a full page reload to let the host handle it.
   if (page?.rewrite) {
-    window.location.replace(page.rewrite + location.pathname)
+    window.location.reload()
     return null
   }
 

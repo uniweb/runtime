@@ -135,6 +135,12 @@ export default function PageRenderer() {
 
   if (redirectTarget) return null
 
+  // Rewrite pages are served by an external site — navigate there
+  if (page?.rewrite) {
+    window.location.replace(page.rewrite + location.pathname)
+    return null
+  }
+
   // If no page found, try the 404 page (do NOT fall back to activePage/homepage)
   const isNotFound = !page
   if (isNotFound) {

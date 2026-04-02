@@ -163,7 +163,7 @@ export function useLinkInterceptor(options = {}) {
         const activeLocale = website.getActiveLocale()
         const defaultLocale = website.getDefaultLocale()
         const localeCodes = website.getLocales().map(l => l.code)
-        const hrefMatch = routeHref.match(/^\/([a-z]{2,3}(?:-[A-Z]{2})?)(?:\/|$)/)
+        const hrefMatch = routeHref.match(/^\/([a-z]{2,3}(?:-[A-Za-z]{2,4})?)(?:\/|$)/)
         const hrefLocale = hrefMatch?.[1]
 
         let isLocaleSwitch = false

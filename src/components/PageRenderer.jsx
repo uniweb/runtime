@@ -7,7 +7,7 @@
  */
 
 import React, { useMemo, useEffect, useReducer, useRef } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import BlockRenderer from './BlockRenderer.jsx'
 import Layout from './Layout.jsx'
 import { useHeadMeta } from '../hooks/useHeadMeta.js'
@@ -117,8 +117,23 @@ export default function PageRenderer() {
   // Resolve page from current URL and sync website.activePage immediately.
   // This must happen synchronously (not in an effect) so child components
   // like Header see the correct activePage during the same render cycle.
+  const navigate = useNavigate()
+
   let page = website?.getPage(location.pathname)
   if (page && website) website.setActivePage(location.pathname)
+
+  // Handle redirect pages — navigate to target immediately
+  const redirectTarget = page?.redirect
+  useEffect(() => {
+    if (!redirectTarget) return
+    if (redirectTarget.startsWith('http')) {
+      window.location.replace(redirectTarget)
+    } else {
+      navigate(redirectTarget, { replace: true })
+    }
+  }, [redirectTarget, navigate])
+
+  if (redirectTarget) return null
 
   // If no page found, try the 404 page (do NOT fall back to activePage/homepage)
   const isNotFound = !page

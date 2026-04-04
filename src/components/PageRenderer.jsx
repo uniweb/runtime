@@ -122,8 +122,33 @@ export default function PageRenderer() {
   let page = website?.getPage(location.pathname)
   if (page && website) website.setActivePage(location.pathname)
 
-  // Handle redirect pages — navigate to target immediately
-  const redirectTarget = page?.redirect
+  // ─── Compute navigation targets (before hooks, no early returns) ───
+
+  // Explicit redirect: in page.yml
+  const redirectTarget = page?.redirect || null
+
+  // Auto-redirect for content-less pages (structural containers).
+  // Folders with page.yml but no markdown keep their route in the hierarchy;
+  // when visited directly, redirect to the first descendant with content.
+  const autoRedirectRoute = page && !page.redirect && !page.hasContent()
+    ? page.getNavigableRoute()
+    : null
+  const shouldAutoRedirect = !!(autoRedirectRoute && autoRedirectRoute !== page?.route)
+
+  // If no page found, try the 404 page (do NOT fall back to activePage/homepage)
+  const isNotFound = !page && !redirectTarget
+  if (isNotFound) {
+    page = website?.getNotFoundPage?.() || null
+  }
+
+  // Head metadata — compute for all cases (redirect pages get a fallback)
+  const headMeta = page?.getHeadMeta?.() || {
+    title: isNotFound ? 'Page Not Found' : (page?.title || 'Website'),
+    description: page?.description || ''
+  }
+
+  // ─── All hooks called unconditionally (React rules of hooks) ───
+
   useEffect(() => {
     if (!redirectTarget) return
     if (redirectTarget.startsWith('http')) {
@@ -133,44 +158,11 @@ export default function PageRenderer() {
     }
   }, [redirectTarget, navigate])
 
-  if (redirectTarget) return null
-
-  // Auto-redirect for content-less pages (structural containers).
-  // Folders with page.yml but no markdown keep their route in the hierarchy;
-  // when visited directly, redirect to the first descendant with content.
-  const autoRedirectRoute = page && !page.redirect && !page.hasContent()
-    ? page.getNavigableRoute()
-    : null
-  const shouldAutoRedirect = autoRedirectRoute && autoRedirectRoute !== page?.route
-
   useEffect(() => {
     if (!shouldAutoRedirect) return
     navigate(autoRedirectRoute, { replace: true })
   }, [shouldAutoRedirect, autoRedirectRoute, navigate])
 
-  if (shouldAutoRedirect) return null
-
-  // Rewrite pages are served by an external site — the host handles routing.
-  // In SPA mode this shouldn't be reached (host proxies before JS loads),
-  // but if it is (e.g., dev mode), do a full page reload to let the host handle it.
-  if (page?.rewrite) {
-    window.location.reload()
-    return null
-  }
-
-  // If no page found, try the 404 page (do NOT fall back to activePage/homepage)
-  const isNotFound = !page
-  if (isNotFound) {
-    page = website?.getNotFoundPage?.() || null
-  }
-
-  // Get head metadata from page (uses Page.getHeadMeta() if available)
-  const headMeta = page?.getHeadMeta?.() || {
-    title: isNotFound ? 'Page Not Found' : (page?.title || 'Website'),
-    description: page?.description || ''
-  }
-
-  // Manage head meta tags
   useHeadMeta(headMeta, { siteName })
 
   // For dynamic pages created before collection data was available (hard reload),
@@ -182,6 +174,19 @@ export default function PageRenderer() {
     if (!isDynamicPending || !website?.dataStore) return
     return website.dataStore.onUpdate(forceUpdate)
   }, [isDynamicPending, website])
+
+  // ─── Early returns (after all hooks) ───
+
+  if (redirectTarget) return null
+  if (shouldAutoRedirect) return null
+
+  // Rewrite pages are served by an external site — the host handles routing.
+  // In SPA mode this shouldn't be reached (host proxies before JS loads),
+  // but if it is (e.g., dev mode), do a full page reload to let the host handle it.
+  if (page?.rewrite) {
+    window.location.reload()
+    return null
+  }
 
   if (!page) {
     // No page and no 404 page defined - show shared fallback + dev debug info

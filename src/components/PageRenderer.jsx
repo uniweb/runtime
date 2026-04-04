@@ -16,29 +16,34 @@ import { Default404 } from '../default-404.js'
 
 /**
  * ChildBlocks - renders child blocks of a block
- * Exposed for use by foundation components
+ * Exposed for use by foundation components via @uniweb/kit
+ *
+ * By default, renders each child as a bare component (no wrapper element,
+ * no context classes, no background). This is the common case for grid cells,
+ * tab panels, carousel slides, and inline children.
+ *
+ * Pass `wrapAs` to opt into full section treatment (wrapper element, context
+ * classes, background, section ID) — rare, for independent nested sections.
  *
  * @param {Object} props
  * @param {Block[]} props.blocks - Explicit array of blocks to render
  * @param {Block} props.from - Parent block to extract childBlocks from (convenience shorthand)
- * @param {boolean} props.pure - If true, render components without wrapper
- * @param {string|false} props.as - Element type to render as (default: 'div' for nested blocks)
- * @param {Object} props.extra - Extra props to pass to each component
+ * @param {string} [props.wrapAs] - Wrapper element tag for section treatment ('div', 'article', etc.)
  *
  * @example
- * // Explicit blocks array
- * <ChildBlocks blocks={filteredBlocks} />
- *
- * @example
- * // Extract from parent block
+ * // Bare rendering (default) — grid cells, tabs, inline children
  * <ChildBlocks from={block} />
+ *
+ * @example
+ * // Section treatment — each child gets its own wrapper, context, background
+ * <ChildBlocks from={block} wrapAs="div" />
  */
-export function ChildBlocks({ blocks, from, pure = false, as = 'div', extra = {} }) {
+export function ChildBlocks({ blocks, from, wrapAs }) {
   const blockList = blocks || from?.childBlocks || []
 
   return blockList.map((childBlock, index) => (
     <React.Fragment key={childBlock.id || index}>
-      <BlockRenderer block={childBlock} pure={pure} as={as} extra={extra} />
+      <BlockRenderer block={childBlock} as={wrapAs || null} />
     </React.Fragment>
   ))
 }

@@ -68,13 +68,16 @@ const getWrapperProps = (block) => {
 /**
  * BlockRenderer component
  *
+ * Two rendering modes:
+ * - Bare (as=null/false): component only, no wrapper — used by ChildBlocks (default)
+ * - Section (as='section'/'div'/etc.): full treatment with wrapper element, context
+ *   classes, background, section ID — used by page-level Blocks component
+ *
  * @param {Object} props
  * @param {Block} props.block - Block instance to render
- * @param {boolean} props.pure - If true, render component without wrapper
- * @param {string|false} props.as - Element type to render as ('section', 'div', 'article', etc.) or false for Fragment
- * @param {Object} props.extra - Extra props to pass to the component
+ * @param {string|null} props.as - Wrapper element tag for section mode, or null/false for bare mode
  */
-export default function BlockRenderer({ block, pure = false, as = 'section', extra = {} }) {
+export default function BlockRenderer({ block, as = 'section' }) {
   const Component = block.initComponent()
 
   // Entity-aware data resolution via EntityStore
@@ -142,6 +145,19 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
     content.data = merged
   }
 
+  const componentProps = {
+    content,
+    params,
+    block
+  }
+
+  // Bare mode — component only, no wrapper or section chrome.
+  // Used by ChildBlocks for grid cells, tab panels, inline children, insets.
+  if (!as) {
+    return <Component {...componentProps} />
+  }
+
+  // Section mode — full treatment with wrapper, context classes, background.
   const { background, ...wrapperProps } = getWrapperProps(block)
 
   // Merge Component.className (static classes declared on the component function)
@@ -163,30 +179,16 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
   // and let the engine background show through.
   block.hasBackground = hasBackground
 
-  const componentProps = {
-    content,
-    params,
-    block
-  }
-
-  if (pure) {
-    return <Component {...componentProps} extra={extra} />
-  }
-
   // Determine wrapper element:
-  // - as={false} → Fragment (no wrapper)
-  // - as prop explicitly set (not default 'section') → use as prop
-  // - Component.as → use component's declared tag
+  // - Explicit as prop (not 'section') → use as prop directly
+  // - Component.as → use component's declared tag (e.g., Header.as = 'header')
   // - fallback → 'section'
-  const componentAs = Component.as
-  const Wrapper = as === false ? React.Fragment : (as !== 'section' ? as : componentAs || 'section')
-  // Fragment doesn't accept props, so only pass them for real elements
-  const wrapperElementProps = as === false ? {} : wrapperProps
+  const Wrapper = as !== 'section' ? as : (Component.as || 'section')
 
   // Render with or without background
   if (hasBackground) {
     return (
-      <Wrapper {...wrapperElementProps}>
+      <Wrapper {...wrapperProps}>
         {/* Background layer (positioned absolutely) */}
         <Background
           mode={background.mode}
@@ -207,7 +209,7 @@ export default function BlockRenderer({ block, pure = false, as = 'section', ext
 
   // No background - simpler render without extra wrapper
   return (
-    <Wrapper {...wrapperElementProps}>
+    <Wrapper {...wrapperProps}>
       <Component {...componentProps} />
     </Wrapper>
   )

@@ -9,18 +9,19 @@ import React from 'react'
 import BlockRenderer from './BlockRenderer.jsx'
 
 /**
- * Render a list of blocks
+ * Render a list of blocks as top-level sections.
+ * Used by Layout to pre-render each area (header, body, footer, panels).
+ * Each block gets full section treatment (wrapper, context classes, background).
  *
  * @param {Object} props
  * @param {Block[]} props.blocks - Array of Block instances to render
- * @param {Object} [props.extra] - Extra props to pass to each block
  */
-export default function Blocks({ blocks, extra = {} }) {
+export default function Blocks({ blocks }) {
   if (!blocks || blocks.length === 0) return null
 
   return blocks.map((block, index) => (
     <React.Fragment key={block.id || index}>
-      <BlockRenderer block={block} extra={extra} />
+      <BlockRenderer block={block} />
     </React.Fragment>
   ))
 }

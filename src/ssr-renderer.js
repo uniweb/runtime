@@ -229,12 +229,16 @@ export function renderBackground(background) {
  * Render a single block for SSR.
  * Mirrors BlockRenderer.jsx but without hooks (no runtime data fetching).
  *
+ * Two modes (mirrors client BlockRenderer):
+ * - Bare (as=null/false): component only, no wrapper
+ * - Section (as='section'/'div'/etc.): full treatment with wrapper, context, background
+ *
  * @param {Block} block - Block instance to render
  * @param {Object} [options]
- * @param {boolean} [options.pure=false] - Render component without section wrapper (used by ChildBlocks)
+ * @param {string|null} [options.as='section'] - Wrapper element tag, or null/false for bare mode
  * @returns {React.ReactElement}
  */
-export function renderBlock(block, { pure = false, as = undefined } = {}) {
+export function renderBlock(block, { as = 'section' } = {}) {
   const Component = block.initComponent()
 
   if (!Component) {
@@ -268,12 +272,13 @@ export function renderBlock(block, { pure = false, as = undefined } = {}) {
 
   const componentProps = { content, params, block }
 
-  // Pure mode: render component without section wrapper (used by ChildBlocks)
-  if (pure) {
+  // Bare mode: component only, no wrapper or section chrome.
+  // Used by ChildBlocks for grid cells, tab panels, inline children, insets.
+  if (!as) {
     return React.createElement(Component, componentProps)
   }
 
-  // Background handling (mirrors BlockRenderer.jsx)
+  // Section mode: full treatment with wrapper, context classes, background.
   const { background, ...wrapperProps } = getWrapperProps(block)
 
   // Merge Component.className (static classes declared on the component function)
@@ -288,10 +293,11 @@ export function renderBlock(block, { pure = false, as = undefined } = {}) {
   const hasBackground = background?.mode && meta?.background !== 'self'
   block.hasBackground = hasBackground
 
-  // Use Component.as as the wrapper tag (default: 'section').
-  // An explicit `as` prop (e.g. 'div' from ChildBlocks) overrides Component.as,
-  // mirroring the BlockRenderer.jsx Wrapper resolution logic.
-  const wrapperTag = (as !== undefined && as !== 'section') ? as : (Component.as || 'section')
+  // Determine wrapper element:
+  // - Explicit as (not 'section') → use as prop directly
+  // - Component.as → use component's declared tag (e.g., Header.as = 'header')
+  // - fallback → 'section'
+  const wrapperTag = as !== 'section' ? as : (Component.as || 'section')
 
   if (hasBackground) {
     return React.createElement(wrapperTag, wrapperProps,
@@ -401,13 +407,13 @@ export function initPrerender(content, foundation, options = {}) {
 
   // Set childBlockRenderer so ChildBlocks/Visual/Render work during prerender.
   // Mirrors the client's ChildBlocks component in PageRenderer.jsx:
-  // - default as='div' so nested blocks use <div> wrapper (not <section>)
-  //   matching the client and avoiding React hydration mismatch (error #418)
-  uniweb.childBlockRenderer = function InlineChildBlocks({ blocks, from, pure = false, as = 'div' }) {
+  // - default bare rendering (no wrapAs) — component only, no wrapper
+  // - pass wrapAs to opt into full section treatment
+  uniweb.childBlockRenderer = function InlineChildBlocks({ blocks, from, wrapAs }) {
     const blockList = blocks || from?.childBlocks || []
     return blockList.map((childBlock, index) =>
       React.createElement(React.Fragment, { key: childBlock.id || index },
-        renderBlock(childBlock, { pure, as })
+        renderBlock(childBlock, { as: wrapAs || null })
       )
     )
   }

@@ -135,6 +135,21 @@ export default function PageRenderer() {
 
   if (redirectTarget) return null
 
+  // Auto-redirect for content-less pages (structural containers).
+  // Folders with page.yml but no markdown keep their route in the hierarchy;
+  // when visited directly, redirect to the first descendant with content.
+  const autoRedirectRoute = page && !page.redirect && !page.hasContent()
+    ? page.getNavigableRoute()
+    : null
+  const shouldAutoRedirect = autoRedirectRoute && autoRedirectRoute !== page?.route
+
+  useEffect(() => {
+    if (!shouldAutoRedirect) return
+    navigate(autoRedirectRoute, { replace: true })
+  }, [shouldAutoRedirect, autoRedirectRoute, navigate])
+
+  if (shouldAutoRedirect) return null
+
   // Rewrite pages are served by an external site — the host handles routing.
   // In SPA mode this shouldn't be reached (host proxies before JS loads),
   // but if it is (e.g., dev mode), do a full page reload to let the host handle it.

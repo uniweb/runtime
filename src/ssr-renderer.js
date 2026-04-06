@@ -418,6 +418,20 @@ export function initPrerender(content, foundation, options = {}) {
     )
   }
 
+  // Register SSR-safe routing so useRouting()/useActiveRoute() work during prerender.
+  // renderPage() calls website.setActivePage() before rendering each page,
+  // so activePage.route always reflects the page being rendered.
+  const website = uniweb.activeWebsite
+  uniweb.routingComponents = {
+    useLocation: () => {
+      const route = website?.activePage?.route || ''
+      return { pathname: '/' + route, search: '', hash: '', state: null, key: 'default' }
+    },
+    useParams: () => ({}),
+    useNavigate: () => () => {},
+    Link: 'a',
+  }
+
   return uniweb
 }
 

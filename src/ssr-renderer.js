@@ -429,7 +429,6 @@ export function initPrerender(content, foundation, options = {}) {
     },
     useParams: () => ({}),
     useNavigate: () => () => {},
-    Link: 'a',
   }
 
   return uniweb

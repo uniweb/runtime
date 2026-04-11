@@ -193,7 +193,22 @@ export function useLinkInterceptor(options = {}) {
       // Use React Router navigation (with router-relative path)
       // React Router will handle the path, and our useEffect above
       // will handle scrolling to hash after navigation completes
-      navigate(routeHref)
+      const useTransition = website?.viewTransitions && document.startViewTransition
+
+      if (useTransition) {
+        document.startViewTransition(async () => {
+          // Prefetch split content inside the transition callback.
+          // The browser holds the old page screenshot visible until
+          // this promise resolves, hiding any fetch latency.
+          const targetPage = website.getPage(routeHref)
+          if (targetPage?.hasContent() && !targetPage.isContentLoaded()) {
+            await targetPage.loadContent()
+          }
+          navigate(routeHref)
+        })
+      } else {
+        navigate(routeHref)
+      }
     }
 
     // Add click listener to document

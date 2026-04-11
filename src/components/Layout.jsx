@@ -90,11 +90,23 @@ export default function Layout({ page, website }) {
   const allBlockGroups = [bodyBlocks, ...Object.values(areas)]
   initializeAllBlocks(...allBlockGroups)
 
-  // Pre-render each area as React elements
-  const bodyElement = bodyBlocks ? <Blocks blocks={bodyBlocks} /> : null
+  // Pre-render each area as React elements.
+  // When the foundation enables view transitions, wrap areas in thin divs
+  // with view-transition-name so the browser can animate them independently.
+  const transitions = website.viewTransitions ? layoutMeta?.transitions : null
+
+  const bodyElement = bodyBlocks ? (
+    transitions?.body
+      ? <div style={{ viewTransitionName: transitions.body }}><Blocks blocks={bodyBlocks} /></div>
+      : <Blocks blocks={bodyBlocks} />
+  ) : null
+
   const areaElements = {}
   for (const [name, blocks] of Object.entries(areas)) {
-    areaElements[name] = <Blocks blocks={blocks} />
+    const transitionName = transitions?.[name]
+    areaElements[name] = transitionName
+      ? <div style={{ viewTransitionName: transitionName }}><Blocks blocks={blocks} /></div>
+      : <Blocks blocks={blocks} />
   }
 
   // Use foundation's custom Layout if provided

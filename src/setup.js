@@ -5,16 +5,83 @@
  * with routing components, icon resolver, data fetcher, etc.
  */
 
+import React from 'react'
 import { createUniweb, Website } from '@uniweb/core'
 import {
   Link as RouterLink,
-  useNavigate,
+  useNavigate as useRouterNavigate,
   useParams,
   useLocation
 } from 'react-router-dom'
 
 import { ChildBlocks } from './components/PageRenderer.jsx'
 import { executeFetchClient } from './data-fetcher-client.js'
+
+// ─── View Transition Wrappers ───────────────────────────────────────────────
+//
+// When the foundation enables viewTransitions, navigation is wrapped in
+// document.startViewTransition() to animate page changes. Split content
+// is prefetched inside the transition callback so the user never sees
+// a blank or loading state.
+//
+// These wrappers are registered as routing components, so Kit's <Link>
+// and useRouting().useNavigate() automatically get view transition support.
+
+/**
+ * Prefetch split content and navigate inside a view transition.
+ * Falls back to plain navigation when transitions are not available.
+ */
+function navigateWithTransition(navigate, to, options) {
+  const vt = globalThis.uniweb?.foundationConfig?.viewTransitions
+  if (vt && document.startViewTransition) {
+    const website = globalThis.uniweb?.activeWebsite
+    document.startViewTransition(async () => {
+      const route = typeof to === 'string' ? to : to?.pathname
+      if (route && website) {
+        const targetPage = website.getPage(route)
+        if (targetPage?.hasContent?.() && !targetPage.isContentLoaded?.()) {
+          await targetPage.loadContent()
+        }
+      }
+      navigate(to, options)
+    })
+  } else {
+    navigate(to, options)
+  }
+}
+
+/**
+ * View-transition-aware Link component.
+ * Intercepts clicks to wrap navigation in startViewTransition() when enabled.
+ * Falls through to RouterLink's normal behavior otherwise.
+ */
+function ViewTransitionLink({ onClick, ...props }) {
+  const navigate = useRouterNavigate()
+
+  const handleClick = (e) => {
+    if (onClick) onClick(e)
+    if (e.defaultPrevented) return
+    if (e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) return
+    if (e.button !== 0) return
+
+    const vt = globalThis.uniweb?.foundationConfig?.viewTransitions
+    if (!vt || !document.startViewTransition) return
+
+    e.preventDefault()
+    navigateWithTransition(navigate, props.to)
+  }
+
+  return React.createElement(RouterLink, { ...props, onClick: handleClick })
+}
+
+/**
+ * View-transition-aware useNavigate hook.
+ * The returned function wraps navigation in startViewTransition() when enabled.
+ */
+function useNavigate() {
+  const navigate = useRouterNavigate()
+  return (to, options) => navigateWithTransition(navigate, to, options)
+}
 
 /**
  * Map friendly family names to react-icons codes
@@ -139,7 +206,7 @@ export function setupUniweb(configData) {
   // This enables the bridge pattern: components access routing via
   // website.getRoutingComponents() instead of direct imports
   uniwebInstance.routingComponents = {
-    Link: RouterLink,
+    Link: ViewTransitionLink,
     useNavigate,
     useParams,
     useLocation

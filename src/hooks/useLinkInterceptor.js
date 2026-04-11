@@ -14,6 +14,7 @@
 
 import { useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { prefetchContent } from '../setup.js'
 
 /**
  * Check if a URL is internal (same origin, no external protocol)
@@ -197,13 +198,7 @@ export function useLinkInterceptor(options = {}) {
 
       if (useTransition) {
         document.startViewTransition(async () => {
-          // Prefetch split content inside the transition callback.
-          // The browser holds the old page screenshot visible until
-          // this promise resolves, hiding any fetch latency.
-          const targetPage = website.getPage(routeHref)
-          if (targetPage?.hasContent() && !targetPage.isContentLoaded()) {
-            await targetPage.loadContent()
-          }
+          await prefetchContent(routeHref)
           navigate(routeHref)
         })
       } else {

@@ -28,21 +28,37 @@ import { executeFetchClient } from './data-fetcher-client.js'
 // and useRouting().useNavigate() automatically get view transition support.
 
 /**
+ * Prefetch split page content with a timeout.
+ * Resolves when content is loaded or the timeout expires — whichever
+ * comes first. This keeps the old-page screenshot from freezing too
+ * long on slow connections. If the timeout wins, navigation proceeds
+ * and the PageRenderer loading gate handles the rest.
+ */
+const CONTENT_PREFETCH_TIMEOUT = 1000
+
+export function prefetchContent(route) {
+  const website = globalThis.uniweb?.activeWebsite
+  if (!route || !website) return
+
+  const targetPage = website.getPage(route)
+  if (!targetPage?.hasContent?.() || targetPage.isContentLoaded?.()) return
+
+  return Promise.race([
+    targetPage.loadContent(),
+    new Promise(resolve => setTimeout(resolve, CONTENT_PREFETCH_TIMEOUT))
+  ])
+}
+
+/**
  * Prefetch split content and navigate inside a view transition.
  * Falls back to plain navigation when transitions are not available.
  */
 function navigateWithTransition(navigate, to, options) {
   const vt = globalThis.uniweb?.foundationConfig?.viewTransitions
   if (vt && document.startViewTransition) {
-    const website = globalThis.uniweb?.activeWebsite
     document.startViewTransition(async () => {
       const route = typeof to === 'string' ? to : to?.pathname
-      if (route && website) {
-        const targetPage = website.getPage(route)
-        if (targetPage?.hasContent?.() && !targetPage.isContentLoaded?.()) {
-          await targetPage.loadContent()
-        }
-      }
+      await prefetchContent(route)
       navigate(to, options)
     })
   } else {

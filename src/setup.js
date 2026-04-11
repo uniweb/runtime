@@ -35,6 +35,8 @@ import { executeFetchClient } from './data-fetcher-client.js'
  * and the PageRenderer loading gate handles the rest.
  */
 const CONTENT_PREFETCH_TIMEOUT = 1000
+export const prefersReducedMotion = typeof window !== 'undefined'
+  && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 export function prefetchContent(route) {
   const website = globalThis.uniweb?.activeWebsite
@@ -55,7 +57,7 @@ export function prefetchContent(route) {
  */
 function navigateWithTransition(navigate, to, options) {
   const vt = globalThis.uniweb?.foundationConfig?.viewTransitions
-  if (vt && document.startViewTransition) {
+  if (vt && document.startViewTransition && !prefersReducedMotion) {
     document.startViewTransition(async () => {
       const route = typeof to === 'string' ? to : to?.pathname
       await prefetchContent(route)
@@ -85,7 +87,7 @@ const ViewTransitionLink = React.forwardRef(function ViewTransitionLink(
     if (e.button !== 0) return
 
     const vt = globalThis.uniweb?.foundationConfig?.viewTransitions
-    if (!vt || !document.startViewTransition) return
+    if (!vt || !document.startViewTransition || prefersReducedMotion) return
 
     e.preventDefault()
     navigateWithTransition(navigate, props.to, { replace, state, preventScrollReset })

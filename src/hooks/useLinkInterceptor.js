@@ -14,7 +14,7 @@
 
 import { useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { prefetchContent } from '../setup.js'
+import { prefetchContent, prefersReducedMotion } from '../setup.js'
 
 /**
  * Check if a URL is internal (same origin, no external protocol)
@@ -195,6 +195,7 @@ export function useLinkInterceptor(options = {}) {
       // React Router will handle the path, and our useEffect above
       // will handle scrolling to hash after navigation completes
       const useTransition = website?.viewTransitions && document.startViewTransition
+        && !prefersReducedMotion
 
       if (useTransition) {
         document.startViewTransition(async () => {

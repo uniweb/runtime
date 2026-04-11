@@ -54,8 +54,12 @@ function navigateWithTransition(navigate, to, options) {
  * View-transition-aware Link component.
  * Intercepts clicks to wrap navigation in startViewTransition() when enabled.
  * Falls through to RouterLink's normal behavior otherwise.
+ * Preserves all React Router Link props (replace, state, preventScrollReset).
  */
-function ViewTransitionLink({ onClick, ...props }) {
+const ViewTransitionLink = React.forwardRef(function ViewTransitionLink(
+  { onClick, replace, state, preventScrollReset, ...props },
+  ref
+) {
   const navigate = useRouterNavigate()
 
   const handleClick = (e) => {
@@ -68,11 +72,14 @@ function ViewTransitionLink({ onClick, ...props }) {
     if (!vt || !document.startViewTransition) return
 
     e.preventDefault()
-    navigateWithTransition(navigate, props.to)
+    navigateWithTransition(navigate, props.to, { replace, state, preventScrollReset })
   }
 
-  return React.createElement(RouterLink, { ...props, onClick: handleClick })
-}
+  return React.createElement(RouterLink, {
+    ref, ...props, onClick: handleClick,
+    replace, state, preventScrollReset
+  })
+})
 
 /**
  * View-transition-aware useNavigate hook.

@@ -127,6 +127,16 @@ export default function PageRenderer() {
   let page = website?.getPage(location.pathname)
   if (page && website) website.setActivePage(location.pathname)
 
+  // ─── Content loading (split page content) ───
+  // On first load, the current page's sections are pre-embedded → contentReady = true.
+  // On SPA navigation to an unvisited page → contentReady = false → fetch → re-render.
+  const contentReady = !page || !page.hasContent() || page.isContentLoaded()
+
+  useEffect(() => {
+    if (contentReady) return
+    page.loadContent().then(() => forceUpdate())
+  }, [page, contentReady])
+
   // ─── Compute navigation targets (before hooks, no early returns) ───
 
   // Explicit redirect: in page.yml
@@ -212,6 +222,10 @@ export default function PageRenderer() {
       </>
     )
   }
+
+  // Wait for content before rendering blocks (split page content).
+  // The prerendered HTML is already visible while we load.
+  if (!contentReady) return null
 
   const appearance = website?.themeData?.appearance
 

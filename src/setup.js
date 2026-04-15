@@ -302,6 +302,10 @@ export function registerFoundation(uniwebInstance, foundation) {
   if (foundation.default?.layoutMeta && uniwebInstance.foundationConfig) {
     uniwebInstance.foundationConfig.layoutMeta = foundation.default.layoutMeta
   }
+
+  if (foundation.default?.handlers && uniwebInstance.foundationConfig) {
+    uniwebInstance.foundationConfig.handlers = foundation.default.handlers
+  }
 }
 
 /**

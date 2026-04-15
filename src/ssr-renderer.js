@@ -400,6 +400,11 @@ export function initPrerender(content, foundation, options = {}) {
     uniweb.foundationConfig.layoutMeta = foundation.default.layoutMeta
   }
 
+  // Attach foundation content handlers (e.g. Loom template instantiation)
+  if (foundation.default?.handlers && uniweb.foundationConfig) {
+    uniweb.foundationConfig.handlers = foundation.default.handlers
+  }
+
   // Set base path from site config for subdirectory deployments
   if (content.config?.base && uniweb.activeWebsite?.setBasePath) {
     uniweb.activeWebsite.setBasePath(content.config.base)

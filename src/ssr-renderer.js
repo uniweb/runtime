@@ -248,27 +248,24 @@ export function renderBlock(block, { as = 'section' } = {}) {
     }, `Component not found: ${block.type}`)
   }
 
-  // Build content and params with runtime guarantees
+  // Resolve inherited entity data synchronously (SSG has no async).
+  // EntityStore walks page/site hierarchy to find data matching meta.inheritData.
   const meta = getComponentMeta(block.type)
-  const prepared = prepareProps(block, meta)
-  const params = prepared.params
-  const content = { ...prepared.content, ...block.properties }
-
-  // Resolve inherited entity data (mirrors BlockRenderer.jsx)
-  // EntityStore walks page/site hierarchy to find data matching meta.inheritData
   const entityStore = block.website?.entityStore
+  let entityData = null
   if (entityStore) {
     const resolved = entityStore.resolve(block, meta)
-    if (resolved.status === 'ready' && resolved.data) {
-      const merged = { ...content.data }
-      for (const key of Object.keys(resolved.data)) {
-        if (merged[key] === undefined) {
-          merged[key] = resolved.data[key]
-        }
-      }
-      content.data = merged
-    }
+    if (resolved.status === 'ready') entityData = resolved.data
   }
+
+  // Build content and params with runtime guarantees.
+  // prepareProps handles the full pipeline: entity data merge,
+  // foundation content handler invocation, guaranteed content
+  // structure, schema application, and param defaults.
+  // See prepare-props.js for the pipeline details.
+  const prepared = prepareProps(block, meta, entityData)
+  const params = prepared.params
+  const content = { ...prepared.content, ...block.properties }
 
   const componentProps = { content, params, block }
 

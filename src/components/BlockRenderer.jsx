@@ -119,30 +119,16 @@ export default function BlockRenderer({ block, as = 'section' }) {
     )
   }
 
-  // Build content and params with runtime guarantees
-  // Sources:
-  // 1. parsedContent - semantic parser output (flat: title, paragraphs, links, etc.)
-  // 2. block.properties - params from frontmatter (theme, alignment, etc.)
-  // 3. meta - defaults from component meta.js
-  const prepared = prepareProps(block, meta)
-  let params = prepared.params
-
-  let content = {
+  // Build content and params with runtime guarantees.
+  // prepareProps handles the full pipeline: entity data merge onto
+  // block.parsedContent.data, foundation content handler invocation,
+  // guaranteed content structure, schema application, and param defaults.
+  // See prepare-props.js for the pipeline details.
+  const prepared = prepareProps(block, meta, entityData)
+  const params = prepared.params
+  const content = {
     ...prepared.content,
     ...block.properties,     // Frontmatter params overlay (legacy support)
-  }
-
-  // Merge entity data resolved by EntityStore
-  // Only fill in keys that don't already exist — section-level fetch data
-  // (already in content.data from parsedContent) takes priority over inherited data.
-  if (entityData) {
-    const merged = { ...content.data }
-    for (const key of Object.keys(entityData)) {
-      if (merged[key] === undefined) {
-        merged[key] = entityData[key]
-      }
-    }
-    content.data = merged
   }
 
   const componentProps = {

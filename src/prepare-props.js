@@ -189,13 +189,90 @@ export function applyDefaults(params, defaults) {
 }
 
 /**
- * Prepare props for a component with runtime guarantees
+ * Merge entity data onto a block's parsedContent.data.
+ *
+ * Section-level data already on the block (from prerender fetches via
+ * blockData.parsedContent.data in the Block constructor) takes priority;
+ * entity data only fills missing keys. Mutates `block.parsedContent.data`
+ * in place so the vanilla JS layer holds the assembled data and
+ * subsequent reads see the same shape.
+ */
+function mergeEntityData(block, entityData) {
+  if (!entityData) return
+  const current = block.parsedContent.data || {}
+  let changed = false
+  const merged = { ...current }
+  for (const key of Object.keys(entityData)) {
+    if (merged[key] === undefined) {
+      merged[key] = entityData[key]
+      changed = true
+    }
+  }
+  if (changed) {
+    block.parsedContent.data = merged
+  }
+}
+
+/**
+ * Run the foundation-level content handler on a block, if one is
+ * registered. Runs at prop-preparation time — after any entity data
+ * has been merged onto `block.parsedContent.data` — so the handler
+ * sees the fully assembled data. Replaces `block.parsedContent` in
+ * place with the re-parsed, instantiated form. The handler receives
+ * `(data, block)` and reads raw ProseMirror from `block.rawContent`.
+ *
+ * Skipped when the block is still waiting on async data
+ * (`block.dataLoading`), when no handler is registered, when the
+ * block has no raw content, when the handler returns a no-change
+ * signal (undefined, null, or the same reference as rawContent), or
+ * when the handler throws. Errors are logged via `console.error`.
+ */
+function runContentHandler(block) {
+  if (block.dataLoading) return
+  const handler = globalThis.uniweb?.foundationConfig?.handlers?.content
+  if (typeof handler !== 'function') return
+  if (!block.rawContent || Object.keys(block.rawContent).length === 0) return
+
+  try {
+    const transformed = handler(block.parsedContent.data, block)
+    if (!transformed || transformed === block.rawContent) return
+    const reparsed = block.parseContent(transformed)
+    reparsed.data = block.parsedContent.data
+    block.parsedContent = reparsed
+    block.items = reparsed.items || []
+  } catch (err) {
+    console.error('Foundation content handler failed:', err)
+  }
+}
+
+/**
+ * Prepare props for a component with runtime guarantees.
+ *
+ * Does the full content-assembly pipeline in one place so both
+ * renderers (`BlockRenderer.jsx` CSR and `ssr-renderer.js` SSG) share
+ * the same code path:
+ *
+ *   1. Merge entity data (resolved by EntityStore) onto
+ *      `block.parsedContent.data`.
+ *   2. Run the foundation content handler (if registered) on the
+ *      block. This may replace `block.parsedContent` with a re-parsed,
+ *      instantiated version.
+ *   3. Build the guaranteed content structure.
+ *   4. Apply schemas from meta.
+ *   5. Apply param defaults.
+ *
+ * Steps 1 and 2 mutate the block (vanilla JS layer). Steps 3–5 are
+ * pure derivations of the block's now-assembled state.
  *
  * @param {Object} block - The block instance
  * @param {Object} meta - Runtime metadata for the component (from meta[componentName])
+ * @param {Object|null} [entityData] - Entity data resolved by EntityStore (null if none)
  * @returns {Object} Prepared props: { content, params }
  */
-export function prepareProps(block, meta) {
+export function prepareProps(block, meta, entityData = null) {
+  mergeEntityData(block, entityData)
+  runContentHandler(block)
+
   // Apply param defaults
   const defaults = meta?.defaults || {}
   const params = applyDefaults(block.properties, defaults)

@@ -214,12 +214,44 @@ function mergeEntityData(block, entityData) {
 }
 
 /**
+ * Run the foundation-level data handler on a block, if one is
+ * registered. Runs after entity data merge and before the content
+ * handler — the handler sees the fully assembled data and can filter,
+ * reshape, or augment it before Loom (or any content transform) runs.
+ *
+ * The handler receives `(data, block)` where data is
+ * `block.parsedContent.data`. It returns a new data object, or
+ * null/undefined for no change. The returned data replaces
+ * `block.parsedContent.data` for all downstream processing — both
+ * the content handler and the component see the transformed data.
+ *
+ * Skipped when the block is still waiting on async data
+ * (`block.dataLoading`), or when no handler is registered.
+ * Errors are logged and the original data is preserved.
+ */
+function runDataHandler(block) {
+  if (block.dataLoading) return
+  const handler = globalThis.uniweb?.foundationConfig?.handlers?.data
+  if (typeof handler !== 'function') return
+
+  try {
+    const result = handler(block.parsedContent.data, block)
+    if (result != null && result !== block.parsedContent.data) {
+      block.parsedContent.data = result
+    }
+  } catch (err) {
+    console.error('Foundation data handler failed:', err)
+  }
+}
+
+/**
  * Run the foundation-level content handler on a block, if one is
- * registered. Runs at prop-preparation time — after any entity data
- * has been merged onto `block.parsedContent.data` — so the handler
- * sees the fully assembled data. Replaces `block.parsedContent` in
- * place with the re-parsed, instantiated form. The handler receives
- * `(data, block)` and reads raw ProseMirror from `block.rawContent`.
+ * registered. Runs at prop-preparation time — after the data handler
+ * has had a chance to filter/reshape the data — so the handler sees
+ * the fully assembled (and possibly filtered) data. Replaces
+ * `block.parsedContent` in place with the re-parsed, instantiated
+ * form. The handler receives `(data, block)` and reads raw
+ * ProseMirror from `block.rawContent`.
  *
  * Skipped when the block is still waiting on async data
  * (`block.dataLoading`), when no handler is registered, when the
@@ -246,6 +278,32 @@ function runContentHandler(block) {
 }
 
 /**
+ * Run the foundation-level props handler on the final { content, params }
+ * before they reach the component. Runs after content parsing, param
+ * defaults, content guarantees, and schema application — the handler
+ * sees the exact shape the component would receive and can modify it.
+ *
+ * The handler receives `(content, params, block)` and returns a new
+ * `{ content, params }` object, or null/undefined for no change.
+ *
+ * Use cases: post-parse content reshaping, computed fields derived
+ * from both content and params, param-driven content reorganization.
+ * Errors are logged and the original props are preserved.
+ */
+function runPropsHandler(content, params, block) {
+  const handler = globalThis.uniweb?.foundationConfig?.handlers?.props
+  if (typeof handler !== 'function') return null
+
+  try {
+    const result = handler(content, params, block)
+    if (result && typeof result === 'object') return result
+  } catch (err) {
+    console.error('Foundation props handler failed:', err)
+  }
+  return null
+}
+
+/**
  * Prepare props for a component with runtime guarantees.
  *
  * Does the full content-assembly pipeline in one place so both
@@ -254,14 +312,18 @@ function runContentHandler(block) {
  *
  *   1. Merge entity data (resolved by EntityStore) onto
  *      `block.parsedContent.data`.
- *   2. Run the foundation content handler (if registered) on the
+ *   2. Run the foundation data handler (if registered) to filter or
+ *      reshape the assembled data.
+ *   3. Run the foundation content handler (if registered) on the
  *      block. This may replace `block.parsedContent` with a re-parsed,
  *      instantiated version.
- *   3. Build the guaranteed content structure.
- *   4. Apply schemas from meta.
- *   5. Apply param defaults.
+ *   4. Apply param defaults from meta.
+ *   5. Build the guaranteed content structure.
+ *   6. Apply schemas to content.data.
+ *   7. Run the foundation props handler (if registered) for
+ *      post-processing of the final { content, params }.
  *
- * Steps 1 and 2 mutate the block (vanilla JS layer). Steps 3–5 are
+ * Steps 1–3 mutate the block (vanilla JS layer). Steps 4–7 are
  * pure derivations of the block's now-assembled state.
  *
  * @param {Object} block - The block instance
@@ -271,6 +333,7 @@ function runContentHandler(block) {
  */
 export function prepareProps(block, meta, entityData = null) {
   mergeEntityData(block, entityData)
+  runDataHandler(block)
   runContentHandler(block)
 
   // Apply param defaults
@@ -278,12 +341,21 @@ export function prepareProps(block, meta, entityData = null) {
   const params = applyDefaults(block.properties, defaults)
 
   // Guarantee content structure
-  const content = guaranteeContentStructure(block.parsedContent)
+  let content = guaranteeContentStructure(block.parsedContent)
 
   // Apply schemas to content.data
   const schemas = meta?.schemas || null
   if (schemas && content.data) {
     content.data = applySchemas(content.data, schemas)
+  }
+
+  // Post-process hook
+  const adjusted = runPropsHandler(content, params, block)
+  if (adjusted) {
+    return {
+      content: adjusted.content || content,
+      params: adjusted.params || params,
+    }
   }
 
   return { content, params }

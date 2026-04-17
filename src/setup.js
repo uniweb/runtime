@@ -36,6 +36,13 @@ import { ChildBlocks } from './components/PageRenderer.jsx'
 // is prefetched inside the transition callback so the user never sees
 // a blank or loading state.
 
+/**
+ * Prefetch split page content with a timeout.
+ * Resolves when content is loaded or the timeout expires — whichever
+ * comes first. This keeps the old-page screenshot from freezing too
+ * long on slow connections. If the timeout wins, navigation proceeds
+ * and the PageRenderer loading gate handles the rest.
+ */
 const CONTENT_PREFETCH_TIMEOUT = 1000
 export const prefersReducedMotion =
   typeof window !== 'undefined'
@@ -54,6 +61,10 @@ export function prefetchContent(route) {
   ])
 }
 
+/**
+ * Prefetch split content and navigate inside a view transition.
+ * Falls back to plain navigation when transitions are not available.
+ */
 function navigateWithTransition(navigate, to, options) {
   const vt = globalThis.uniweb?.foundationConfig?.viewTransitions
   if (vt && document.startViewTransition && !prefersReducedMotion) {
@@ -96,6 +107,10 @@ const ViewTransitionLink = React.forwardRef(function ViewTransitionLink(
   })
 })
 
+/**
+ * View-transition-aware useNavigate hook.
+ * The returned function wraps navigation in startViewTransition() when enabled.
+ */
 function useNavigate() {
   const navigate = useRouterNavigate()
   return (to, options) => navigateWithTransition(navigate, to, options)

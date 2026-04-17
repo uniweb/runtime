@@ -380,13 +380,24 @@ export function renderLayout(page, website) {
  * @param {function} [options.onProgress] - Progress callback
  * @returns {Object} Configured uniweb instance
  */
-export function initPrerender(content, foundation, options = {}) {
+export function initPrerender(content, foundation, extensionsOrOptions, maybeOptions) {
+  // Backwards-compatible arg shape: (content, foundation, options) or
+  // (content, foundation, extensions, options). Extensions must be passed at
+  // construction so the Website's FetcherDispatcher sees their routes.
+  let extensions = []
+  let options = {}
+  if (Array.isArray(extensionsOrOptions)) {
+    extensions = extensionsOrOptions
+    options = maybeOptions || {}
+  } else {
+    options = extensionsOrOptions || {}
+  }
   const { onProgress = () => {} } = options
 
   onProgress('Initializing runtime...')
-  // Uniweb constructor wires foundation, capabilities, layoutMeta, and handlers
-  // from the passed foundation module — see framework/core/src/uniweb.js.
-  const uniweb = createUniweb(content, foundation, [])
+  // Uniweb constructor wires foundation, capabilities, layoutMeta, handlers,
+  // and extensions at construction time — see framework/core/src/uniweb.js.
+  const uniweb = createUniweb(content, foundation, extensions)
 
   // Set base path from site config for subdirectory deployments
   if (content.config?.base && uniweb.activeWebsite?.setBasePath) {

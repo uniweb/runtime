@@ -18,7 +18,7 @@
  */
 
 import React from 'react'
-import { createUniweb, defaultCacheKey } from '@uniweb/core'
+import { createUniweb, deriveCacheKey } from '@uniweb/core'
 import { createDefaultFetcher } from './default-fetcher.js'
 import {
   Link as RouterLink,
@@ -272,7 +272,7 @@ export function initUniweb({ content, foundation, extensions = [], routingCompon
 export function hydrateDataStore(website, fetchedData) {
   if (!website?.dataStore) return
   for (const entry of fetchedData) {
-    website.dataStore.set(defaultCacheKey(entry.config), { data: entry.data })
+    website.dataStore.set(deriveCacheKey(entry.config), { data: entry.data })
   }
 }
 

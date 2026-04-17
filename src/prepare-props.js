@@ -4,9 +4,13 @@
  * Prepares props for foundation components with:
  * - Param defaults from runtime schema
  * - Guaranteed content structure (no null checks needed)
+ * - Entity-shape guarantees on `content.data` when `data.entity` is declared
+ *   and a cascade match exists (see applyEntityShape below)
  *
  * This enables simpler component code by ensuring predictable prop shapes.
  */
+
+import { singularize } from '@uniweb/core'
 
 /**
  * Guarantee item has flat content structure
@@ -165,6 +169,54 @@ export function applySchemas(data, schemas) {
     if (!schema) continue  // No schema for this tag - leave as-is
 
     result[tag] = applySchemaToValue(rawValue, schema)
+  }
+
+  return result
+}
+
+/**
+ * Apply entity-shape guarantees based on `data.entity` declaration.
+ *
+ * When a component declares `data: { entity: 'articles' }` **and** the
+ * cascade produced a match for that schema (`content.data.articles` is
+ * present), normalize:
+ *   - `content.data.articles` to an array (missing → `[]` is *not* added;
+ *     absence is preserved as a signal of "no source"). This only shapes
+ *     when a cascade match exists — if the key is missing entirely, it
+ *     stays missing.
+ *   - On template pages, `content.data[singular(entity)]` is guaranteed
+ *     to exist (defaulting to `null`) so components can do
+ *     `if (!article) return <NotFound />` without a `?.` chain.
+ *
+ * The `undefined` vs `[]` vs `null` distinctions are load-bearing:
+ *   - `content.data.articles === undefined` → no query for this entity
+ *   - `content.data.articles === []`        → query ran, returned empty
+ *   - `content.data.article === null`       → on template page, item not found
+ *   - `content.data.article === {...}`      → on template page, item resolved
+ *
+ * @param {Object} data - content.data (already merged with entity data)
+ * @param {Object|null} entityMeta - runtime data meta (`{ type, limit }`)
+ * @param {Object|null} dynamicContext - set when block is on a template page
+ * @returns {Object} data with entity-shape guarantees applied
+ */
+export function applyEntityShape(data, entityMeta, dynamicContext) {
+  if (!entityMeta?.type || !data) return data || {}
+
+  const plural = entityMeta.type
+  const result = { ...data }
+
+  // Only shape the collection when it was delivered. Absence stays absence.
+  if (plural in result && !Array.isArray(result[plural]) && result[plural] != null) {
+    // Delivered but wrong shape — coerce to array (single item → [item]).
+    result[plural] = [result[plural]]
+  }
+
+  // On template pages, guarantee the singular key exists (null = not found).
+  if (dynamicContext) {
+    const singular = singularize(plural) || plural
+    if (singular !== plural && !(singular in result)) {
+      result[singular] = null
+    }
   }
 
   return result
@@ -342,6 +394,16 @@ export function prepareProps(block, meta, entityData = null) {
 
   // Guarantee content structure
   let content = guaranteeContentStructure(block.parsedContent)
+
+  // Apply entity-shape guarantees when the component declared `data.entity`
+  // and a cascade match exists. Preserves `undefined` vs `[]` vs `null`
+  // distinctions so components can differentiate "no source" from
+  // "empty source" from "template item not found."
+  const entityMeta = meta?.data || null
+  if (entityMeta && content.data) {
+    const dynamicContext = block.dynamicContext || block.page?.dynamicContext || null
+    content.data = applyEntityShape(content.data, entityMeta, dynamicContext)
+  }
 
   // Apply schemas to content.data
   const schemas = meta?.schemas || null

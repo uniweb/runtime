@@ -62,12 +62,15 @@ export async function loadFoundation(source) {
 }
 
 /**
- * Load extensions (secondary foundations) in parallel
+ * Load extensions (secondary foundations) in parallel. Returns the loaded
+ * modules so the caller can pass them into `new Uniweb(...)` / `initUniweb(...)`.
+ * Extensions that fail to load are logged and omitted from the result.
+ *
  * @param {Array<string|Object>} urls - Extension URLs or {url, cssUrl} objects
- * @param {Object} uniwebInstance - The Uniweb instance to register extensions on
+ * @returns {Promise<Array<Object>>} Loaded extension modules, in source order.
  */
-export async function loadExtensions(urls, uniwebInstance) {
-  if (!urls?.length) return
+export async function loadExtensions(urls) {
+  if (!urls?.length) return []
 
   // Resolve extension URLs against base path for subdirectory deployments
   // e.g., /effects/foundation.js → /templates/extensions/effects/foundation.js
@@ -84,15 +87,17 @@ export async function loadExtensions(urls, uniwebInstance) {
   }
 
   const results = await Promise.allSettled(
-    urls.map(url => loadFoundation(resolveUrl(url)))
+    urls.map((url) => loadFoundation(resolveUrl(url))),
   )
 
+  const loaded = []
   for (let i = 0; i < results.length; i++) {
     if (results[i].status === 'fulfilled') {
-      uniwebInstance.registerExtension(results[i].value)
+      loaded.push(results[i].value)
       console.log(`[Runtime] Extension loaded: ${urls[i]}`)
     } else {
       console.warn(`[Runtime] Extension failed to load: ${urls[i]}`, results[i].reason)
     }
   }
+  return loaded
 }

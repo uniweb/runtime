@@ -8,7 +8,7 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 
-import { setupUniweb, registerFoundation, decodeData } from './setup.js'
+import { initUniweb, decodeData } from './setup.js'
 import { loadFoundation, loadExtensions } from './foundation-loader.js'
 import RuntimeProvider from './RuntimeProvider.jsx'
 
@@ -54,9 +54,6 @@ async function initRuntime(foundationSource, options = {}) {
     return
   }
 
-  // Initialize core runtime
-  const uniwebInstance = setupUniweb(configData)
-
   try {
     let foundation
 
@@ -78,14 +75,16 @@ async function initRuntime(foundationSource, options = {}) {
       throw new Error('Failed to load foundation')
     }
 
-    // Register foundation on the runtime
-    registerFoundation(uniwebInstance, foundation)
+    // Load extensions (secondary foundations) in parallel with foundation
+    // processing. An extension that fails to load doesn't block the site.
+    const extensionSources = configData?.config?.extensions || []
+    const extensions = extensionSources.length > 0
+      ? await loadExtensions(extensionSources)
+      : []
 
-    // Load extensions (secondary foundations)
-    const extensions = configData?.config?.extensions
-    if (extensions?.length) {
-      await loadExtensions(extensions, uniwebInstance)
-    }
+    // Build the Uniweb singleton with foundation + extensions wired in upfront
+    // (dispatcher is assembled inside the Website constructor).
+    const uniwebInstance = initUniweb({ content: configData, foundation, extensions })
 
     // Derive basename
     const routerBasename = basename ?? getBasename()

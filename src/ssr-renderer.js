@@ -384,23 +384,9 @@ export function initPrerender(content, foundation, options = {}) {
   const { onProgress = () => {} } = options
 
   onProgress('Initializing runtime...')
-  const uniweb = createUniweb(content)
-  uniweb.setFoundation(foundation)
-
-  // Set foundation capabilities (Layout, props, etc.)
-  if (foundation.default?.capabilities) {
-    uniweb.setFoundationConfig(foundation.default.capabilities)
-  }
-
-  // Attach layout metadata (areas, transitions, defaults)
-  if (foundation.default?.layoutMeta && uniweb.foundationConfig) {
-    uniweb.foundationConfig.layoutMeta = foundation.default.layoutMeta
-  }
-
-  // Attach foundation content handlers (e.g. Loom template instantiation)
-  if (foundation.default?.handlers && uniweb.foundationConfig) {
-    uniweb.foundationConfig.handlers = foundation.default.handlers
-  }
+  // Uniweb constructor wires foundation, capabilities, layoutMeta, and handlers
+  // from the passed foundation module — see framework/core/src/uniweb.js.
+  const uniweb = createUniweb(content, foundation, [])
 
   // Set base path from site config for subdirectory deployments
   if (content.config?.base && uniweb.activeWebsite?.setBasePath) {

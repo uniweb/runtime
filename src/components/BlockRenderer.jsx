@@ -94,15 +94,19 @@ export default function BlockRenderer({ block, as = 'section' }) {
     setAsyncData(null)
   }, [block])
 
-  // Fetch missing data asynchronously
+  // Fetch missing data asynchronously. The AbortController's signal flows
+  // into ctx.signal so fetchers see the cancellation, and the FetcherDispatcher
+  // attaches it to the shared in-flight entry — aborting this block's signal
+  // doesn't cancel a fetch other blocks are still waiting on.
   useEffect(() => {
     if (resolved.status !== 'pending') return
 
-    let cancelled = false
-    entityStore.fetch(block, meta).then((result) => {
-      if (!cancelled && result.data) setAsyncData(result.data)
+    const controller = new AbortController()
+    entityStore.fetch(block, meta, { signal: controller.signal }).then((result) => {
+      if (controller.signal.aborted) return
+      if (result.data) setAsyncData(result.data)
     })
-    return () => { cancelled = true }
+    return () => controller.abort()
   }, [block])
 
   // Use sync resolved data when available, fall back to async

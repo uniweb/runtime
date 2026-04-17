@@ -187,7 +187,7 @@ export default function PageRenderer() {
   const isDynamicPending = !!(page?.dynamicContext && !website?._dynamicPageCache?.has(location.pathname))
   useEffect(() => {
     if (!isDynamicPending || !website?.dataStore) return
-    return website.dataStore.onUpdate(forceUpdate)
+    return website.dataStore.subscribe(forceUpdate)
   }, [isDynamicPending, website])
 
   // ─── Early returns (after all hooks) ───

@@ -8,8 +8,7 @@
     "./ssr": "./dist/ssr.js",
     "./provider": "./src/RuntimeProvider.jsx",
     "./setup": "./src/setup.js",
-    "./foundation-loader": "./src/foundation-loader.js",
-    "./data-fetcher-client": "./src/data-fetcher-client.js"
+    "./foundation-loader": "./src/foundation-loader.js"
   },
   "files": [
     "src",
@@ -42,6 +41,7 @@
   },
   "dependencies": {
     "@uniweb/core": "workspace:*",
+    "@uniweb/fetchers": "workspace:*",
     "@uniweb/theming": "workspace:*"
   },
   "devDependencies": {

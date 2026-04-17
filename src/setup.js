@@ -213,7 +213,8 @@ function buildDefaultFetcher() {
  */
 export function initUniweb({ content, foundation, extensions = [], routingComponents = DEFAULT_ROUTING_COMPONENTS }) {
   const defaultFetcher = buildDefaultFetcher()
-  const uniweb = createUniweb(content, foundation, extensions, { defaultFetcher })
+  const dev = !!(import.meta.env && import.meta.env.DEV)
+  const uniweb = createUniweb(content, foundation, extensions, { defaultFetcher, dev })
 
   // Pre-populate DataStore from build-time fetched data — each entry is
   // keyed by the framework's default cache key so runtime dispatches

@@ -166,6 +166,11 @@ const ICON_FAMILY_MAP = {
   gi: 'gi',
 }
 
+/**
+ * Create CDN-based icon resolver
+ * @param {Object} iconConfig - From site.yml icons:
+ * @returns {Function} Resolver: (library, name) => Promise<string|null>
+ */
 function createIconResolver(iconConfig = {}) {
   const CDN_BASE = iconConfig.cdnUrl || 'https://uniweb.github.io/icons'
   const useCdn = iconConfig.cdn !== false
@@ -282,6 +287,7 @@ export async function decodeData() {
 
   const raw = el.textContent
 
+  // Plain JSON (uncompressed)
   if (el.type === 'application/json') {
     try {
       return JSON.parse(raw)
@@ -290,6 +296,7 @@ export async function decodeData() {
     }
   }
 
+  // Compressed (application/gzip or legacy application/octet-stream)
   if (typeof DecompressionStream !== 'undefined') {
     try {
       const bytes = Uint8Array.from(atob(raw), (c) => c.charCodeAt(0))
@@ -304,6 +311,7 @@ export async function decodeData() {
     }
   }
 
+  // Fallback for old browsers: try plain JSON (server can detect User-Agent)
   try {
     return JSON.parse(raw)
   } catch {

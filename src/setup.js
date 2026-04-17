@@ -19,7 +19,7 @@
 
 import React from 'react'
 import { createUniweb, defaultCacheKey } from '@uniweb/core'
-import { createStaticJsonFetcher } from '@uniweb/fetchers'
+import { createDefaultFetcher } from './default-fetcher.js'
 import {
   Link as RouterLink,
   useNavigate as useRouterNavigate,
@@ -213,7 +213,7 @@ function buildDefaultFetcher() {
   // BASE_URL is injected by Vite at build. For subpath deployments the default
   // fetcher prepends it to local absolute paths (remote URLs are never touched).
   const basePath = import.meta.env?.BASE_URL || ''
-  return createStaticJsonFetcher({ basePath })
+  return createDefaultFetcher({ basePath })
 }
 
 /**

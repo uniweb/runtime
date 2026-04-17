@@ -41,7 +41,6 @@
   },
   "dependencies": {
     "@uniweb/core": "workspace:*",
-    "@uniweb/fetchers": "workspace:*",
     "@uniweb/theming": "workspace:*"
   },
   "devDependencies": {

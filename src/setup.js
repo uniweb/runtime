@@ -209,11 +209,15 @@ function createIconResolver(iconConfig = {}) {
 
 // ─── Runtime default fetcher ────────────────────────────────────────────────
 
-function buildDefaultFetcher() {
+function buildDefaultFetcher(content) {
   // BASE_URL is injected by Vite at build. For subpath deployments the default
   // fetcher prepends it to local absolute paths (remote URLs are never touched).
   const basePath = import.meta.env?.BASE_URL || ''
-  return createDefaultFetcher({ basePath })
+  // Per-site transport config from `site.yml fetcher:`. The default fetcher
+  // recognizes `baseUrl` and `envelope`; foundations with their own fetchers
+  // may read additional keys from the same block via ctx.website.config.fetcher.
+  const config = content?.config?.fetcher ?? {}
+  return createDefaultFetcher({ basePath, config })
 }
 
 /**
@@ -232,7 +236,7 @@ function buildDefaultFetcher() {
  * @returns {import('@uniweb/core').Uniweb}
  */
 export function initUniweb({ content, foundation, extensions = [], routingComponents = DEFAULT_ROUTING_COMPONENTS }) {
-  const defaultFetcher = buildDefaultFetcher()
+  const defaultFetcher = buildDefaultFetcher(content)
   const dev = !!(import.meta.env && import.meta.env.DEV)
   const uniweb = createUniweb(content, foundation, extensions, { defaultFetcher, dev })
 

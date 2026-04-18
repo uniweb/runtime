@@ -18,6 +18,8 @@
     "build:ssr": "vite build --config vite.config.ssr.js",
     "build:app": "vite build --config vite.config.app.js",
     "build": "npm run build:ssr && npm run build:app",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prepublishOnly": "npm run build:ssr"
   },
   "keywords": [
@@ -46,7 +48,8 @@
   "devDependencies": {
     "@uniweb/build": "workspace:*",
     "@vitejs/plugin-react": "^4.5.2",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vitest": "^2.0.0"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",

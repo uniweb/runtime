@@ -233,12 +233,17 @@ function buildDefaultFetcher(content) {
  * @param {Object} options.foundation - Loaded primary foundation module.
  * @param {Array<Object>} [options.extensions] - Loaded extension modules.
  * @param {Object} [options.routingComponents] - Routing override (editor uses this).
+ * @param {{ resolve: Function, cacheKey?: Function }} [options.transport] -
+ *   Runtime-level transport override. When set, every Layer-1 request is routed
+ *   through this transport, bypassing foundation routes and the framework
+ *   default. Used only by the editor's preview iframe — normal sites never
+ *   pass this option.
  * @returns {import('@uniweb/core').Uniweb}
  */
-export function initUniweb({ content, foundation, extensions = [], routingComponents = DEFAULT_ROUTING_COMPONENTS }) {
+export function initUniweb({ content, foundation, extensions = [], routingComponents = DEFAULT_ROUTING_COMPONENTS, transport = null }) {
   const defaultFetcher = buildDefaultFetcher(content)
   const dev = !!(import.meta.env && import.meta.env.DEV)
-  const uniweb = createUniweb(content, foundation, extensions, { defaultFetcher, dev })
+  const uniweb = createUniweb(content, foundation, extensions, { defaultFetcher, transport, dev })
 
   // Pre-populate DataStore from build-time fetched data — each entry is
   // keyed by the framework's default cache key so runtime dispatches

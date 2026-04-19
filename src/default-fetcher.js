@@ -81,12 +81,15 @@ const KNOWN_OPERATORS = new Set(['where', 'limit', 'sort'])
  *   for subpath deployments. Remote URLs pass through unchanged.
  * @param {Object} [options.config={}] - Site-level fetcher config from
  *   `site.yml fetcher:`. Vocabulary recognized by the default fetcher:
- *   `baseUrl`, `headers`, `envelope`. Unknown keys are ignored (foundations
- *   may use the same block for their own keys).
- *   Default behavior (empty config) matches today's plain GET + JSON.
+ *   `baseUrl`, `headers`, `envelope`, `supports`, `request.style`,
+ *   `request.rename`. Unknown keys are ignored (foundations may use the
+ *   same block for their own keys). Default behavior (empty config)
+ *   matches today's plain GET + JSON.
+ * @param {boolean} [options.dev=false] - Enable dev-mode warnings (unknown
+ *   style name, unknown rename operator).
  * @returns {{ resolve: (req: Object, ctx: Object) => Promise<{ data, error? }> }}
  */
-export function createDefaultFetcher({ basePath = '', config = {} } = {}) {
+export function createDefaultFetcher({ basePath = '', config = {}, dev = false } = {}) {
   const pathPrefix = basePath && basePath !== '/' ? basePath.replace(/\/$/, '') : ''
 
   const baseUrl = typeof config?.baseUrl === 'string'
@@ -115,10 +118,17 @@ export function createDefaultFetcher({ basePath = '', config = {} } = {}) {
   // default fetcher serving static files supports nothing natively.
   const supports = normalizeSupports(config?.supports)
 
-  // Request style — how operators get reshaped for the wire. Phase 1
-  // uses the ambient default (json-body); Phase 2 will consult
-  // `config.request.style`.
-  const style = resolveRequestStyle(null)
+  // Request style — how operators get reshaped for the wire. Selected
+  // by name via `site.yml fetcher.request.style`; `null`/absent resolves
+  // to the ambient default (json-body).
+  const requestConfig = (config?.request && typeof config.request === 'object') ? config.request : {}
+  const styleName = typeof requestConfig.style === 'string' ? requestConfig.style : null
+  const style = resolveRequestStyle(styleName, { dev })
+
+  // Operator-name renames applied on top of the style's wire names.
+  // Shallow: only the operator keys (where / limit / sort) are rewritten.
+  // Field names inside a where-object are untouched.
+  const rename = normalizeRename(requestConfig.rename, style, { dev })
 
   return {
     /**
@@ -134,15 +144,24 @@ export function createDefaultFetcher({ basePath = '', config = {} } = {}) {
      * the predicate travels in the request.
      */
     cacheKey(request) {
-      // Build a request projection that includes only pushed-down operators.
-      // deriveCacheKey already covers the always-keyed fields.
+      // Build a request projection that includes only operators the active
+      // style will actually push for this request. deriveCacheKey already
+      // covers the always-keyed fields.
+      //
+      // The key also includes the style name — two sites with different
+      // styles against the same URL produce different wire requests, so
+      // their responses must not alias.
       const base = deriveCacheKey(request)
       const projected = {}
       for (const op of supports) {
+        if (!style.canPush.has(op)) continue
         if (request[op] !== undefined) projected[op] = request[op]
       }
-      if (Object.keys(projected).length === 0) return base
-      return base + '::' + JSON.stringify(projected)
+      if (Object.keys(projected).length === 0 && style.name === 'json-body') {
+        // Keep back-compat key shape when the ambient default pushes nothing.
+        return base
+      }
+      return base + '::style=' + style.name + '::' + JSON.stringify(projected)
     },
 
     async resolve(request, ctx = {}) {
@@ -207,7 +226,7 @@ export function createDefaultFetcher({ basePath = '', config = {} } = {}) {
       }
 
       const encoded = pushCandidates.size > 0
-        ? style.encode(request, { method, pushCandidates, rename: null })
+        ? style.encode(request, { method, pushCandidates, rename })
         : { queryParams: [], bodyMerge: null, pushed: new Set() }
       const pushedOperators = encoded.pushed
 
@@ -319,6 +338,31 @@ export function createDefaultFetcher({ basePath = '', config = {} } = {}) {
     },
   }
 }
+
+/**
+ * Normalize the `request.rename` map. Returns null if nothing valid.
+ * Dev-mode warns on operator names that don't exist in the style's
+ * `canPush` set — a rename that targets an operator the style doesn't
+ * push is silently dead config, and the warning surfaces the mistake.
+ */
+function normalizeRename(raw, style, { dev }) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const out = {}
+  for (const [op, wireName] of Object.entries(raw)) {
+    if (typeof wireName !== 'string' || wireName.length === 0) continue
+    if (dev && !style.canPush.has(op) && !warnedRenameTargets.has(op)) {
+      warnedRenameTargets.add(op)
+      console.warn(
+        `[default-fetcher] request.rename: operator "${op}" is not pushed by ` +
+          `style "${style.name}" — rename has no effect. Known operators for ` +
+          `this style: ${[...style.canPush].join(', ') || '(none)'}.`,
+      )
+    }
+    out[op] = wireName
+  }
+  return Object.keys(out).length ? out : null
+}
+const warnedRenameTargets = new Set()
 
 /**
  * Normalize the supports declaration to a Set of known operators. Unknown

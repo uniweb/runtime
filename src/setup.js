@@ -217,7 +217,8 @@ function buildDefaultFetcher(content) {
   // recognizes `baseUrl` and `envelope`; foundations with their own fetchers
   // may read additional keys from the same block via ctx.website.config.fetcher.
   const config = content?.config?.fetcher ?? {}
-  return createDefaultFetcher({ basePath, config })
+  const dev = !!(import.meta.env && import.meta.env.DEV)
+  return createDefaultFetcher({ basePath, config, dev })
 }
 
 /**

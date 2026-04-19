@@ -601,3 +601,152 @@ describe('createDefaultFetcher — supports: validation', () => {
     expect(result.data).toEqual([])
   })
 })
+
+describe('createDefaultFetcher — config.request.style (registry)', () => {
+  let fetchStub
+
+  beforeEach(() => {
+    fetchStub = stubFetch({ body: [{ id: 1 }] })
+  })
+  afterEach(() => fetchStub.restore())
+
+  it("ambient default when request.style is unset (json-body semantics)", async () => {
+    const f = createDefaultFetcher({ config: { supports: ['where'] } })
+    await f.resolve({ url: 'https://api.example.com/x', where: { id: 1 } })
+    expect(fetchStub.calls[0].input).toContain('_where=')
+  })
+
+  it('explicit request.style: json-body matches the ambient default', async () => {
+    const f = createDefaultFetcher({
+      config: { supports: ['where'], request: { style: 'json-body' } },
+    })
+    await f.resolve({ url: 'https://api.example.com/x', where: { id: 1 } })
+    expect(fetchStub.calls[0].input).toContain('_where=')
+  })
+
+  it('unknown style falls back to json-body with a dev-mode warning', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const f = createDefaultFetcher({
+      config: { supports: ['where'], request: { style: 'nonexistent' } },
+      dev: true,
+    })
+    await f.resolve({ url: 'https://api.example.com/x', where: { id: 1 } })
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('unknown request style "nonexistent"'),
+    )
+    // Behavior is still json-body (ambient default).
+    expect(fetchStub.calls[0].input).toContain('_where=')
+    warn.mockRestore()
+  })
+
+  it('unknown style silently falls back without dev', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const f = createDefaultFetcher({
+      config: { supports: ['where'], request: { style: 'nonexistent-prod' } },
+    })
+    await f.resolve({ url: 'https://api.example.com/x', where: { id: 1 } })
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+})
+
+describe('createDefaultFetcher — config.request.rename', () => {
+  let fetchStub
+
+  beforeEach(() => {
+    fetchStub = stubFetch({ body: [] })
+  })
+  afterEach(() => fetchStub.restore())
+
+  it('renames GET wire names on the json-body style', async () => {
+    const f = createDefaultFetcher({
+      config: {
+        supports: ['limit', 'sort'],
+        request: { rename: { limit: 'pageSize', sort: 'orderBy' } },
+      },
+    })
+    await f.resolve({ url: 'https://api.example.com/x', limit: 10, sort: 'date desc' })
+    const url = fetchStub.calls[0].input
+    expect(url).toContain('pageSize=10')
+    expect(url).toContain('orderBy=')
+    expect(url).not.toContain('_limit=')
+    expect(url).not.toContain('_sort=')
+  })
+
+  it('renames POST body keys on the json-body style', async () => {
+    const f = createDefaultFetcher({
+      config: {
+        supports: ['limit'],
+        request: { rename: { limit: 'pageSize' } },
+      },
+    })
+    await f.resolve({
+      url: 'https://api.example.com/x',
+      method: 'POST',
+      limit: 10,
+    })
+    const body = JSON.parse(fetchStub.calls[0].init.body)
+    expect(body).toEqual({ pageSize: 10 })
+  })
+
+  it('warns in dev for rename entries targeting operators the style cannot push', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    createDefaultFetcher({
+      config: {
+        supports: ['limit'],
+        request: { rename: { somethingElse: 'wire' } },
+      },
+      dev: true,
+    })
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('operator "somethingElse" is not pushed'),
+    )
+    warn.mockRestore()
+  })
+
+  it('ignores empty-string / non-string rename values', async () => {
+    const f = createDefaultFetcher({
+      config: {
+        supports: ['limit'],
+        request: { rename: { limit: '' } },
+      },
+    })
+    await f.resolve({ url: 'https://api.example.com/x', limit: 10 })
+    const url = fetchStub.calls[0].input
+    // Empty string is invalid — rename falls back to style default `_limit`.
+    expect(url).toContain('_limit=10')
+  })
+})
+
+describe('createDefaultFetcher — cacheKey varies by style', () => {
+  it('same style + same request → same key', () => {
+    const a = createDefaultFetcher({ config: { supports: ['where'] } })
+    const b = createDefaultFetcher({
+      config: { supports: ['where'], request: { style: 'json-body' } },
+    })
+    const req = { url: 'https://api.example.com/x', schema: 'x', where: { id: 1 } }
+    expect(a.cacheKey(req)).toEqual(b.cacheKey(req))
+  })
+
+  it('style name appears in the key when operators are pushed', () => {
+    const f = createDefaultFetcher({
+      config: { supports: ['where'], request: { style: 'json-body' } },
+    })
+    const key = f.cacheKey({
+      url: 'https://api.example.com/x',
+      schema: 'x',
+      where: { id: 1 },
+    })
+    expect(key).toContain('style=json-body')
+  })
+
+  it('no pushed operators → key stays in back-compat shape (no style suffix)', () => {
+    const f = createDefaultFetcher() // supports: []
+    const key = f.cacheKey({
+      url: 'https://api.example.com/x',
+      schema: 'x',
+      where: { id: 1 },
+    })
+    expect(key).not.toContain('style=')
+  })
+})

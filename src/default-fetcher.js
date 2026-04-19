@@ -56,7 +56,17 @@
  * it's public. That's not a framework feature gap; it's how browsers work.
  */
 
-import { substitutePlaceholders, matchWhere, deriveCacheKey } from '@uniweb/core'
+import {
+  substitutePlaceholders,
+  matchWhere,
+  deriveCacheKey,
+  resolveRequestStyle,
+} from '@uniweb/core'
+
+// Phase 2 of the request-styles landing will read `config.request.style`
+// and dispatch through the registry; in Phase 1 we hard-wire the ambient
+// default (json-body) via the same resolver. No behavior change — the
+// resolved style is json-body, which encodes today's conventions.
 
 // Operators the default fetcher knows how to handle. When listed in
 // `config.supports`, they're shipped to the source as part of the
@@ -104,6 +114,11 @@ export function createDefaultFetcher({ basePath = '', config = {} } = {}) {
   // fallback after the response arrives. Default: empty — the framework
   // default fetcher serving static files supports nothing natively.
   const supports = normalizeSupports(config?.supports)
+
+  // Request style — how operators get reshaped for the wire. Phase 1
+  // uses the ambient default (json-body); Phase 2 will consult
+  // `config.request.style`.
+  const style = resolveRequestStyle(null)
 
   return {
     /**
@@ -167,25 +182,37 @@ export function createDefaultFetcher({ basePath = '', config = {} } = {}) {
       // decorate local file reads with tenant/content-type headers.
       if (isRemote && staticHeaders) Object.assign(headers, staticHeaders)
 
-      // Push down supported query operators to the source. Pushdown only
-      // applies to remote URLs — local `path:` reads are static files that
-      // can't filter or sort. Operators not pushed down get applied as a
-      // JS fallback after the response (see post-fetch block below).
+      // Push down supported query operators to the source via the active
+      // request style. Pushdown only applies to remote URLs — local `path:`
+      // reads are static files that can't filter or sort. Operators the
+      // style didn't push get applied as a JS fallback after the response
+      // (see the post-fetch block below).
       //
-      // GET pushdown uses URL query parameters: `?_where=<JSON>`, `?_limit=`,
-      // `?_sort=field:dir`. The leading underscore avoids collision with
-      // backend-specific params. POST pushdown injects supported operators
-      // into the request body alongside any author-supplied body.
-      let pushedOperators = new Set()
+      // The style owns the wire format. Today's json-body style encodes
+      // GET pushdown as `?_where=<JSON>&_limit=&_sort=` and POST pushdown
+      // as top-level keys merged into an object body. Other styles
+      // (flat-query, strapi) will ship in Phase 3.
+      const pushCandidates = new Set()
       if (isRemote) {
         for (const op of KNOWN_OPERATORS) {
-          if (supports.has(op) && request[op] !== undefined && request[op] !== null) {
-            pushedOperators.add(op)
+          if (
+            supports.has(op) &&
+            style.canPush.has(op) &&
+            request[op] !== undefined &&
+            request[op] !== null
+          ) {
+            pushCandidates.add(op)
           }
         }
       }
-      if (pushedOperators.size > 0 && method === 'GET') {
-        target = appendQueryParams(target, pushedOperators, request)
+
+      const encoded = pushCandidates.size > 0
+        ? style.encode(request, { method, pushCandidates, rename: null })
+        : { queryParams: [], bodyMerge: null, pushed: new Set() }
+      const pushedOperators = encoded.pushed
+
+      if (encoded.queryParams.length > 0 && method === 'GET') {
+        target = appendStyleQueryParams(target, encoded.queryParams)
       }
 
       if (method === 'POST') {
@@ -199,9 +226,9 @@ export function createDefaultFetcher({ basePath = '', config = {} } = {}) {
           : rawBody
 
         // Compose the final body: author-supplied body merged with pushed
-        // operators (where/limit/sort). When no body and no pushdown, send
-        // a body containing just the operators if any exist.
-        const finalBody = composePostBody(resolvedBody, pushedOperators, request)
+        // operators from the style. When no body and no pushdown, send
+        // a body containing just the pushed operators if any exist.
+        const finalBody = composePostBody(resolvedBody, encoded.bodyMerge)
 
         if (finalBody !== null) {
           // Default Content-Type to JSON unless the site's static headers
@@ -313,58 +340,36 @@ function normalizeSupports(raw) {
 const warnedUnknownOperators = new Set()
 
 /**
- * Append pushed-down operators to a URL as query parameters. Existing
- * query string is preserved.
- *
- * Conventions:
- *   - where:  `?_where=<JSON.stringify(whereObject)>` (URL-encoded)
- *   - limit:  `?_limit=N`
- *   - sort:   `?_sort=field:dir` (matches the author-facing string form)
- *
- * The leading underscore avoids collision with backend-specific params
- * the author may have included in `url:`.
+ * Append [key, value] pairs emitted by a style to a URL as query
+ * parameters. Existing query string is preserved; values are URL-encoded.
  */
-function appendQueryParams(url, pushedOperators, request) {
-  const params = []
-  if (pushedOperators.has('where')) {
-    params.push('_where=' + encodeURIComponent(JSON.stringify(request.where)))
-  }
-  if (pushedOperators.has('limit')) {
-    params.push('_limit=' + encodeURIComponent(String(request.limit)))
-  }
-  if (pushedOperators.has('sort')) {
-    params.push('_sort=' + encodeURIComponent(String(request.sort)))
-  }
-  if (params.length === 0) return url
+function appendStyleQueryParams(url, pairs) {
+  if (!pairs || pairs.length === 0) return url
+  const params = pairs.map(
+    ([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v),
+  )
   const sep = url.includes('?') ? '&' : '?'
   return url + sep + params.join('&')
 }
 
 /**
- * Compose a POST body that includes pushed-down operators alongside the
+ * Compose a POST body that includes the style's bodyMerge alongside the
  * author-supplied body. When neither exists, returns null (no body sent).
  *
- * If the author supplied a body (typically an object for GraphQL or a
- * search endpoint), pushed operators are merged into it as top-level keys
- * (`where`, `limit`, `sort`). If the author supplied a string body, we
- * don't try to merge — the string is sent as-is and operators are
- * dropped. This is a known limitation; sites with string POST bodies
- * needing pushdown should write the operators into the body themselves.
+ * If the author supplied a string body (typically GraphQL), we can't
+ * merge — the string is sent as-is and the style's bodyMerge is dropped.
+ * Sites with string POST bodies needing pushdown should write the
+ * operators into the body themselves.
  */
-function composePostBody(authorBody, pushedOperators, request) {
-  if (pushedOperators.size === 0) {
+function composePostBody(authorBody, bodyMerge) {
+  if (!bodyMerge) {
     return authorBody === undefined ? null : authorBody
   }
-  // String body — can't merge structured operators in.
   if (typeof authorBody === 'string') {
     return authorBody
   }
-  // No body or object body — merge operators.
-  const merged = (authorBody && typeof authorBody === 'object') ? { ...authorBody } : {}
-  if (pushedOperators.has('where')) merged.where = request.where
-  if (pushedOperators.has('limit')) merged.limit = request.limit
-  if (pushedOperators.has('sort')) merged.sort = request.sort
-  return merged
+  const base = (authorBody && typeof authorBody === 'object') ? authorBody : {}
+  return { ...base, ...bodyMerge }
 }
 
 /**

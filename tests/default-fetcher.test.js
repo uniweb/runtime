@@ -439,3 +439,165 @@ describe('createDefaultFetcher — method + body (POST)', () => {
     expect(result.data).toEqual({ id: 7 })
   })
 })
+
+// ─── supports: capability declaration + where/limit/sort ────────────────────
+
+describe('createDefaultFetcher — supports: [] (default, runtime fallback)', () => {
+  let fetchStub
+  beforeEach(() => {
+    fetchStub = stubFetch({
+      body: [
+        { id: 1, name: 'a', tenured: true, year: 1850 },
+        { id: 2, name: 'b', tenured: false, year: 1860 },
+        { id: 3, name: 'c', tenured: true, year: 1870 },
+      ],
+    })
+  })
+  afterEach(() => fetchStub.restore())
+
+  it('applies where as runtime fallback (no pushdown)', async () => {
+    const f = createDefaultFetcher()
+    const result = await f.resolve({ url: 'https://api.example.com/x', where: { tenured: true } })
+    expect(result.data.map((r) => r.id)).toEqual([1, 3])
+    expect(fetchStub.calls[0].input).toBe('https://api.example.com/x')
+  })
+
+  it('applies limit and sort as runtime fallback', async () => {
+    const f = createDefaultFetcher()
+    const result = await f.resolve({ url: 'https://api.example.com/x', sort: 'year desc', limit: 2 })
+    expect(result.data.map((r) => r.id)).toEqual([3, 2])
+  })
+
+  it('cache key does not include operators when none are pushed down', async () => {
+    const f = createDefaultFetcher()
+    const k1 = f.cacheKey({ url: 'https://api.example.com/x', where: { tenured: true } })
+    const k2 = f.cacheKey({ url: 'https://api.example.com/x', where: { tenured: false } })
+    expect(k1).toBe(k2)
+  })
+})
+
+describe('createDefaultFetcher — supports: [where] (predicate pushdown)', () => {
+  let fetchStub
+  beforeEach(() => {
+    fetchStub = stubFetch({ body: [{ id: 99, filtered: true }] })
+  })
+  afterEach(() => fetchStub.restore())
+
+  it('appends ?_where= to GET URLs when where is pushed down', async () => {
+    const f = createDefaultFetcher({ config: { supports: ['where'] } })
+    await f.resolve({ url: 'https://api.example.com/x', where: { tenured: true } })
+    const url = fetchStub.calls[0].input
+    expect(url).toContain('_where=')
+    expect(decodeURIComponent(url.split('_where=')[1])).toBe(JSON.stringify({ tenured: true }))
+  })
+
+  it('returns the source response unchanged when where is pushed down', async () => {
+    const f = createDefaultFetcher({ config: { supports: ['where'] } })
+    const result = await f.resolve({ url: 'https://api.example.com/x', where: { tenured: true } })
+    expect(result.data).toEqual([{ id: 99, filtered: true }])
+  })
+
+  it('cache key includes where when pushed down', async () => {
+    const f = createDefaultFetcher({ config: { supports: ['where'] } })
+    const k1 = f.cacheKey({ url: 'https://api.example.com/x', where: { tenured: true } })
+    const k2 = f.cacheKey({ url: 'https://api.example.com/x', where: { tenured: false } })
+    expect(k1).not.toBe(k2)
+  })
+
+  it('does not push down on local path: requests', async () => {
+    const f = createDefaultFetcher({ config: { supports: ['where'] } })
+    await f.resolve({ path: '/data/local.json', where: { tenured: true } })
+    expect(fetchStub.calls[0].input).toBe('/data/local.json')
+  })
+})
+
+describe('createDefaultFetcher — supports: partial (mixed pushdown + fallback)', () => {
+  let fetchStub
+  beforeEach(() => {
+    fetchStub = stubFetch({
+      body: [
+        { id: 1, year: 1850, tenured: true },
+        { id: 2, year: 1860, tenured: false },
+        { id: 3, year: 1870, tenured: true },
+      ],
+    })
+  })
+  afterEach(() => fetchStub.restore())
+
+  it('pushes down sort but applies where as fallback', async () => {
+    const f = createDefaultFetcher({ config: { supports: ['sort'] } })
+    const result = await f.resolve({
+      url: 'https://api.example.com/x',
+      where: { tenured: true },
+      sort: 'year desc',
+    })
+    const url = fetchStub.calls[0].input
+    expect(url).toContain('_sort=')
+    expect(url).not.toContain('_where=')
+    // Where is applied client-side after the source returned everything.
+    expect(result.data.map((r) => r.id)).toEqual([1, 3])
+  })
+
+  it('appends _limit= when limit is pushed down', async () => {
+    const f = createDefaultFetcher({ config: { supports: ['limit'] } })
+    await f.resolve({ url: 'https://api.example.com/x', limit: 5 })
+    expect(fetchStub.calls[0].input).toContain('_limit=5')
+  })
+})
+
+describe('createDefaultFetcher — POST with where pushdown', () => {
+  let fetchStub
+  beforeEach(() => {
+    fetchStub = stubFetch({ body: [{ id: 1 }] })
+  })
+  afterEach(() => fetchStub.restore())
+
+  it('merges where into POST body when pushed down', async () => {
+    const f = createDefaultFetcher({ config: { supports: ['where'] } })
+    await f.resolve({
+      url: 'https://api.example.com/search',
+      method: 'POST',
+      body: { token: 'abc' },
+      where: { tenured: true },
+    })
+    const body = JSON.parse(fetchStub.calls[0].init.body)
+    expect(body.token).toBe('abc')
+    expect(body.where).toEqual({ tenured: true })
+  })
+
+  it('sends a body with only operators when no author body is supplied', async () => {
+    const f = createDefaultFetcher({ config: { supports: ['where', 'limit'] } })
+    await f.resolve({
+      url: 'https://api.example.com/search',
+      method: 'POST',
+      where: { tenured: true },
+      limit: 5,
+    })
+    const body = JSON.parse(fetchStub.calls[0].init.body)
+    expect(body).toEqual({ where: { tenured: true }, limit: 5 })
+  })
+})
+
+describe('createDefaultFetcher — supports: validation', () => {
+  let fetchStub
+  beforeEach(() => {
+    fetchStub = stubFetch({ body: [] })
+  })
+  afterEach(() => fetchStub.restore())
+
+  it('ignores unknown operators in supports with a warning', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const f = createDefaultFetcher({ config: { supports: ['where', 'unknownOp'] } })
+    await f.resolve({ url: 'https://api.example.com/x', where: { id: 1 } })
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('unknown operator'))
+    warn.mockRestore()
+  })
+
+  it('non-array supports treated as empty', async () => {
+    const f = createDefaultFetcher({ config: { supports: 'where' } })
+    const result = await f.resolve({ url: 'https://api.example.com/x', where: { id: 1 } })
+    // No pushdown — request URL has no _where= param, response is filtered locally.
+    expect(fetchStub.calls[0].input).toBe('https://api.example.com/x')
+    expect(result.data).toEqual([])
+  })
+})

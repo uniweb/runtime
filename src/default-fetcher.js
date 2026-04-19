@@ -56,7 +56,14 @@
  * it's public. That's not a framework feature gap; it's how browsers work.
  */
 
-import { substitutePlaceholders } from '@uniweb/core'
+import { substitutePlaceholders, matchWhere, deriveCacheKey } from '@uniweb/core'
+
+// Operators the default fetcher knows how to handle. When listed in
+// `config.supports`, they're shipped to the source as part of the
+// request; when not listed, they're applied as a JS fallback after
+// fetch. The cache key reflects which operators get pushed down — same
+// query against different `supports:` produces different cache entries.
+const KNOWN_OPERATORS = new Set(['where', 'limit', 'sort'])
 
 /**
  * @param {Object} [options]
@@ -91,7 +98,38 @@ export function createDefaultFetcher({ basePath = '', config = {} } = {}) {
     ? config.envelope
     : {}
 
+  // `supports:` declares which query operators (where, limit, sort) the
+  // backend evaluates at the source. Operators in this list are shipped
+  // in the request; operators not in this list are applied as a JS
+  // fallback after the response arrives. Default: empty — the framework
+  // default fetcher serving static files supports nothing natively.
+  const supports = normalizeSupports(config?.supports)
+
   return {
+    /**
+     * Cache-key function. The default-fetcher's cache key includes only
+     * the operators it pushes down (because they affect what the source
+     * sees). Operators applied as runtime fallback operate on a shared
+     * cached value and therefore must NOT split the cache.
+     *
+     * Example: with `supports: []`, two pages declaring different
+     * `where:` clauses against the same path share one cache entry —
+     * the file is fetched once and each page filters its own copy. With
+     * `supports: [where]`, the same two pages fire two requests because
+     * the predicate travels in the request.
+     */
+    cacheKey(request) {
+      // Build a request projection that includes only pushed-down operators.
+      // deriveCacheKey already covers the always-keyed fields.
+      const base = deriveCacheKey(request)
+      const projected = {}
+      for (const op of supports) {
+        if (request[op] !== undefined) projected[op] = request[op]
+      }
+      if (Object.keys(projected).length === 0) return base
+      return base + '::' + JSON.stringify(projected)
+    },
+
     async resolve(request, ctx = {}) {
       if (!request) return { data: null }
       const { path, url, transform, body: rawBody } = request
@@ -129,24 +167,50 @@ export function createDefaultFetcher({ basePath = '', config = {} } = {}) {
       // decorate local file reads with tenant/content-type headers.
       if (isRemote && staticHeaders) Object.assign(headers, staticHeaders)
 
-      if (method === 'POST' && rawBody !== undefined && rawBody !== null) {
+      // Push down supported query operators to the source. Pushdown only
+      // applies to remote URLs — local `path:` reads are static files that
+      // can't filter or sort. Operators not pushed down get applied as a
+      // JS fallback after the response (see post-fetch block below).
+      //
+      // GET pushdown uses URL query parameters: `?_where=<JSON>`, `?_limit=`,
+      // `?_sort=field:dir`. The leading underscore avoids collision with
+      // backend-specific params. POST pushdown injects supported operators
+      // into the request body alongside any author-supplied body.
+      let pushedOperators = new Set()
+      if (isRemote) {
+        for (const op of KNOWN_OPERATORS) {
+          if (supports.has(op) && request[op] !== undefined && request[op] !== null) {
+            pushedOperators.add(op)
+          }
+        }
+      }
+      if (pushedOperators.size > 0 && method === 'GET') {
+        target = appendQueryParams(target, pushedOperators, request)
+      }
+
+      if (method === 'POST') {
         // Substitute {paramName} placeholders in body strings using the
         // dynamic-route context. The helper expects a flat key→value map;
         // build it from dynamicContext's { paramName, paramValue } shape.
         // Strict-brace matcher: GraphQL selection sets pass through unchanged.
         const dc = request.dynamicContext
-        const resolvedBody = dc && dc.paramName
+        const resolvedBody = (rawBody !== undefined && rawBody !== null && dc && dc.paramName)
           ? substitutePlaceholders(rawBody, { [dc.paramName]: dc.paramValue }, { encode: false })
           : rawBody
 
-        // Default Content-Type to JSON unless the site's static headers
-        // already set one (for application/graphql or form-urlencoded).
-        if (!hasHeader(headers, 'Content-Type')) {
-          headers['Content-Type'] = 'application/json'
+        // Compose the final body: author-supplied body merged with pushed
+        // operators (where/limit/sort). When no body and no pushdown, send
+        // a body containing just the operators if any exist.
+        const finalBody = composePostBody(resolvedBody, pushedOperators, request)
+
+        if (finalBody !== null) {
+          // Default Content-Type to JSON unless the site's static headers
+          // already set one (for application/graphql or form-urlencoded).
+          if (!hasHeader(headers, 'Content-Type')) {
+            headers['Content-Type'] = 'application/json'
+          }
+          init.body = typeof finalBody === 'string' ? finalBody : JSON.stringify(finalBody)
         }
-        init.body = typeof resolvedBody === 'string'
-          ? resolvedBody
-          : JSON.stringify(resolvedBody)
       }
 
       if (Object.keys(headers).length) init.headers = headers
@@ -212,6 +276,12 @@ export function createDefaultFetcher({ basePath = '', config = {} } = {}) {
           data = getNestedValue(data, effectiveTransform)
         }
 
+        // Apply runtime fallback for query operators not pushed down.
+        // Only applies to array data (filtering/sorting/limiting a single
+        // record doesn't make sense). For non-arrays, operators are
+        // silently ignored — the source returned what it returned.
+        data = applyFallbackOperators(data, request, pushedOperators)
+
         return { data: data ?? [] }
       } catch (error) {
         if (error?.name === 'AbortError') {
@@ -221,6 +291,121 @@ export function createDefaultFetcher({ basePath = '', config = {} } = {}) {
       }
     },
   }
+}
+
+/**
+ * Normalize the supports declaration to a Set of known operators. Unknown
+ * operator names are ignored with a one-time dev warning.
+ */
+function normalizeSupports(raw) {
+  const out = new Set()
+  if (!Array.isArray(raw)) return out
+  for (const op of raw) {
+    if (typeof op !== 'string') continue
+    if (KNOWN_OPERATORS.has(op)) out.add(op)
+    else if (!warnedUnknownOperators.has(op)) {
+      warnedUnknownOperators.add(op)
+      console.warn(`[default-fetcher] supports: unknown operator "${op}" — ignored.`)
+    }
+  }
+  return out
+}
+const warnedUnknownOperators = new Set()
+
+/**
+ * Append pushed-down operators to a URL as query parameters. Existing
+ * query string is preserved.
+ *
+ * Conventions:
+ *   - where:  `?_where=<JSON.stringify(whereObject)>` (URL-encoded)
+ *   - limit:  `?_limit=N`
+ *   - sort:   `?_sort=field:dir` (matches the author-facing string form)
+ *
+ * The leading underscore avoids collision with backend-specific params
+ * the author may have included in `url:`.
+ */
+function appendQueryParams(url, pushedOperators, request) {
+  const params = []
+  if (pushedOperators.has('where')) {
+    params.push('_where=' + encodeURIComponent(JSON.stringify(request.where)))
+  }
+  if (pushedOperators.has('limit')) {
+    params.push('_limit=' + encodeURIComponent(String(request.limit)))
+  }
+  if (pushedOperators.has('sort')) {
+    params.push('_sort=' + encodeURIComponent(String(request.sort)))
+  }
+  if (params.length === 0) return url
+  const sep = url.includes('?') ? '&' : '?'
+  return url + sep + params.join('&')
+}
+
+/**
+ * Compose a POST body that includes pushed-down operators alongside the
+ * author-supplied body. When neither exists, returns null (no body sent).
+ *
+ * If the author supplied a body (typically an object for GraphQL or a
+ * search endpoint), pushed operators are merged into it as top-level keys
+ * (`where`, `limit`, `sort`). If the author supplied a string body, we
+ * don't try to merge — the string is sent as-is and operators are
+ * dropped. This is a known limitation; sites with string POST bodies
+ * needing pushdown should write the operators into the body themselves.
+ */
+function composePostBody(authorBody, pushedOperators, request) {
+  if (pushedOperators.size === 0) {
+    return authorBody === undefined ? null : authorBody
+  }
+  // String body — can't merge structured operators in.
+  if (typeof authorBody === 'string') {
+    return authorBody
+  }
+  // No body or object body — merge operators.
+  const merged = (authorBody && typeof authorBody === 'object') ? { ...authorBody } : {}
+  if (pushedOperators.has('where')) merged.where = request.where
+  if (pushedOperators.has('limit')) merged.limit = request.limit
+  if (pushedOperators.has('sort')) merged.sort = request.sort
+  return merged
+}
+
+/**
+ * Apply query operators that weren't pushed down to the source. The
+ * source returned `data` unfiltered/unlimited/unsorted for those
+ * operators; the runtime applies them now in JS.
+ */
+function applyFallbackOperators(data, request, pushedOperators) {
+  if (!Array.isArray(data)) return data
+  let result = data
+
+  if (request.where && !pushedOperators.has('where')) {
+    result = matchWhere(request.where, result)
+  }
+  if (request.sort && !pushedOperators.has('sort')) {
+    result = applySortFallback(result, request.sort)
+  }
+  if (typeof request.limit === 'number' && request.limit > 0 && !pushedOperators.has('limit')) {
+    result = result.slice(0, request.limit)
+  }
+  return result
+}
+
+/**
+ * Stable sort by an expression like "date desc" or "order asc, title asc".
+ * Mirrors the build-time applySort behavior.
+ */
+function applySortFallback(items, sortExpr) {
+  const sorts = String(sortExpr).split(',').map((s) => {
+    const [field, dir = 'asc'] = s.trim().split(/\s+/)
+    return { field, desc: dir.toLowerCase() === 'desc' }
+  })
+  return [...items].sort((a, b) => {
+    for (const { field, desc } of sorts) {
+      const av = getNestedValue(a, field) ?? ''
+      const bv = getNestedValue(b, field) ?? ''
+      if (av < bv) return desc ? 1 : -1
+      if (av > bv) return desc ? -1 : 1
+    }
+    return 0
+  })
 }
 
 /**

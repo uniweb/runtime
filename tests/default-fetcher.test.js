@@ -718,6 +718,119 @@ describe('createDefaultFetcher — config.request.rename', () => {
   })
 })
 
+describe('createDefaultFetcher — flat-query style integration', () => {
+  let fetchStub
+
+  beforeEach(() => {
+    fetchStub = stubFetch({ body: [] })
+  })
+  afterEach(() => fetchStub.restore())
+
+  it('encodes limit and sort as bare query params', async () => {
+    const f = createDefaultFetcher({
+      config: {
+        supports: ['limit', 'sort'],
+        request: { style: 'flat-query' },
+      },
+    })
+    await f.resolve({
+      url: 'https://api.example.com/items',
+      limit: 10,
+      sort: 'date desc',
+    })
+    const url = fetchStub.calls[0].input
+    expect(url).toContain('limit=10')
+    expect(url).toContain('sort=-date')
+    expect(url).not.toContain('_limit')
+    expect(url).not.toContain('_sort')
+  })
+
+  it('falls back to runtime where-evaluation for nested operators', async () => {
+    fetchStub.setResponse({ body: [{ age: 10 }, { age: 25 }] })
+    const f = createDefaultFetcher({
+      config: {
+        supports: ['where'],
+        request: { style: 'flat-query' },
+      },
+    })
+    const result = await f.resolve({
+      url: 'https://api.example.com/items',
+      where: { age: { gte: 18 } },
+    })
+    // where wasn't pushed; URL stays plain.
+    expect(fetchStub.calls[0].input).toBe('https://api.example.com/items')
+    // Runtime fallback filtered locally.
+    expect(result.data).toEqual([{ age: 25 }])
+  })
+
+  it('pushes a flat where as equality params', async () => {
+    const f = createDefaultFetcher({
+      config: {
+        supports: ['where'],
+        request: { style: 'flat-query' },
+      },
+    })
+    await f.resolve({
+      url: 'https://api.example.com/items',
+      where: { dept: 'biology', active: true },
+    })
+    const url = fetchStub.calls[0].input
+    expect(url).toContain('dept=biology')
+    expect(url).toContain('active=true')
+  })
+})
+
+describe('createDefaultFetcher — strapi style integration', () => {
+  let fetchStub
+
+  beforeEach(() => {
+    fetchStub = stubFetch({ body: { data: [{ id: 1, name: 'Alice' }] } })
+  })
+  afterEach(() => fetchStub.restore())
+
+  it("applies Strapi's default envelope (data wrapper)", async () => {
+    const f = createDefaultFetcher({
+      config: { request: { style: 'strapi' } },
+    })
+    const result = await f.resolve({ url: 'https://cms.example.com/api/members' })
+    expect(result.data).toEqual([{ id: 1, name: 'Alice' }])
+  })
+
+  it('encodes a full where + limit + sort', async () => {
+    const f = createDefaultFetcher({
+      config: {
+        supports: ['where', 'limit', 'sort'],
+        request: { style: 'strapi' },
+      },
+    })
+    await f.resolve({
+      url: 'https://cms.example.com/api/members',
+      where: { dept: 'biology', age: { gte: 30 } },
+      limit: 10,
+      sort: 'name asc',
+    })
+    const url = fetchStub.calls[0].input
+    expect(url).toContain('filters%5Bdept%5D%5B%24eq%5D=biology')
+    expect(url).toContain('filters%5Bage%5D%5B%24gte%5D=30')
+    expect(url).toContain('pagination%5Blimit%5D=10')
+    expect(url).toContain('sort=name%3Aasc')
+  })
+
+  it('site-level envelope overrides the style default', async () => {
+    // Backend returns the Strapi wrapper, but the site wants the inner
+    // `records` field. Site envelope wins over style default.
+    fetchStub.setResponse({ body: { data: { records: [{ id: 42 }] } } })
+    const f = createDefaultFetcher({
+      config: {
+        request: { style: 'strapi' },
+        envelope: { collection: 'data.records' },
+      },
+    })
+    const result = await f.resolve({ url: 'https://cms.example.com/api/records' })
+    expect(result.data).toEqual([{ id: 42 }])
+  })
+})
+
 describe('createDefaultFetcher — cacheKey varies by style', () => {
   it('same style + same request → same key', () => {
     const a = createDefaultFetcher({ config: { supports: ['where'] } })

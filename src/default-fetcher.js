@@ -100,17 +100,6 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false }
   // requests are never decorated — they're just file reads under public/.
   const staticHeaders = buildStaticHeaders(config?.headers)
 
-  // `envelope:` extends today's `transform:` to cover detail responses and
-  // errors. Three dot-paths, all optional:
-  //   - envelope.collection — applied on collection responses. Per-fetch
-  //     `transform:` on the request wins (per-fetch overrides site-level).
-  //   - envelope.item       — applied when request.dynamicContext is set
-  //     (the request is for a template-page item).
-  //   - envelope.error      — extract error text from non-2xx response body.
-  const envelope = (config?.envelope && typeof config.envelope === 'object')
-    ? config.envelope
-    : {}
-
   // `supports:` declares which query operators (where, limit, sort) the
   // backend evaluates at the source. Operators in this list are shipped
   // in the request; operators not in this list are applied as a JS
@@ -129,6 +118,23 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false }
   // Shallow: only the operator keys (where / limit / sort) are rewritten.
   // Field names inside a where-object are untouched.
   const rename = normalizeRename(requestConfig.rename, style, { dev })
+
+  // `envelope:` extends today's `transform:` to cover detail responses and
+  // errors. Three dot-paths, all optional:
+  //   - envelope.collection — applied on collection responses. Per-fetch
+  //     `transform:` on the request wins (per-fetch overrides site-level).
+  //   - envelope.item       — applied when request.dynamicContext is set
+  //     (the request is for a template-page item).
+  //   - envelope.error      — extract error text from non-2xx response body.
+  //
+  // Priority (highest wins): per-fetch request.envelope > site-level
+  // config.envelope > style.defaultEnvelope. A style that defaults an
+  // envelope (e.g. Strapi's `{ data }` wrapper) still defers to any
+  // explicit site-level override.
+  const siteEnvelope = (config?.envelope && typeof config.envelope === 'object')
+    ? config.envelope
+    : null
+  const envelope = { ...(style.defaultEnvelope || {}), ...(siteEnvelope || {}) }
 
   return {
     /**

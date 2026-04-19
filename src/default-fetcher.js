@@ -28,19 +28,19 @@
  * Every key is optional. When the config is empty, behavior is byte-for-byte
  * identical to a plain `fetch()` with JSON parsing.
  *
- * Not exported from @uniweb/runtime's public surface: foundations never
- * need to reach for this. If a foundation wants to compose the default
- * behavior with middleware, its choices are:
+ * Exported from a subpath — `@uniweb/runtime/default-fetcher` — for
+ * runtime-level callers (the editor's preview iframe, custom runtime
+ * harnesses). **Foundations should not import this.** A foundation that
+ * wants plain URL + JSON behavior simply omits its own fetcher; the
+ * runtime installs this one automatically. A foundation that needs
+ * auth / retry / response normalization declares a named transport
+ * and composes `@uniweb/fetchers` middleware around its own `resolve()`.
  *
- *   - Don't declare a fetcher. The runtime's default already handles
- *     plain URL + JSON responses (and the site-level vocabulary).
- *   - Declare a custom fetcher and write its own `fetch()` call. When it
- *     needs auth / retry / response normalization, compose @uniweb/fetchers
- *     primitives around its own resolve function.
- *
- * There is intentionally no "reuse the default and wrap it" path — doing
- * so would duplicate this code into every foundation bundle. Custom
- * fetchers own their transport; the default exists for sites without one.
+ * There is intentionally no "reuse the default and wrap it" path for
+ * foundations — doing so would duplicate this code into every foundation
+ * bundle. The subpath export exists specifically for preview-mode shells
+ * that need to delegate *non-authenticated* requests to a default-fetcher
+ * instance while intercepting authenticated ones via their own transport.
  *
  * Intentional omissions: credentials / secrets are NOT part of the vocabulary.
  * Any value the framework puts into the served HTML is public to the browser.

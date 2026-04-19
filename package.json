@@ -8,7 +8,8 @@
     "./ssr": "./dist/ssr.js",
     "./provider": "./src/RuntimeProvider.jsx",
     "./setup": "./src/setup.js",
-    "./foundation-loader": "./src/foundation-loader.js"
+    "./foundation-loader": "./src/foundation-loader.js",
+    "./default-fetcher": "./src/default-fetcher.js"
   },
   "files": [
     "src",

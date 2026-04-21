@@ -119,72 +119,21 @@ describe('applySchemas — rich form schemas', () => {
     })
   })
 
-  describe('conditions', () => {
+  it('leaves condition-hidden fields in place at runtime — conditions are an editor concern', () => {
+    // Components that care about condition-based visibility can branch on
+    // the controller field themselves. The runtime stays out of it so it
+    // doesn't erase data authors may want back after toggling.
     const schemas = {
       side: {
         fields: [
           { id: 'for', type: 'select' },
           { id: 'department', type: 'text', condition: { for: 'scholar' } },
-          { id: 'title', type: 'text', condition: { for: 'news' } },
-          { id: 'label', type: 'text', condition: { for: { $in: ['scholar', 'news'] } } },
         ],
       },
     }
-
-    it('keeps fields whose condition matches, strips the rest', () => {
-      const data = {
-        side: { for: 'scholar', department: 'CS', title: 'stale', label: 'keep' },
-      }
-      expect(applySchemas(data, schemas)).toEqual({
-        side: { for: 'scholar', department: 'CS', label: 'keep' },
-      })
-    })
-
-    it('strips everything condition-gated when controller value changes', () => {
-      const data = { side: { for: 'other', department: 'CS', title: 't' } }
-      expect(applySchemas(data, schemas)).toEqual({ side: { for: 'other' } })
-    })
-
-    it('applies conditions inside composite child rows independently per row', () => {
-      const composite = {
-        list: {
-          isComposite: true,
-          childSchema: {
-            fields: [
-              { id: 'for', type: 'select' },
-              { id: 'dept', type: 'text', condition: { for: 'scholar' } },
-              { id: 'news', type: 'text', condition: { for: 'news' } },
-            ],
-          },
-        },
-      }
-      const data = {
-        list: [
-          { for: 'scholar', dept: 'CS', news: 'stale-in-scholar' },
-          { for: 'news', dept: 'stale-in-news', news: 'Headline' },
-        ],
-      }
-      expect(applySchemas(data, composite)).toEqual({
-        list: [
-          { for: 'scholar', dept: 'CS' },
-          { for: 'news', news: 'Headline' },
-        ],
-      })
-    })
-
-    it('defaults are applied before conditions evaluate — condition-visible fields get defaults', () => {
-      const s = {
-        side: {
-          fields: [
-            { id: 'for', type: 'select', default: 'scholar' },
-            { id: 'department', type: 'text', default: 'Math', condition: { for: 'scholar' } },
-          ],
-        },
-      }
-      // No `for` provided → default "scholar" kicks in → department condition holds → default applied
-      expect(applySchemas({ side: {} }, s)).toEqual({
-        side: { for: 'scholar', department: 'Math' },
-      })
+    const data = { side: { for: 'news', department: 'CS-stale' } }
+    expect(applySchemas(data, schemas)).toEqual({
+      side: { for: 'news', department: 'CS-stale' },
     })
   })
 })

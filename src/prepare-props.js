@@ -10,7 +10,7 @@
  * This enables simpler component code by ensuring predictable prop shapes.
  */
 
-import { singularize, evaluateCondition, isRichSchema } from '@uniweb/core'
+import { singularize, isRichSchema } from '@uniweb/core'
 
 /**
  * Guarantee item has flat content structure
@@ -167,14 +167,10 @@ function applyRichFieldDefaults(obj, fields) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj
   if (!Array.isArray(fields)) return obj
 
-  // Pass 1: apply defaults for fields whose conditions are currently met.
-  // Pass 2: prune fields whose conditions fail. Two passes so conditions
-  // can reference sibling fields that were just defaulted.
   const result = { ...obj }
 
   for (const field of fields) {
     if (!field || typeof field !== 'object' || !field.id) continue
-    if (!evaluateCondition(field.condition, result)) continue
     const id = field.id
 
     if (result[id] === undefined && field.default !== undefined) {
@@ -192,16 +188,6 @@ function applyRichFieldDefaults(obj, fields) {
       typeof result[id] === 'object'
     ) {
       result[id] = applyRichFieldDefaults(result[id], field.fields)
-    }
-  }
-
-  // Prune fields whose conditions currently fail. The editor keeps their
-  // stored values so the author can toggle back, but the component should
-  // only receive what's currently in scope.
-  for (const field of fields) {
-    if (!field || typeof field !== 'object' || !field.id) continue
-    if (!evaluateCondition(field.condition, result)) {
-      delete result[field.id]
     }
   }
 

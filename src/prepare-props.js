@@ -10,7 +10,7 @@
  * This enables simpler component code by ensuring predictable prop shapes.
  */
 
-import { singularize } from '@uniweb/core'
+import { singularize, evaluateCondition, isRichSchema } from '@uniweb/core'
 
 /**
  * Guarantee item has flat content structure
@@ -150,6 +150,102 @@ function applySchemaToValue(value, schema) {
 }
 
 /**
+ * Apply field defaults from a rich form `fields` array to an object.
+ *
+ * Recurses into `type: 'form'` (composite arrays with childSchema) and
+ * `type: 'nestedObject'` / `type: 'object'` (single nested objects).
+ *
+ * Conditional visibility (`field.condition`) is not yet applied here —
+ * components receive all fields the author filled plus defaults; hiding
+ * is a later pass that requires the shared evaluateCondition util.
+ *
+ * @param {Object} obj - Row data (object keyed by field id)
+ * @param {Array} fields - Rich field definitions
+ * @returns {Object} - obj with defaults filled in
+ */
+function applyRichFieldDefaults(obj, fields) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj
+  if (!Array.isArray(fields)) return obj
+
+  // Pass 1: apply defaults for fields whose conditions are currently met.
+  // Pass 2: prune fields whose conditions fail. Two passes so conditions
+  // can reference sibling fields that were just defaulted.
+  const result = { ...obj }
+
+  for (const field of fields) {
+    if (!field || typeof field !== 'object' || !field.id) continue
+    if (!evaluateCondition(field.condition, result)) continue
+    const id = field.id
+
+    if (result[id] === undefined && field.default !== undefined) {
+      result[id] = field.default
+    }
+
+    if (field.type === 'form' && field.childSchema && Array.isArray(result[id])) {
+      result[id] = result[id].map(item =>
+        applyRichFieldDefaults(item, field.childSchema.fields)
+      )
+    } else if (
+      (field.type === 'nestedObject' || field.type === 'object') &&
+      Array.isArray(field.fields) &&
+      result[id] &&
+      typeof result[id] === 'object'
+    ) {
+      result[id] = applyRichFieldDefaults(result[id], field.fields)
+    }
+  }
+
+  // Prune fields whose conditions currently fail. The editor keeps their
+  // stored values so the author can toggle back, but the component should
+  // only receive what's currently in scope.
+  for (const field of fields) {
+    if (!field || typeof field !== 'object' || !field.id) continue
+    if (!evaluateCondition(field.condition, result)) {
+      delete result[field.id]
+    }
+  }
+
+  return result
+}
+
+/**
+ * Apply a rich form schema to its stored value.
+ *
+ * Shape rules:
+ *   - composite (isComposite=true) → value is array of childSchema rows
+ *     - when `childCollection` is set, value may be `{ [childCollection]: [...] }`
+ *   - non-composite → value is a single object keyed by field id
+ */
+function applyRichSchemaToValue(value, schema) {
+  if (value == null) return value
+
+  if (schema.isComposite && schema.childSchema) {
+    const childFields = schema.childSchema.fields
+    const collectionKey = schema.childCollection
+
+    if (collectionKey && value && typeof value === 'object' && !Array.isArray(value)) {
+      const arr = Array.isArray(value[collectionKey]) ? value[collectionKey] : []
+      return {
+        ...value,
+        [collectionKey]: arr.map(row => applyRichFieldDefaults(row, childFields)),
+      }
+    }
+
+    if (Array.isArray(value)) {
+      return value.map(row => applyRichFieldDefaults(row, childFields))
+    }
+
+    return value
+  }
+
+  if (Array.isArray(schema.fields)) {
+    return applyRichFieldDefaults(value, schema.fields)
+  }
+
+  return value
+}
+
+/**
  * Apply schemas to content.data
  * Only processes tags that have a matching schema, leaves others untouched
  *
@@ -168,7 +264,9 @@ export function applySchemas(data, schemas) {
     const schema = schemas[tag]
     if (!schema) continue  // No schema for this tag - leave as-is
 
-    result[tag] = applySchemaToValue(rawValue, schema)
+    result[tag] = isRichSchema(schema)
+      ? applyRichSchemaToValue(rawValue, schema)
+      : applySchemaToValue(rawValue, schema)
   }
 
   return result

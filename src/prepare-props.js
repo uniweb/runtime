@@ -37,6 +37,7 @@ function guaranteeItemStructure(item) {
     forms: item.forms || [],
     quotes: item.quotes || [],
     headings: item.headings || [],
+    ...(item.math && item.math.length ? { math: item.math } : {}),
   }
 }
 
@@ -73,6 +74,12 @@ export function guaranteeContentStructure(parsedContent) {
     forms: content.forms || [],
     quotes: content.quotes || [],
     headings: content.headings || [],
+
+    // Rare collections — surfaced only when present so pages that don't
+    // use them don't pay the allocation cost. Foundations that need them
+    // should check for presence (content.math?.length) or use
+    // content.sequence for in-order rendering.
+    ...(content.math && content.math.length ? { math: content.math } : {}),
 
     // Items with guaranteed structure
     items: (content.items || []).map(guaranteeItemStructure),

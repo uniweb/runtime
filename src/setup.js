@@ -28,6 +28,7 @@ import {
 } from 'react-router-dom'
 
 import { ChildBlocks } from './components/PageRenderer.jsx'
+import { Ref as KitRef } from './Ref/index.js'
 
 // ─── View Transition Wrappers ───────────────────────────────────────────────
 //
@@ -254,6 +255,7 @@ export function initUniweb({ content, foundation, extensions = [], routingCompon
   }
 
   uniweb.childBlockRenderer = ChildBlocks
+  uniweb.defaultInsets = { ...(uniweb.defaultInsets || {}), Ref: KitRef }
   uniweb.routingComponents = routingComponents
   uniweb.iconResolver = createIconResolver(content?.icons)
 

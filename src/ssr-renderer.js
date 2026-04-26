@@ -17,6 +17,7 @@
 import React from 'react'
 import { renderToString } from 'react-dom/server'
 import { createUniweb } from '@uniweb/core'
+import { Ref as KitRef } from './Ref/index.js'
 import { buildSectionOverrides } from '@uniweb/theming'
 import { prepareProps, getComponentMeta } from './prepare-props.js'
 import { default404Html } from './default-404.js'
@@ -416,6 +417,13 @@ export function initPrerender(content, foundation, extensionsOrOptions, maybeOpt
       )
     )
   }
+
+  // Framework-level default insets — components every foundation gets
+  // for free. <Ref> resolves the `[#id]` cross-reference syntax against
+  // the per-document xref-registry. The lookup chain in
+  // `getComponent(name)` (core/uniweb.js) checks the foundation first,
+  // then extensions, then this map.
+  uniweb.defaultInsets = { Ref: KitRef }
 
   // Register SSR-safe routing so useRouting()/useActiveRoute() work during prerender.
   // renderPage() calls website.setActivePage() before rendering each page,

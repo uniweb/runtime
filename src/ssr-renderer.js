@@ -17,7 +17,15 @@
 import React from 'react'
 import { renderToString } from 'react-dom/server'
 import { createUniweb } from '@uniweb/core'
-import { Ref as KitRef } from './Ref/index.js'
+// Fallback Ref for unhandled `[#id]` markers when foundation doesn't
+// register its own. See setup.js for the same pattern (browser side).
+function FallbackRef({ params }) {
+  return React.createElement(
+    'span',
+    { className: 'xref xref--unhandled' },
+    `[${params?.key || '?'}]`,
+  )
+}
 import { buildSectionOverrides } from '@uniweb/theming'
 import { prepareProps, getComponentMeta } from './prepare-props.js'
 import { default404Html } from './default-404.js'
@@ -418,12 +426,33 @@ export function initPrerender(content, foundation, extensionsOrOptions, maybeOpt
     )
   }
 
-  // Framework-level default insets — components every foundation gets
-  // for free. <Ref> resolves the `[#id]` cross-reference syntax against
-  // the per-document xref-registry. The lookup chain in
-  // `getComponent(name)` (core/uniweb.js) checks the foundation first,
-  // then extensions, then this map.
-  uniweb.defaultInsets = { Ref: KitRef }
+  // Default insets: start with FallbackRef as the runtime baseline,
+  // then layer foundation-declared insets on top. Source-level
+  // foundation declarations land under `capabilities` after the
+  // @uniweb/build pipeline wraps them; the source-shape paths are the
+  // fallback for raw imports during dev.
+  const fnDefaults =
+    foundation?.default?.capabilities?.defaultInsets ||
+    foundation?.default?.defaultInsets ||
+    foundation?.defaultInsets ||
+    {}
+  uniweb.defaultInsets = { Ref: FallbackRef, ...fnDefaults }
+
+  // Cross-reference registry build. Foundations declaring `xref:` re-
+  // export kit's `buildXrefRegistry` via `xref.build`; the runtime
+  // can't import kit directly (kit is bundled into each foundation,
+  // not into runtime) so it calls through the foundation's reference.
+  // Foundations without `xref:` skip this entirely — kit's xref module
+  // stays out of their bundle thanks to tree-shaking at foundation-
+  // build time.
+  const fnXref =
+    foundation?.default?.capabilities?.xref ||
+    foundation?.default?.xref ||
+    foundation?.xref ||
+    null
+  if (fnXref && typeof fnXref.build === 'function' && uniweb.activeWebsite) {
+    fnXref.build(uniweb.activeWebsite, { foundationKinds: fnXref.kinds || {} })
+  }
 
   // Register SSR-safe routing so useRouting()/useActiveRoute() work during prerender.
   // renderPage() calls website.setActivePage() before rendering each page,

@@ -34,6 +34,9 @@ export {
 
   // Layer 2: Initialization
   initPrerender,
+  initPrerenderForLocale,
+  sliceContentForLocale,
+  hydrateDataStore,
   prefetchIcons,
 
   // Layer 3: Per-page rendering

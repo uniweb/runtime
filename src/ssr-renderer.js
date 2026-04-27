@@ -20,7 +20,15 @@ import { createUniweb } from '@uniweb/core'
 import { buildSectionOverrides } from '@uniweb/theming'
 import { prepareProps, getComponentMeta } from './prepare-props.js'
 import { default404Html } from './default-404.js'
-import { wireFoundationCapabilities } from './wire-foundation.js'
+import {
+  wireFoundationCapabilities,
+  sliceContentForLocale,
+  hydrateDataStore,
+} from './wire-foundation.js'
+
+// Re-export L2 helpers so the public `@uniweb/runtime/ssr` surface
+// carries everything an SSR consumer needs from one entry point.
+export { sliceContentForLocale, hydrateDataStore }
 
 // ============================================================================
 // Layer 1: Rendering functions
@@ -361,6 +369,35 @@ export function renderLayout(page, website) {
 // ============================================================================
 // Layer 2: Initialization
 // ============================================================================
+
+/**
+ * Construct a Uniweb singleton scoped to a single locale.
+ *
+ * Combines the three steps that every SSR consumer (browser SPA, Node
+ * SSG, Cloudflare Worker SSR) needs in the same order: slice the
+ * multi-locale content payload, run `initPrerender` (which builds the
+ * Website + wires foundation capabilities), then `setActiveLocale` so
+ * `website.activeLang` stays in sync with what the page is rendering
+ * for. Caller still owns DataStore hydration (per-request data differs
+ * between requests; locale construction can be cached).
+ *
+ * @param {Object} content - Site content payload (possibly multi-locale).
+ * @param {Object} foundation - Loaded foundation module.
+ * @param {string} locale - Locale code to render in.
+ * @param {Array<Object>|Object} [extensionsOrOptions] - Same shape as initPrerender's
+ *   third arg: an extensions array, or an options object when no extensions.
+ * @param {Object} [maybeOptions] - Options object when extensions are passed.
+ * @returns {import('@uniweb/core').default} The configured Uniweb singleton.
+ */
+export function initPrerenderForLocale(content, foundation, locale, extensionsOrOptions, maybeOptions) {
+  const localeContent = sliceContentForLocale(content, locale)
+  const uniweb = initPrerender(localeContent, foundation, extensionsOrOptions, maybeOptions)
+  const defaultLang = content?.config?.defaultLanguage || 'en'
+  if (locale && locale !== defaultLang && uniweb.activeWebsite?.setActiveLocale) {
+    uniweb.activeWebsite.setActiveLocale(locale)
+  }
+  return uniweb
+}
 
 /**
  * Create and configure the Uniweb runtime for prerendering.

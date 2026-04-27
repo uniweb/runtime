@@ -18,7 +18,7 @@
  */
 
 import React from 'react'
-import { createUniweb, deriveCacheKey } from '@uniweb/core'
+import { createUniweb } from '@uniweb/core'
 import { createDefaultFetcher } from './default-fetcher.js'
 import {
   Link as RouterLink,
@@ -28,7 +28,13 @@ import {
 } from 'react-router-dom'
 
 import { ChildBlocks } from './components/PageRenderer.jsx'
-import { wireFoundationCapabilities } from './wire-foundation.js'
+import { wireFoundationCapabilities, hydrateDataStore } from './wire-foundation.js'
+
+// Re-export so existing consumers importing hydrateDataStore from
+// setup.js keep working. The implementation moved to wire-foundation.js
+// (the L2-helpers home, React-free) so the SSR renderer can also use it
+// without dragging react-dom/server into the SPA bundle.
+export { hydrateDataStore }
 
 // ─── View Transition Wrappers ───────────────────────────────────────────────
 //
@@ -283,17 +289,6 @@ export function initUniweb({ content, foundation, extensions = [], routingCompon
   }
 
   return uniweb
-}
-
-/**
- * Pre-populate a Website's DataStore from build-time fetchedData entries.
- * Exported so the static build path can share the same helper.
- */
-export function hydrateDataStore(website, fetchedData) {
-  if (!website?.dataStore) return
-  for (const entry of fetchedData) {
-    website.dataStore.set(deriveCacheKey(entry.config), { data: entry.data })
-  }
 }
 
 /**

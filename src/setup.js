@@ -28,20 +28,7 @@ import {
 } from 'react-router-dom'
 
 import { ChildBlocks } from './components/PageRenderer.jsx'
-
-// Fallback inset renderer for `[#id]` markers when the active
-// foundation didn't register its own Ref component. Renders the
-// markdown source as plain text — never blocks, gives the author a
-// visible cue that the foundation doesn't support cross-references.
-// Foundations that DO support xrefs (e.g. @uniweb/book) override via
-// their `defaultInsets: { Ref }` declaration.
-function FallbackRef({ params }) {
-  return React.createElement(
-    'span',
-    { className: 'xref xref--unhandled' },
-    `[${params?.key || '?'}]`,
-  )
-}
+import { wireFoundationCapabilities } from './wire-foundation.js'
 
 // ─── View Transition Wrappers ───────────────────────────────────────────────
 //
@@ -269,36 +256,13 @@ export function initUniweb({ content, foundation, extensions = [], routingCompon
 
   uniweb.childBlockRenderer = ChildBlocks
 
-  // Default insets: start with the runtime's tiny FallbackRef so
-  // unhandled `[#id]` markers render as plain text rather than empty
-  // spans, then layer the foundation's declared insets on top so a
-  // foundation that opts into cross-references (`defaultInsets: { Ref }`
-  // pointing at kit's renderer) wins.
-  // Source-level foundation declarations land under `capabilities`
-  // after the @uniweb/build pipeline wraps them; the source-shape
-  // paths are the fallback for raw imports during dev.
-  const fnDefaults =
-    foundation?.default?.capabilities?.defaultInsets ||
-    foundation?.default?.defaultInsets ||
-    foundation?.defaultInsets ||
-    {}
-  uniweb.defaultInsets = { Ref: FallbackRef, ...fnDefaults }
-
-  // Cross-reference registry build. Foundations declaring `xref:` re-
-  // export kit's `buildXrefRegistry` via `xref.build`; the runtime
-  // can't import kit directly (kit is bundled into each foundation,
-  // not into runtime) so it calls through the foundation's reference.
-  // Foundations without `xref:` skip this entirely — kit's xref module
-  // stays out of their bundle thanks to tree-shaking at foundation-
-  // build time.
-  const fnXref =
-    foundation?.default?.capabilities?.xref ||
-    foundation?.default?.xref ||
-    foundation?.xref ||
-    null
-  if (fnXref && typeof fnXref.build === 'function' && uniweb.activeWebsite) {
-    fnXref.build(uniweb.activeWebsite, { foundationKinds: fnXref.kinds || {} })
-  }
+  // L2 (singleton wiring): defaultInsets, xref.build(), and any future
+  // framework-level capability bridge — shared with ssr-renderer.js so
+  // both boot paths apply the same foundation contract. See
+  // wire-foundation.js for the contract and CLAUDE.md "Three-Layer
+  // Runtime Model" for the rule about what belongs in this helper vs.
+  // here vs. ssr-renderer.js.
+  wireFoundationCapabilities(uniweb, foundation)
 
   uniweb.routingComponents = routingComponents
   uniweb.iconResolver = createIconResolver(content?.icons)

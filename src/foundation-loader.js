@@ -6,6 +6,27 @@
  */
 
 /**
+ * Resolve a foundation/extension URL so that absolute-path forms
+ * (`/_module/...`) anchor to the document's origin, not to the importing
+ * runtime's host. Pass-through for fully-absolute (https://...) and
+ * already-protocol-relative inputs; pass-through if there's no document
+ * (SSR contexts).
+ */
+function resolveAgainstDocument(url) {
+  if (typeof url !== 'string' || !url) return url
+  if (typeof window === 'undefined' || !window.location) return url
+  // Already absolute (https://, http://, //)
+  if (/^([a-z][a-z0-9+.-]*:)?\/\//i.test(url)) return url
+  // Host-absolute path (/foo) — anchor to document origin so an
+  // import from a CDN-loaded runtime doesn't pull from the CDN host.
+  if (url.startsWith('/')) return window.location.origin + url
+  // Relative paths (foo, ./foo, ../foo) keep their natural ES-module
+  // resolution (against the importer). Foundations don't use this
+  // form today; passing through preserves any future caller's intent.
+  return url
+}
+
+/**
  * Load foundation CSS from URL
  * @param {string} url - URL to foundation's CSS file
  */
@@ -37,12 +58,22 @@ async function loadFoundationCSS(url) {
  * @returns {Promise<Object>} The loaded foundation module
  */
 export async function loadFoundation(source) {
-  const url = typeof source === 'string' ? source : source.url
+  const rawUrl = typeof source === 'string' ? source : source.url
   // Auto-derive CSS URL from JS URL by convention: entry.js → assets/style.css.
   // Pre-Phase-5 foundations were named foundation.js + assets/foundation.css;
   // those keep working when an explicit `cssUrl` is passed in `source`.
-  const cssUrl = typeof source === 'object' ? source.cssUrl
-    : url.replace(/[^/]+\.js$/, 'assets/style.css')
+  const rawCssUrl = typeof source === 'object' ? source.cssUrl
+    : rawUrl.replace(/[^/]+\.js$/, 'assets/style.css')
+
+  // Phase 5: when the runtime is loaded from a different host than the
+  // document (e.g. runtime served from cdn.uniweb.app, page on
+  // www.uniweb.io), ES-module dynamic imports resolve relative paths
+  // against the IMPORTING script's URL — not the document's. Site-bound
+  // foundation URLs like `/_module/io/0.1.2/entry.js` would resolve to
+  // cdn.uniweb.app/_module/... and 404. Force resolution against the
+  // document origin so site-bound paths land on the site host.
+  const url = resolveAgainstDocument(rawUrl)
+  const cssUrl = rawCssUrl ? resolveAgainstDocument(rawCssUrl) : rawCssUrl
 
   console.log(`[Runtime] Loading foundation from: ${url}`)
 

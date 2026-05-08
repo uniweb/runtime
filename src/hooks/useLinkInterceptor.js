@@ -144,6 +144,9 @@ export function useLinkInterceptor(options = {}) {
       // Check for download attribute
       if (anchor.hasAttribute('download')) return
 
+      // Opt out: anchors marked for full-page reload (e.g., <Link reload>)
+      if (anchor.hasAttribute('data-reload')) return
+
       // Check for target="_blank" or other non-self targets
       const target = anchor.getAttribute('target')
       if (target && target !== '_self') return

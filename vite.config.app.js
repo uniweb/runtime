@@ -13,8 +13,6 @@
  * The import map modules re-export from the bundled copies of React,
  * react-dom, and @uniweb/core — so foundations loaded via dynamic import()
  * share the same instances as the runtime.
- *
- * See: kb/plans/runtime-shell-and-cdn.md
  */
 
 import { defineConfig } from 'vite'
@@ -28,7 +26,6 @@ import { importMapPlugin, DEFAULT_EXTERNALS } from '@uniweb/build/import-map-plu
  *
  * The manifest describes the build output so consumers (unicloud, PHP)
  * can generate HTML programmatically without parsing index.html.
- * See: kb/plans/runtime-shell-and-cdn.md (Phase 2)
  */
 function manifestPlugin() {
   return {

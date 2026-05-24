@@ -115,25 +115,27 @@ function applySchemaToObject(obj, schema) {
       result[field] = defaultValue
     }
 
-    // For select fields with options, apply default if value is not among valid options
-    if (typeof fieldDef === 'object' && fieldDef.options && Array.isArray(fieldDef.options)) {
-      if (result[field] !== undefined && !fieldDef.options.includes(result[field])) {
-        // Value exists but is not valid - apply default if available
-        if (defaultValue !== undefined) {
-          result[field] = defaultValue
-        }
+    // Bare type strings ('string', 'decimal', …) carry nothing more to apply.
+    if (typeof fieldDef !== 'object') continue
+
+    // Inline picklist (`enum`): if the value is set but not among the allowed
+    // values, fall back to the default.
+    if (Array.isArray(fieldDef.enum)) {
+      if (result[field] !== undefined && !fieldDef.enum.includes(result[field]) && defaultValue !== undefined) {
+        result[field] = defaultValue
       }
     }
 
-    // Handle nested object schema
-    if (typeof fieldDef === 'object' && fieldDef.type === 'object' && fieldDef.schema && result[field]) {
-      result[field] = applySchemaToObject(result[field], fieldDef.schema)
+    // Nested object → recurse into its field map.
+    if (fieldDef.type === 'object' && fieldDef.fields && result[field]) {
+      result[field] = applySchemaToObject(result[field], fieldDef.fields)
     }
 
-    // Handle array with inline schema
-    if (typeof fieldDef === 'object' && fieldDef.type === 'array' && fieldDef.of && result[field]) {
-      if (typeof fieldDef.of === 'object') {
-        result[field] = result[field].map(item => applySchemaToObject(item, fieldDef.of))
+    // Array of objects → apply the element field map to each item.
+    if (fieldDef.type === 'array' && fieldDef.items && Array.isArray(result[field])) {
+      const items = fieldDef.items
+      if (items && typeof items === 'object' && items.type === 'object' && items.fields) {
+        result[field] = result[field].map((item) => applySchemaToObject(item, items.fields))
       }
     }
   }

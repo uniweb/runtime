@@ -32,6 +32,7 @@
  */
 
 import Blocks from './Blocks.jsx'
+import { resolveLayoutTransitions } from '../view-transitions.js'
 
 /**
  * Default layout - renders header, body, footer in sequence
@@ -91,9 +92,13 @@ export default function Layout({ page, website }) {
   initializeAllBlocks(...allBlockGroups)
 
   // Pre-render each area as React elements.
-  // When the foundation enables view transitions, wrap areas in thin divs
-  // with view-transition-name so the browser can animate them independently.
-  const transitions = website.viewTransitions ? layoutMeta?.transitions : null
+  // When the foundation enables view transitions, wrap areas in thin divs with
+  // view-transition-name so the browser can animate them independently. Names
+  // default to one per area + body (see resolveLayoutTransitions); the layout's
+  // `transitions` meta overrides or opts out.
+  const transitions = website.viewTransitions
+    ? resolveLayoutTransitions(Object.keys(areas), layoutMeta?.transitions)
+    : null
 
   const bodyElement = bodyBlocks ? (
     transitions?.body

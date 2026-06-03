@@ -25,6 +25,7 @@ import {
   sliceContentForLocale,
   hydrateDataStore,
 } from './wire-foundation.js'
+import { resolveLayoutTransitions } from './view-transitions.js'
 
 // Re-export L2 helpers so the public `@uniweb/runtime/ssr` surface
 // carries everything an SSR consumer needs from one entry point.
@@ -343,10 +344,23 @@ export function renderLayout(page, website) {
   const bodyBlocks = page.getBodyBlocks()
   const areas = page.getLayoutAreas()
 
-  const bodyElement = bodyBlocks ? renderBlocks(bodyBlocks) : null
+  // Mirror Layout.jsx: wrap body + each area in a thin div carrying its
+  // view-transition-name, so the prerendered HTML matches what the SPA hydrates
+  // and the browser can animate regions independently on client navigation.
+  const transitions = website.viewTransitions
+    ? resolveLayoutTransitions(Object.keys(areas), layoutMeta?.transitions)
+    : null
+  const wrapTransition = (name, element) => {
+    const vtName = transitions?.[name]
+    return vtName
+      ? React.createElement('div', { style: { viewTransitionName: vtName } }, element)
+      : element
+  }
+
+  const bodyElement = bodyBlocks ? wrapTransition('body', renderBlocks(bodyBlocks)) : null
   const areaElements = {}
   for (const [name, blocks] of Object.entries(areas)) {
-    areaElements[name] = renderBlocks(blocks)
+    areaElements[name] = wrapTransition(name, renderBlocks(blocks))
   }
 
   if (RemoteLayout) {

@@ -217,9 +217,13 @@ function createIconResolver(iconConfig = {}) {
 // ─── Runtime default fetcher ────────────────────────────────────────────────
 
 function buildDefaultFetcher(content) {
-  // BASE_URL is injected by Vite at build. For subpath deployments the default
-  // fetcher prepends it to local absolute paths (remote URLs are never touched).
-  const basePath = import.meta.env?.BASE_URL || ''
+  // Base for resolving local absolute paths (e.g. /data/*.json). Prefer the base
+  // the PAYLOAD carries (`content.config.base`) — a backend-hosted SPA is served
+  // under a subpath the payload declares (e.g. /gateway/site/<uuid>/) that the
+  // gateway-delivered runtime bundle can't know via Vite's build-time BASE_URL.
+  // This is the SAME base routing uses; without it local fetches hit the origin
+  // root and 404. Falls back to Vite's BASE_URL for a statically built site.
+  const basePath = content?.config?.base || import.meta.env?.BASE_URL || ''
   // Per-site transport config from `site.yml fetcher:`. The default fetcher
   // recognizes `baseUrl` and `envelope`; foundations with their own fetchers
   // may read additional keys from the same block via ctx.website.config.fetcher.

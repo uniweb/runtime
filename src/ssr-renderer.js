@@ -666,6 +666,32 @@ export function injectPageContent(html, renderedContent, page, options = {}) {
     }
   }
 
+  // Social / SEO meta from the page's effective head metadata (page seo
+  // cascading over site-level seo — see Page.getHeadMeta). The SPA emits these
+  // client-side via useHeadMeta; this is the SSR twin, so crawlers and social
+  // unfurlers (which don't run JS) get them in the static HTML too.
+  const headMeta = page.getHeadMeta?.()
+  if (headMeta) {
+    const og = headMeta.og || {}
+    const keywords = Array.isArray(headMeta.keywords)
+      ? headMeta.keywords.join(', ')
+      : headMeta.keywords
+    const tags = []
+    if (keywords) tags.push(`<meta name="keywords" content="${escapeHtml(keywords)}">`)
+    if (headMeta.robots) tags.push(`<meta name="robots" content="${escapeHtml(headMeta.robots)}">`)
+    if (og.title) tags.push(`<meta property="og:title" content="${escapeHtml(og.title)}">`)
+    if (og.description) tags.push(`<meta property="og:description" content="${escapeHtml(og.description)}">`)
+    if (og.image) tags.push(`<meta property="og:image" content="${escapeHtml(og.image)}">`)
+    if (og.url) tags.push(`<meta property="og:url" content="${escapeHtml(og.url)}">`)
+    tags.push('<meta property="og:type" content="website">')
+    tags.push(`<meta name="twitter:card" content="${og.image ? 'summary_large_image' : 'summary'}">`)
+    if (og.title) tags.push(`<meta name="twitter:title" content="${escapeHtml(og.title)}">`)
+    if (og.description) tags.push(`<meta name="twitter:description" content="${escapeHtml(og.description)}">`)
+    if (og.image) tags.push(`<meta name="twitter:image" content="${escapeHtml(og.image)}">`)
+    if (headMeta.canonical) tags.push(`<link rel="canonical" href="${escapeHtml(headMeta.canonical)}">`)
+    if (tags.length) result = result.replace('</head>', `${tags.join('\n')}\n</head>`)
+  }
+
   return result
 }
 

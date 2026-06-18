@@ -114,8 +114,11 @@ export function useRememberScroll(options = {}) {
 
     // Reset block states if requested (for animations, etc.)
     if (resetBlockStates) {
+      // activePage is null on a page-less site — guard before
+      // reaching for resetBlockStates, else `null.resetBlockStates` throws on
+      // navigation ("Cannot read properties of null").
       const page = globalThis.uniweb.activeWebsite.activePage
-      if (typeof page.resetBlockStates === 'function') {
+      if (page && typeof page.resetBlockStates === 'function') {
         page.resetBlockStates()
       }
     }

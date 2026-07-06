@@ -372,11 +372,13 @@ export function renderLayout(page, website) {
     })
   }
 
-  // Default layout
+  // Default layout — mirror DefaultLayout in Layout.jsx: header/footer establish
+  // stacking contexts above the body so a fixed/sticky overlay inside them
+  // (a floating nav, a sticky footer bar) always paints over page sections.
   return React.createElement(React.Fragment, null,
-    areaElements.header && React.createElement('header', null, areaElements.header),
+    areaElements.header && React.createElement('header', { style: { position: 'relative', zIndex: 40 } }, areaElements.header),
     bodyElement && React.createElement('main', null, bodyElement),
-    areaElements.footer && React.createElement('footer', null, areaElements.footer)
+    areaElements.footer && React.createElement('footer', { style: { position: 'relative', zIndex: 30 } }, areaElements.footer)
   )
 }
 

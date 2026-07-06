@@ -39,11 +39,19 @@ import { resolveLayoutTransitions } from '../view-transitions.js'
  * (no panels in default layout)
  */
 function DefaultLayout({ header, body, footer }) {
+  // The header and footer areas establish stacking contexts that sit above the
+  // body, so a fixed/sticky overlay inside them (a floating nav, a sticky
+  // footer bar) always paints over page sections. Body sections routinely form
+  // their own stacking contexts — a section with a background isolates so its
+  // background layer stays contained (see BlockRenderer) — and a fixed header
+  // in an otherwise-unstacked sibling area is not guaranteed to win against
+  // them. Ordering the areas here (header above footer above body) makes the
+  // header float reliably; overlays keep their own z-index within each area.
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      {header && <header>{header}</header>}
+      {header && <header style={{ position: 'relative', zIndex: 40 }}>{header}</header>}
       {body && <main style={{ flex: 1 }}>{body}</main>}
-      {footer && <footer>{footer}</footer>}
+      {footer && <footer style={{ position: 'relative', zIndex: 30 }}>{footer}</footer>}
     </div>
   )
 }

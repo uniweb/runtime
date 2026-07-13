@@ -48,7 +48,10 @@ function getScrollY(container) {
  */
 function resolveScrollContainer() {
   const website = globalThis.uniweb.activeWebsite
-  const layoutName = website.activePage.getLayoutName()
+  // activePage is null on a page-less site (e.g. a fresh `none`-template
+  // project with no content) — guard before reaching for getLayoutName,
+  // else `null.getLayoutName` throws on the first render.
+  const layoutName = website.activePage?.getLayoutName()
   const layoutMeta = layoutName ? website.getLayoutMeta(layoutName) : null
 
   const scroll = layoutMeta?.scroll

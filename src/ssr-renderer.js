@@ -16,7 +16,7 @@
 
 import React from 'react'
 import { renderToString } from 'react-dom/server'
-import { createUniweb } from '@uniweb/core'
+import { createUniweb, resolveDefaultLocale } from '@uniweb/core'
 import { buildSectionOverrides } from '@uniweb/theming'
 import { prepareProps, getComponentMeta } from './prepare-props.js'
 import { default404Html } from './default-404.js'
@@ -408,7 +408,7 @@ export function renderLayout(page, website) {
 export function initPrerenderForLocale(content, foundation, locale, extensionsOrOptions, maybeOptions) {
   const localeContent = sliceContentForLocale(content, locale)
   const uniweb = initPrerender(localeContent, foundation, extensionsOrOptions, maybeOptions)
-  const defaultLang = content?.config?.defaultLanguage || 'en'
+  const defaultLang = resolveDefaultLocale(content?.config)
   if (locale && locale !== defaultLang && uniweb.activeWebsite?.setActiveLocale) {
     uniweb.activeWebsite.setActiveLocale(locale)
   }

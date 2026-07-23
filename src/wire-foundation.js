@@ -45,7 +45,7 @@
  */
 
 import React from 'react'
-import { deriveCacheKey } from '@uniweb/core'
+import { deriveCacheKey, resolveDefaultLocale } from '@uniweb/core'
 
 /**
  * Renders unhandled `[#id]` cross-reference markers as plain text. Used
@@ -125,7 +125,7 @@ export function wireFoundationCapabilities(uniweb, foundation) {
  * @returns {Object} Content scoped to the requested locale.
  */
 export function sliceContentForLocale(content, locale) {
-  const defaultLang = content?.config?.defaultLanguage || 'en'
+  const defaultLang = resolveDefaultLocale(content?.config)
   const locData = content?.locales?.[locale]
   if (!locale || locale === defaultLang || !locData) return content
   return {

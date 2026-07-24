@@ -86,11 +86,26 @@ describe('resolveBootScheme', () => {
     expect(resolveBootScheme(appearance)).toBe('light')
   })
 
-  it('does not follow the system when dark is absent from schemes', () => {
-    // Documents the preserved asymmetry: `schemes` gates system-following but
-    // gates neither toggling nor .scheme-dark CSS generation.
+  it('follows the system for a toggle site even without an explicit schemes list', () => {
+    // The unification: a site that ships a working dark toggle (allowToggle,
+    // no `schemes:` — e.g. the `learning` template) now follows a system dark
+    // preference on first visit, because hasDarkScheme() sees the toggle. This
+    // used to return 'light' when the gate was `schemes.includes('dark')` alone.
     stubMatchMedia(true)
     const appearance = { default: 'light', allowToggle: true, respectSystemPreference: true }
+    expect(resolveBootScheme(appearance)).toBe('dark')
+  })
+
+  it('does not follow the system when the site has no dark scheme at all', () => {
+    // Light-only site: no toggle, light default, dark not listed. hasDarkScheme
+    // is false, so we never boot into a dark that has no matching CSS.
+    stubMatchMedia(true)
+    const appearance = {
+      default: 'light',
+      allowToggle: false,
+      respectSystemPreference: true,
+      schemes: ['light'],
+    }
     expect(resolveBootScheme(appearance)).toBe('light')
   })
 

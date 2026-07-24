@@ -32,6 +32,8 @@
  * not import this from ssr-renderer.js.
  */
 
+import { hasDarkScheme } from '@uniweb/core'
+
 export const APPEARANCE_STORAGE_KEY = 'uniweb-appearance'
 export const DARK_SCHEME_CLASS = 'scheme-dark'
 export const LIGHT_SCHEME_CLASS = 'scheme-light'
@@ -73,20 +75,22 @@ export function resolveBootScheme(appearance = {}) {
   const stored = readStoredScheme()
   if (stored) return stored
 
-  // NOTE — `schemes` gates this path and nothing else. Neither toggling nor the
-  // `.scheme-dark` CSS generation consults it (see @uniweb/theming's
-  // css-generator.js, which emits dark rules whenever allowToggle is set), so a
-  // site declaring `allowToggle: true` with no `schemes:` can be toggled to dark
-  // by hand yet will not follow a system dark preference on first visit. That
-  // asymmetry is preserved verbatim from the previous implementation —
-  // unifying it changes behavior for existing sites and is a deliberate
-  // decision, not part of this consolidation.
-  if (appearance.respectSystemPreference && appearance.schemes?.includes('dark') && prefersDark()) {
+  // Follow the OS on first visit when the site opts to respect it AND actually
+  // reaches dark. The gate is @uniweb/core's hasDarkScheme() — the same
+  // predicate @uniweb/theming uses to decide whether `.scheme-dark` CSS exists —
+  // so the boot scheme can never claim a dark that has no matching rules.
+  //
+  // Previously this branch gated on `schemes.includes('dark')` alone, which
+  // neither toggling nor CSS generation consulted: a site with `allowToggle:
+  // true` and no `schemes:` (e.g. the `learning` template) toggled to dark by
+  // hand but would not follow a system dark preference on first visit. Unifying
+  // on hasDarkScheme() removes that divergence — any site that ships a working
+  // dark mode now respects the OS on first visit (opt out with
+  // `respectSystemPreference: false`).
+  if (appearance.respectSystemPreference && hasDarkScheme(appearance) && prefersDark()) {
     return 'dark'
   }
 
-  // `default: 'system'` with no stored preference and no dark in `schemes`
-  // falls through to light, matching the previous behavior.
   return appearance.default === 'dark' ? 'dark' : 'light'
 }
 

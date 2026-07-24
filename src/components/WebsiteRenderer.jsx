@@ -5,7 +5,7 @@
  * Manages scroll memory for navigation and optional analytics.
  */
 
-import React, { useEffect } from 'react'
+import React from 'react'
 import PageRenderer from './PageRenderer.jsx'
 import ThemeProvider from './ThemeProvider.jsx'
 import { useRememberScroll } from '../hooks/useRememberScroll.js'
@@ -17,24 +17,11 @@ import { useLinkInterceptor } from '../hooks/useLinkInterceptor.js'
 export default function WebsiteRenderer() {
   const website = globalThis.uniweb.activeWebsite
 
-  // Apply default appearance scheme (light/dark/system) on mount
-  useEffect(() => {
-    const appearance = website?.themeData?.appearance
-    if (!appearance) return
-
-    const defaultScheme = appearance.default || 'light'
-    const root = document.documentElement
-    if (defaultScheme === 'dark') {
-      root.classList.add('scheme-dark')
-      root.classList.remove('scheme-light')
-    } else if (defaultScheme === 'system') {
-      // No explicit class — CSS media query decides based on OS preference
-      root.classList.remove('scheme-dark')
-      root.classList.remove('scheme-light')
-    } else {
-      root.classList.remove('scheme-dark')
-    }
-  }, [website?.themeData?.appearance?.default])
+  // The appearance scheme is applied in initRuntime, before React renders — not
+  // here. This component used to re-apply `appearance.default` from an effect,
+  // which ran after kit's useAppearance() effect (React runs child effects
+  // first) and silently discarded the visitor's stored preference on every page
+  // load. See appearance.js.
 
   // Enable SPA navigation for links rendered as plain HTML
   useLinkInterceptor({ enabled: true })

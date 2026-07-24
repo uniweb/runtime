@@ -10,6 +10,7 @@ import { createRoot } from 'react-dom/client'
 
 import { initUniweb, decodeData } from './setup.js'
 import { loadFoundation, loadExtensions } from './foundation-loader.js'
+import { initAppearance } from './appearance.js'
 import RuntimeProvider from './RuntimeProvider.jsx'
 
 /**
@@ -88,6 +89,11 @@ async function initRuntime(foundationSource, options = {}) {
 
     // Derive basename
     const routerBasename = basename ?? getBasename()
+
+    // Apply the visitor's color scheme before React renders. Must stay ahead of
+    // createRoot().render() below — see appearance.js for why this is the only
+    // place the boot scheme is resolved.
+    initAppearance(uniwebInstance.activeWebsite?.themeData?.appearance)
 
     // Set initial active page from browser URL so getLocaleUrl() works on first render
     const website = uniwebInstance.activeWebsite

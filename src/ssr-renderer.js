@@ -26,6 +26,7 @@ import {
   hydrateDataStore,
 } from './wire-foundation.js'
 import { resolveLayoutTransitions } from './view-transitions.js'
+import { renderAppearanceBootScript } from './appearance.js'
 
 // Re-export L2 helpers so the public `@uniweb/runtime/ssr` surface
 // carries everything an SSR consumer needs from one entry point.
@@ -618,14 +619,28 @@ export function escapeHtml(str) {
 /**
  * Inject prerendered content into an HTML shell.
  *
+ * THE SHARED PRERENDER SEAM. Every lane that turns a Page into HTML calls this:
+ * the framework's SSG (@uniweb/build's prerender.js) and the cloud worker's
+ * just-in-time render. Anything a page needs *because it was prerendered at all*
+ * belongs here, so a new feature reaches both lanes at once.
+ *
  * Common operations shared by both build and cloud:
  * - Replace #root div with rendered HTML
  * - Update page title
  * - Add/update meta description
  * - Inject section override CSS
+ * - Inject the pre-paint appearance script
  *
  * Build layers its additional injections on top of this return value:
  * __SITE_CONTENT__ JSON, icon cache, theme CSS (build-specific).
+ *
+ * WHICH SIDE OF THE SEAM? Ask what the injection is derived from. If it needs
+ * only the page/website graph — which every lane has — it goes here. If it needs
+ * a build-only artifact (the emitted bundle, the collection JSON files, the
+ * prefetched icon cache, the compiled theme CSS), it goes in the caller. Getting
+ * this wrong is silent: the appearance boot script started life in
+ * @uniweb/build's injectBuildData and therefore never reached cloud-rendered
+ * pages, which flashed light for every dark-mode visitor.
  *
  * @param {string} html - HTML shell
  * @param {string} renderedContent - React renderToString output
@@ -636,6 +651,19 @@ export function escapeHtml(str) {
  */
 export function injectPageContent(html, renderedContent, page, options = {}) {
   let result = html
+
+  // Pre-paint appearance script. Prerendered HTML carries real content styled
+  // from :root (light) tokens, so a dark visitor would see a flash of light
+  // before the bundle hydrates and applies the class. Read off the page's
+  // website back-ref rather than a parameter: every lane builds the same graph,
+  // so this needs no plumbing and no per-lane opt-in. Idempotent, because
+  // @uniweb/build's injectBuildData may run over this HTML afterwards.
+  if (!result.includes('id="uniweb-appearance"')) {
+    const bootScript = renderAppearanceBootScript(page?.website?.themeData?.appearance)
+    if (bootScript) {
+      result = result.replace('</head>', `  ${bootScript}\n</head>`)
+    }
+  }
 
   // Inject per-page section override CSS before </head>
   if (options.sectionOverrideCSS) {

@@ -50,3 +50,7 @@ export {
   // 404 fallback
   generate404Html,
 } from './ssr-renderer.js'
+
+// Appearance. injectPageContent() already emits this for every prerendered
+// page; exported for lanes that assemble a shell without a per-page render.
+export { renderAppearanceBootScript } from './appearance.js'

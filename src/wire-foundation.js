@@ -31,7 +31,7 @@
  *      may legitimately not declare (see `FallbackRef`).
  *
  * Foundation export shape contract: the runtime always loads the
- * **built** foundation artifact (`dist/foundation.js`) via
+ * **built** foundation artifact (`dist/entry.js`) via
  * `loadFoundation()` in `foundation-loader.js`, which does `import(url)`
  * and returns a module namespace. The build pipeline
  * (`framework/build/src/generate-entry.js`) wraps the foundation's

@@ -7,6 +7,7 @@
  */
 
 import React, { useState, useEffect } from 'react'
+import { sectionDomId } from '@uniweb/core/section-id'
 import { prepareProps, getComponentMeta } from '../prepare-props.js'
 import Background from './Background.jsx'
 
@@ -53,12 +54,10 @@ const getWrapperProps = (block) => {
     }
   }
 
-  // Use stableId for DOM ID if available (stable across reordering)
-  // Falls back to positional id for backwards compatibility
-  const sectionId = block.stableId || block.id
-
   return {
-    id: `section-${sectionId}`,
+    // One rule, shared with the SSR twin and the search-index extractor —
+    // see @uniweb/core/section-id for why it is not written out here.
+    id: sectionDomId(block),
     style,
     className,
     background

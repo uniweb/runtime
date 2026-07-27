@@ -37,6 +37,12 @@ export default defineConfig({
         'react-dom/server',
         'react-router-dom',
         '@uniweb/core',
+        // Rollup's external matcher is exact-string, so the bare entry above
+        // does NOT cover a subpath — the same trap `react-dom/server` sits in
+        // two lines up. Without this the leaf module is silently bundled in,
+        // and the SSR twin renders section ids from a frozen copy while the
+        // SPA uses the live one.
+        '@uniweb/core/section-id',
         '@uniweb/semantic-parser',
         '@uniweb/theming'
       ],

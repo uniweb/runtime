@@ -17,6 +17,7 @@
 import React from 'react'
 import { renderToString } from 'react-dom/server'
 import { createUniweb, resolveDefaultLocale } from '@uniweb/core'
+import { sectionDomId } from '@uniweb/core/section-id'
 import { buildSectionOverrides } from '@uniweb/theming'
 import { prepareProps, getComponentMeta } from './prepare-props.js'
 import { default404Html } from './default-404.js'
@@ -78,10 +79,8 @@ export function getWrapperProps(block) {
     }
   }
 
-  // Use stableId for DOM ID if available (stable across reordering)
-  const sectionId = block.stableId || block.id
-
-  return { id: `section-${sectionId}`, style, className, background }
+  // Same rule as the SPA renderer and the search extractor — @uniweb/core/section-id.
+  return { id: sectionDomId(block), style, className, background }
 }
 
 /**

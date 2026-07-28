@@ -25,6 +25,7 @@ import {
   wireFoundationCapabilities,
   sliceContentForLocale,
   hydrateDataStore,
+  ensureThemeCss,
 } from './wire-foundation.js'
 import { resolveLayoutTransitions } from './view-transitions.js'
 import { renderAppearanceBootScript } from './appearance.js'
@@ -479,6 +480,11 @@ export function initPrerender(content, foundation, extensionsOrOptions, maybeOpt
   // here vs. setup.js.
   wireFoundationCapabilities(uniweb, foundation)
 
+  // Site-wide theme CSS. Unconditional here: at this point there is no
+  // <head> to inspect, and injectPageContent() emits the result
+  // idempotently, so a lane that already baked the style tag is unaffected.
+  ensureThemeCss(uniweb, foundation)
+
   // Register SSR-safe routing so useRouting()/useActiveRoute() work during prerender.
   // renderPage() calls website.setActivePage() before rendering each page,
   // so activePage.route always reflects the page being rendered.
@@ -662,6 +668,23 @@ export function injectPageContent(html, renderedContent, page, options = {}) {
     if (bootScript) {
       result = result.replace('</head>', `  ${bootScript}\n</head>`)
     }
+  }
+
+  // Site-wide theme CSS. Derived from the website graph
+  // (`website.themeData`), so it belongs on THIS side of the seam — every
+  // lane builds that graph. It lived in @uniweb/build's injectBuildData
+  // until 2026-07-28, which meant sites served by any lane that doesn't run
+  // the framework's build rendered with every semantic token unset: no
+  // colours, no backgrounds, no failure anywhere. That is the same mistake
+  // the appearance script above was moved out of, four lines below the
+  // comment warning about it — see the note in build/src/prerender.js.
+  // Idempotent, so a shell that already carries the tag is left alone.
+  const themeCss = page?.website?.themeData?.css
+  if (themeCss && !result.includes('id="uniweb-theme"')) {
+    result = result.replace(
+      '</head>',
+      `  <style id="uniweb-theme">\n${themeCss}\n    </style>\n</head>`
+    )
   }
 
   // Inject per-page section override CSS before </head>

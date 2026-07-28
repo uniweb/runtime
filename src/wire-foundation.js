@@ -46,6 +46,7 @@
 
 import React from 'react'
 import { deriveCacheKey, resolveDefaultLocale } from '@uniweb/core'
+import { buildTheme } from '@uniweb/theming'
 
 /**
  * Renders unhandled `[#id]` cross-reference markers as plain text. Used
@@ -160,5 +161,74 @@ export function hydrateDataStore(website, fetchedData) {
   if (!website?.dataStore || !fetchedData?.length) return
   for (const entry of fetchedData) {
     website.dataStore.set(deriveCacheKey(entry.config), { data: entry.data })
+  }
+}
+
+/**
+ * Make sure the site's theme CSS exists on the graph, generating it from
+ * the authored config when nothing upstream did.
+ *
+ * **The authored theme config is the source of truth in every lane;
+ * generated CSS is a cache of it.** `uniweb build` fills that cache and
+ * bakes the result into `<head>`, so this is a no-op on the static lane.
+ * A lane that serves a site WITHOUT running the framework's build — a
+ * backend-hosted SPA, a cloud shell-mode fallback — carries only the
+ * authored `theme.yml` (that is the correct thing for a sync wire to
+ * carry: `theme.css` is a build artifact, and with two publishers only
+ * one of which computes it, shipping it would make a site's styling
+ * depend on who published last). Without this helper those lanes render
+ * with every semantic token unset — no colours, no backgrounds.
+ *
+ * Generating here rather than in a publish step is what keeps the
+ * three-ingredient contract true: site + foundation + runtime converge
+ * to a *styled* page with no fourth actor. It also stays one
+ * implementation — the alternative was re-deriving the OKLCH shade math
+ * in another language and keeping the two bit-compatible.
+ *
+ * L2, not L3: this reads and writes graph state and renders nothing, so
+ * it has a single home here and both boot paths call it. **The
+ * `@uniweb/theming` import is deliberately static.** An SSR isolate
+ * loads a fixed modules map and cannot resolve a chunk graph, so the SSR
+ * entry must include the generator statically; a lazy `import()` in the
+ * browser entry only would mean two mechanisms for one behaviour,
+ * drifting independently. Measured cost of the generator: ~4.9 KB gzip.
+ *
+ * Foundation-declared vars reach us through
+ * `capabilities.vars` — emitted into `dist/entry.js` by
+ * `@uniweb/build`'s `generate-entry.js`. Before that existed they lived
+ * only in `dist/meta/schema.json` and a theme generated outside the
+ * build silently lost every one of them.
+ *
+ * Callers own the "should I?" question, because it is environment-
+ * specific: the browser entry skips this when the document already
+ * carries a prerendered `<style id="uniweb-theme">` (regenerating from
+ * an already-processed config is wasted work at best), while the SSR
+ * entry always runs it and lets `injectPageContent()` emit the result
+ * idempotently.
+ *
+ * @param {import('@uniweb/core').default} uniweb - From createUniweb(...).
+ * @param {object} foundation - Loaded foundation module (built shape).
+ */
+export function ensureThemeCss(uniweb, foundation) {
+  const website = uniweb?.activeWebsite
+  const themeData = website?.themeData
+  if (!themeData || themeData.css) return
+
+  const caps = foundation?.default?.capabilities || {}
+  try {
+    const { config, css, links } = buildTheme(themeData, {
+      foundationVars: caps.vars || {},
+      base: website.basePath || '/',
+    })
+    // Merge rather than replace: `config` is the processed superset (it
+    // adds `palettes`, normalized `contexts`, resolved `fonts`), so this
+    // also gives a build-less lane the same themeData shape the static
+    // lane has — Theme.getPalette() and friends start working too.
+    Object.assign(themeData, config, { css, links })
+  } catch (err) {
+    // This runs on the path taken when something upstream has already
+    // gone wrong. A degraded render that is still legibly the site beats
+    // one that looks broken, but neither is worth a boot crash.
+    console.warn('[uniweb] theme CSS generation failed:', err?.message || err)
   }
 }

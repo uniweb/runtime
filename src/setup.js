@@ -28,7 +28,7 @@ import {
 } from 'react-router-dom'
 
 import { ChildBlocks } from './components/PageRenderer.jsx'
-import { wireFoundationCapabilities, hydrateDataStore } from './wire-foundation.js'
+import { wireFoundationCapabilities, hydrateDataStore, ensureThemeCss } from './wire-foundation.js'
 
 // Re-export so existing consumers importing hydrateDataStore from
 // setup.js keep working. The implementation moved to wire-foundation.js
@@ -273,6 +273,18 @@ export function initUniweb({ content, foundation, extensions = [], routingCompon
   // Runtime Model" for the rule about what belongs in this helper vs.
   // here vs. ssr-renderer.js.
   wireFoundationCapabilities(uniweb, foundation)
+
+  // Site-wide theme CSS, for lanes that arrive without it (a backend-hosted
+  // SPA carries the authored theme.yml, not generated CSS). Skipped when a
+  // prerendered page already has the style tag in <head>: the build strips
+  // `theme.css` from __SITE_CONTENT__ precisely because it is already there,
+  // so "no css on the graph" does NOT imply "no css on the page" in this
+  // entry. The DOM check belongs here rather than in the L2 helper — it is
+  // environment-specific, and ensureThemeCss must stay importable by the
+  // hook-free SSR pipeline.
+  if (typeof document === 'undefined' || !document.getElementById('uniweb-theme')) {
+    ensureThemeCss(uniweb, foundation)
+  }
 
   uniweb.routingComponents = routingComponents
   uniweb.iconResolver = createIconResolver(content?.icons)

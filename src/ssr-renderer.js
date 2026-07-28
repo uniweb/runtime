@@ -18,7 +18,7 @@ import React from 'react'
 import { renderToString } from 'react-dom/server'
 import { createUniweb, resolveDefaultLocale } from '@uniweb/core'
 import { sectionDomId } from '@uniweb/core/section-id'
-import { buildSectionOverrides } from '@uniweb/theming'
+import { buildSectionOverrides, FONT_LINKS_MARKER } from '@uniweb/theming'
 import { prepareProps, getComponentMeta } from './prepare-props.js'
 import { default404Html } from './default-404.js'
 import {
@@ -679,11 +679,24 @@ export function injectPageContent(html, renderedContent, page, options = {}) {
   // the appearance script above was moved out of, four lines below the
   // comment warning about it — see the note in build/src/prerender.js.
   // Idempotent, so a shell that already carries the tag is left alone.
-  const themeCss = page?.website?.themeData?.css
+  const themeData = page?.website?.themeData
+  const themeCss = themeData?.css
   if (themeCss && !result.includes('id="uniweb-theme"')) {
     result = result.replace(
       '</head>',
       `  <style id="uniweb-theme">\n${themeCss}\n    </style>\n</head>`
+    )
+  }
+
+  // The theme's font <link> tags — same seam, same reasoning. Graph-derived,
+  // so a lane that never runs @uniweb/build still gets its webfonts instead of
+  // falling back to system faces. Deduped on FONT_LINKS_MARKER rather than an
+  // id because <link> tags have none; the marker is owned by @uniweb/theming,
+  // which generates the block, so this and @uniweb/build read one literal.
+  if (themeData?.links && !result.includes(FONT_LINKS_MARKER)) {
+    result = result.replace(
+      '</head>',
+      `  ${FONT_LINKS_MARKER}\n${themeData.links}\n</head>`
     )
   }
 

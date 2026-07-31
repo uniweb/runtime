@@ -243,31 +243,33 @@ function applyRichSchemaToValue(value, schema) {
  * Apply schemas to content.data
  * Only processes tags that have a matching schema, leaves others untouched
  *
- * ## Do not declare a schema for a tag whose VALUE is itself a schema
+ * ## Two orders of schema — what a `data:` declaration may describe
  *
- * There are two orders of schema in this system and only the first is what a
- * `data:` declaration describes:
+ * A component's `data:` is 1st order: a DEVELOPER says what shape the section
+ * consumes. An authored form (```yaml:form```) is 2nd order: an AUTHOR says what
+ * shape a VISITOR will submit. It is schema-shaped, but it is content.
  *
- *   1st order  a component's `data:` — a DEVELOPER says what content shape the
- *              section consumes. The author supplies the data.
- *   2nd order  an authored form (```yaml:form```) — an AUTHOR says what shape a
- *              VISITOR will submit. It is schema-shaped, but it is content.
+ * Declaring a schema for such a tag is legitimate, and it is worth being precise
+ * about what it may describe:
  *
- * A form-rendering component is the inverse of every other component: it does
- * not declare the fields, it RECEIVES them and draws whatever it is given. If it
- * also declares `data: { form: … }`, this function runs the author's form
- * DEFINITION through `applySchemaToObject` — filling in `default`s and applying
- * `enum` fallbacks to the definition itself. It is additive rather than
- * destructive (the value is spread, nothing is dropped), which is worse than a
- * crash: it silently mutates a form's design.
+ *   OK    the DEFINITION's envelope — `title?`, `description?`, `fields: <map>`.
+ *         That asks "is this a well-formed form?", which is what build-time
+ *         validation is for (`build/src/validate-data.js` pairs a section's data
+ *         input with the schema its meta.js binds to that key).
+ *   WRONG a schema whose fields are THE FORM'S fields (`name`, `email`, …).
+ *         Those are author-chosen and unknowable at build time. A form-rendering
+ *         component receives its fields; it does not declare them.
  *
- * So: a component that renders authored data of any schema-shaped kind reads
- * `content.data[tag]` and declares nothing. A tag is a binding, not a gate — the
- * value arrives either way.
+ * The mechanism is bounded and does not punish the mistake loudly:
+ * `applySchemaToObject` recurses only where the schema declares structure
+ * (`type: object` + `fields`, `type: array` + `items.fields`), so a
+ * form-definition schema — which cannot name the author's fields — can never
+ * reach into them. It fills the envelope defaults its own author declared.
  *
  * (Established with the editor team, 2026-07-31, channel frontend-framework-066d.
- * The editor reaches the same rule from the other side: its `builtinSchemas()`
- * shadows a foundation that declares `form`, so the tag is closed at both ends.)
+ * The editor shadows a foundation's `form` declaration with its own builder via
+ * `builtinSchemas()`; that is about the EDITING UI and is orthogonal to whether a
+ * foundation declares a schema for validation.)
  *
  * @param {Object} data - The data object from content
  * @param {Object} schemas - Schema definitions from runtime meta

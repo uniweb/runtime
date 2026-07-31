@@ -39,19 +39,22 @@ import { resolveLayoutTransitions, resolveLayoutLayers, areaWrapperStyle } from 
  * (no panels in default layout)
  */
 function DefaultLayout({ header, body, footer }) {
-  // The header and footer areas establish stacking contexts that sit above the
-  // body, so a fixed/sticky overlay inside them (a floating nav, a sticky
-  // footer bar) always paints over page sections. Body sections routinely form
-  // their own stacking contexts — a section with a background isolates so its
-  // background layer stays contained (see BlockRenderer) — and a fixed header
-  // in an otherwise-unstacked sibling area is not guaranteed to win against
-  // them. Ordering the areas here (header above footer above body) makes the
-  // header float reliably; overlays keep their own z-index within each area.
+  // No stacking is set here. The areas arrive already ordered: the runtime
+  // gives each area wrapper its layer (see area-wrappers.js), so chrome paints
+  // above the body whether or not view transitions are on, and a foundation
+  // can re-rank them with `layers` in its layout meta.
+  //
+  // This layout used to hard-code `z-index: 40` on the header and `30` on the
+  // footer for exactly that reason. Once the runtime owned the ordering those
+  // numbers were a second mechanism for one job -- and the older one won,
+  // because a positioned wrapper here becomes a stacking context that seals the
+  // area's own layer inside it. Measured 2026-07-31: `layers: { header: 0 }`
+  // on the default layout changed nothing at all.
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      {header && <header style={{ position: 'relative', zIndex: 40 }}>{header}</header>}
+      {header && <header>{header}</header>}
       {body && <main style={{ flex: 1 }}>{body}</main>}
-      {footer && <footer style={{ position: 'relative', zIndex: 30 }}>{footer}</footer>}
+      {footer && <footer>{footer}</footer>}
     </div>
   )
 }
@@ -108,7 +111,7 @@ export default function Layout({ page, website }) {
   const transitions = website.viewTransitions
     ? resolveLayoutTransitions(areaNames, layoutMeta?.transitions)
     : null
-  const layers = resolveLayoutLayers(areaNames, layoutMeta?.layers, transitions)
+  const layers = resolveLayoutLayers(areaNames, layoutMeta?.layers)
 
   const wrap = (region, children) => {
     const style = areaWrapperStyle(region, transitions, layers)

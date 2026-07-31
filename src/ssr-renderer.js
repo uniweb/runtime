@@ -352,7 +352,7 @@ export function renderLayout(page, website) {
   const transitions = website.viewTransitions
     ? resolveLayoutTransitions(areaNames, layoutMeta?.transitions)
     : null
-  const layers = resolveLayoutLayers(areaNames, layoutMeta?.layers, transitions)
+  const layers = resolveLayoutLayers(areaNames, layoutMeta?.layers)
   const wrapArea = (name, element) => {
     const style = areaWrapperStyle(name, transitions, layers)
     return style ? React.createElement('div', { style }, element) : element
@@ -373,13 +373,13 @@ export function renderLayout(page, website) {
     })
   }
 
-  // Default layout — mirror DefaultLayout in Layout.jsx: header/footer establish
-  // stacking contexts above the body so a fixed/sticky overlay inside them
-  // (a floating nav, a sticky footer bar) always paints over page sections.
+  // Default layout — mirror DefaultLayout in Layout.jsx, including its lack of
+  // stacking: the area wrappers already carry their layers, and a positioned
+  // element here would seal those layers inside it.
   return React.createElement(React.Fragment, null,
-    areaElements.header && React.createElement('header', { style: { position: 'relative', zIndex: 40 } }, areaElements.header),
+    areaElements.header && React.createElement('header', null, areaElements.header),
     bodyElement && React.createElement('main', null, bodyElement),
-    areaElements.footer && React.createElement('footer', { style: { position: 'relative', zIndex: 30 } }, areaElements.footer)
+    areaElements.footer && React.createElement('footer', null, areaElements.footer)
   )
 }
 

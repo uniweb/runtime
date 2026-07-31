@@ -93,25 +93,25 @@ export function resolveLayoutTransitions(areaNames, explicit) {
  *     stacking at all — for a foundation that would rather own it in its own
  *     markup, which is exactly what the marketing layout above was doing.
  *
- * Defaults apply only where the runtime is already wrapping for a transition.
- * With transitions off there is no wrapper and no stacking context, so there is
- * nothing to fix and nothing to impose; an explicit `layers` entry still forces
- * a wrapper for a foundation that wants one.
+ * Layers do NOT depend on view transitions. "Chrome paints above content" is a
+ * property of the layout, not of how it animates — and body sections routinely
+ * form their own stacking contexts (a section with a background isolates so its
+ * background layer stays contained), so a fixed header in an unstacked sibling
+ * area is not guaranteed to win against them either way. Tying the two together
+ * was what left `DefaultLayout` hand-rolling its own `z-index: 40` on the
+ * header: a second mechanism for the same job, which then swallowed `layers`
+ * whole — a foundation could set `layers: { header: 0 }` on the default layout
+ * and measurably nothing happened.
  *
  * @param {string[]} areaNames - Names of the areas rendered for this page (excludes `body`).
  * @param {Object|false|null|undefined} explicit - `layoutMeta.layers`.
- * @param {Object|null} transitions - Result of `resolveLayoutTransitions`.
- * @returns {Object} region → z-index. Empty when nothing is stacked.
+ * @returns {Object} region → z-index. Empty when the layout opts out.
  */
-export function resolveLayoutLayers(areaNames, explicit, transitions) {
+export function resolveLayoutLayers(areaNames, explicit) {
   if (explicit === false) return {}
 
   const defaults = {}
-  if (transitions) {
-    for (const name of areaNames) {
-      if (transitions[name]) defaults[name] = 1
-    }
-  }
+  for (const name of areaNames) defaults[name] = 1
 
   return explicit ? { ...defaults, ...explicit } : defaults
 }

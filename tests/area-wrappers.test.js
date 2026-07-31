@@ -50,14 +50,11 @@ describe('resolveLayoutTransitions', () => {
 })
 
 describe('resolveLayoutLayers', () => {
-  const t = (areas) => resolveLayoutTransitions(areas, undefined)
-
   it('lifts every area above the body, and leaves the body unstacked', () => {
     // The body is deliberately absent rather than pinned to 0: a layer carries
     // `position: relative`, and a positioned body wrapper would become the
     // containing block for every absolutely-positioned descendant on the page.
-    const areas = ['header', 'left', 'footer']
-    expect(resolveLayoutLayers(areas, undefined, t(areas))).toEqual({
+    expect(resolveLayoutLayers(['header', 'left', 'footer'], undefined)).toEqual({
       header: 1,
       left: 1,
       footer: 1,
@@ -68,39 +65,33 @@ describe('resolveLayoutLayers', () => {
     // Area names are free-form, so ordering `header` over `left` would be the
     // framework reading meaning into a string a foundation chose. Equal by
     // default; a layout that has overlapping chrome says so with `layers`.
-    const areas = ['header', 'left', 'right', 'footer', 'statusbar']
-    const layers = resolveLayoutLayers(areas, undefined, t(areas))
+    const layers = resolveLayoutLayers(['header', 'left', 'right', 'footer', 'statusbar'], undefined)
     expect(new Set(Object.values(layers))).toEqual(new Set([1]))
   })
 
   it('takes a per-region override without losing the rest', () => {
-    const areas = ['header', 'footer']
-    expect(resolveLayoutLayers(areas, { footer: 0, header: 5 }, t(areas))).toEqual({
+    expect(resolveLayoutLayers(['header', 'footer'], { footer: 0, header: 5 })).toEqual({
       footer: 0,
       header: 5,
     })
   })
 
   it('opts the whole layout out with false', () => {
-    const areas = ['header', 'left']
-    expect(resolveLayoutLayers(areas, false, t(areas))).toEqual({})
+    expect(resolveLayoutLayers(['header', 'left'], false)).toEqual({})
   })
 
-  it('imposes nothing when the layout has no transitions', () => {
-    // No wrapper exists, so no stacking context was created and there is
-    // nothing to correct. Adding one here would create the problem it solves.
-    expect(resolveLayoutLayers(['header'], undefined, null)).toEqual({})
-  })
-
-  it('still honours an explicit layer with transitions off', () => {
-    expect(resolveLayoutLayers(['header'], { header: 2 }, null)).toEqual({ header: 2 })
+  it('does not depend on view transitions', () => {
+    // "Chrome above content" is a property of the layout, not of how it
+    // animates. Tying the two together is what left DefaultLayout hand-rolling
+    // its own z-index, a second mechanism that then swallowed this one.
+    expect(resolveLayoutLayers(['header'], undefined)).toEqual({ header: 1 })
   })
 })
 
 describe('areaWrapperStyle', () => {
   it('carries the name and the layer together', () => {
     const t = resolveLayoutTransitions(['header'], undefined)
-    const l = resolveLayoutLayers(['header'], undefined, t)
+    const l = resolveLayoutLayers(['header'], undefined)
     expect(areaWrapperStyle('header', t, l)).toEqual({
       viewTransitionName: 'uw-header',
       position: 'relative',
@@ -110,7 +101,7 @@ describe('areaWrapperStyle', () => {
 
   it('gives the body a name and no position', () => {
     const t = resolveLayoutTransitions(['header'], undefined)
-    const l = resolveLayoutLayers(['header'], undefined, t)
+    const l = resolveLayoutLayers(['header'], undefined)
     expect(areaWrapperStyle('body', t, l)).toEqual({ viewTransitionName: 'uw-body' })
   })
 
@@ -158,6 +149,24 @@ describe('the two renderers cannot drift', () => {
       // A literal `viewTransitionName:` here means someone rebuilt the wrapper
       // by hand instead of asking for it.
       expect(src).not.toMatch(/viewTransitionName\s*:/)
+    })
+  }
+})
+
+describe('DefaultLayout leaves stacking to the wrappers', () => {
+  /**
+   * It used to hard-code `z-index: 40` on the header and `30` on the footer.
+   * A positioned element there becomes a stacking context that SEALS the
+   * area's own layer inside it, so `layers` became a silent no-op on the most
+   * commonly used layout — measured on a real page, `layers: { header: 0 }`
+   * changed nothing. Two mechanisms for one job, and the older one won.
+   */
+  const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8')
+
+  for (const file of ['../src/components/Layout.jsx', '../src/ssr-renderer.js']) {
+    it(`${file} does not re-introduce a hand-rolled area z-index`, () => {
+      const src = read(file)
+      expect(src).not.toMatch(/zIndex:\s*(40|30)\b/)
     })
   }
 })

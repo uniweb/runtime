@@ -32,7 +32,7 @@
  */
 
 import Blocks from './Blocks.jsx'
-import { resolveLayoutTransitions } from '../view-transitions.js'
+import { resolveLayoutTransitions, resolveLayoutLayers, areaWrapperStyle } from '../area-wrappers.js'
 
 /**
  * Default layout - renders header, body, footer in sequence
@@ -104,22 +104,22 @@ export default function Layout({ page, website }) {
   // view-transition-name so the browser can animate them independently. Names
   // default to one per area + body (see resolveLayoutTransitions); the layout's
   // `transitions` meta overrides or opts out.
+  const areaNames = Object.keys(areas)
   const transitions = website.viewTransitions
-    ? resolveLayoutTransitions(Object.keys(areas), layoutMeta?.transitions)
+    ? resolveLayoutTransitions(areaNames, layoutMeta?.transitions)
     : null
+  const layers = resolveLayoutLayers(areaNames, layoutMeta?.layers, transitions)
 
-  const bodyElement = bodyBlocks ? (
-    transitions?.body
-      ? <div style={{ viewTransitionName: transitions.body }}><Blocks blocks={bodyBlocks} /></div>
-      : <Blocks blocks={bodyBlocks} />
-  ) : null
+  const wrap = (region, children) => {
+    const style = areaWrapperStyle(region, transitions, layers)
+    return style ? <div style={style}>{children}</div> : children
+  }
+
+  const bodyElement = bodyBlocks ? wrap('body', <Blocks blocks={bodyBlocks} />) : null
 
   const areaElements = {}
   for (const [name, blocks] of Object.entries(areas)) {
-    const transitionName = transitions?.[name]
-    areaElements[name] = transitionName
-      ? <div style={{ viewTransitionName: transitionName }}><Blocks blocks={blocks} /></div>
-      : <Blocks blocks={blocks} />
+    areaElements[name] = wrap(name, <Blocks blocks={blocks} />)
   }
 
   // Use foundation's custom Layout if provided

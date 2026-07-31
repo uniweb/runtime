@@ -27,7 +27,7 @@ import {
   hydrateDataStore,
   ensureThemeCss,
 } from './wire-foundation.js'
-import { resolveLayoutTransitions } from './view-transitions.js'
+import { resolveLayoutTransitions, resolveLayoutLayers, areaWrapperStyle } from './area-wrappers.js'
 import { renderAppearanceBootScript } from './appearance.js'
 
 // Re-export L2 helpers so the public `@uniweb/runtime/ssr` surface
@@ -348,20 +348,20 @@ export function renderLayout(page, website) {
   // Mirror Layout.jsx: wrap body + each area in a thin div carrying its
   // view-transition-name, so the prerendered HTML matches what the SPA hydrates
   // and the browser can animate regions independently on client navigation.
+  const areaNames = Object.keys(areas)
   const transitions = website.viewTransitions
-    ? resolveLayoutTransitions(Object.keys(areas), layoutMeta?.transitions)
+    ? resolveLayoutTransitions(areaNames, layoutMeta?.transitions)
     : null
-  const wrapTransition = (name, element) => {
-    const vtName = transitions?.[name]
-    return vtName
-      ? React.createElement('div', { style: { viewTransitionName: vtName } }, element)
-      : element
+  const layers = resolveLayoutLayers(areaNames, layoutMeta?.layers, transitions)
+  const wrapArea = (name, element) => {
+    const style = areaWrapperStyle(name, transitions, layers)
+    return style ? React.createElement('div', { style }, element) : element
   }
 
-  const bodyElement = bodyBlocks ? wrapTransition('body', renderBlocks(bodyBlocks)) : null
+  const bodyElement = bodyBlocks ? wrapArea('body', renderBlocks(bodyBlocks)) : null
   const areaElements = {}
   for (const [name, blocks] of Object.entries(areas)) {
-    areaElements[name] = wrapTransition(name, renderBlocks(blocks))
+    areaElements[name] = wrapArea(name, renderBlocks(blocks))
   }
 
   if (RemoteLayout) {

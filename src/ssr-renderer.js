@@ -18,6 +18,7 @@ import React from 'react'
 import { renderToString } from 'react-dom/server'
 import { createUniweb, resolveDefaultLocale } from '@uniweb/core'
 import { sectionDomId } from '@uniweb/core/section-id'
+import { routePatternToRegex } from '@uniweb/core/route-match'
 import { buildSectionOverrides, FONT_LINKS_MARKER } from '@uniweb/theming'
 import { prepareProps, getComponentMeta } from './prepare-props.js'
 import { default404Html } from './default-404.js'
@@ -783,14 +784,12 @@ export function injectPageContent(html, renderedContent, page, options = {}) {
  */
 export function generate404Html({ baseHtml, website, siteContent }) {
   // Extract patterns for routes that remain as dynamic templates (prerender: false)
+  // '/blog/:id' → /^\/blog\/([^/]+)$/. Compiled by the shared matcher rather
+  // than a second regex built here: this file used to build its own with
+  // `:[^/]+`, which disagreed with core's `:(\w+)` on any param name carrying a
+  // non-word character. See @uniweb/core/route-match for the whole story.
   const dynamicTemplates = siteContent.pages?.filter((p) => p.isDynamic) || []
-  const routePatterns = dynamicTemplates.map((p) => {
-    // '/blog/:id' → /^\/blog\/[^\/]+\/?$/
-    const escaped = p.route
-      .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      .replace(/:[^/]+/g, '[^\\/]+')
-    return `^${escaped}\\/?$`
-  })
+  const routePatterns = dynamicTemplates.map((p) => routePatternToRegex(p.route).regex.source)
 
   let html = baseHtml
 
@@ -816,9 +815,11 @@ export function generate404Html({ baseHtml, website, siteContent }) {
   // so the SPA renders the correct page rather than the 404 content
   if (routePatterns.length > 0) {
     const patternList = routePatterns.map((p) => `/${p}/`).join(',')
+    // The path is normalized here rather than by making every pattern accept a
+    // trailing slash — same rule the matcher applies, applied in one place.
     const dynamicScript =
       `<script>(function(){` +
-      `var p=[${patternList}],r=window.location.pathname;` +
+      `var p=[${patternList}],r=window.location.pathname.replace(/\\/+$/,'')||'/';` +
       `if(p.some(function(x){return x.test(r)})){` +
       `var el=document.getElementById('root');if(el)el.innerHTML='';` +
       `}})()</script>`

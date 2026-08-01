@@ -553,6 +553,30 @@ export async function prefetchIcons(siteContent, uniweb, onProgress = () => {}) 
  * @param {Error} err
  * @returns {{ type: 'hooks'|'null-component'|'unknown', message: string }}
  */
+/**
+ * Resolve a route to the Page that should render it.
+ *
+ * Exists because this module exported `renderPage(page, …)` and no supported way
+ * to *get* a page — so every host rendering server-side wrote its own lookup,
+ * and the obvious one (`website.pages.find(p => p.route === route)`) cannot
+ * match a dynamic route, because the payload holds `/blog/:id` and the request
+ * carries `/blog/1`. One host wrote that lookup three times in three files
+ * before the gap was noticed. A renderer that takes a Page owes callers a Page.
+ *
+ * This is `Website#getPage` — the same seven-step resolution the browser runs,
+ * literally the same function, so a server-rendered page and the one hydrating
+ * over it cannot disagree. Pure `@uniweb/core`: no React, no DOM, no DataStore
+ * required, safe in a Worker isolate.
+ *
+ * @param {Website} website
+ * @param {string} route - The requested path, e.g. `/blog/1`
+ * @returns {Page|undefined} The page, or undefined when nothing matches — which
+ *   is a genuine 404 and the caller's to turn into one.
+ */
+export function resolvePage(website, route) {
+  return website.getPage(route)
+}
+
 export function classifyRenderError(err) {
   const msg = err.message || ''
 
@@ -588,6 +612,27 @@ export function classifyRenderError(err) {
  */
 export function renderPage(page, website) {
   website.setActivePage(page.route)
+
+  // A page that claims content but yields no blocks has not been loaded — it is
+  // not an empty page. `Page#bodyBlocks` returns [] when its sections are absent
+  // from the payload (split content), on the understanding that a caller loads
+  // them first: the SPA does, in PageRenderer and at boot. THIS path never has.
+  //
+  // Left alone, that renders a structurally valid, completely empty document and
+  // reports success — which is the worst shape a failure can take, and it cost a
+  // host most of a day chasing a renderer that was doing what it was told.
+  // Distinguishing it here is cheap: a content-less container reports
+  // hasContent() === false and is correctly empty, so the two never collide.
+  if (page.hasContent?.() && page.getBodyBlocks().length === 0) {
+    return {
+      error: {
+        type: 'content-not-loaded',
+        message:
+          `page "${page.route}" declares content but has no loaded sections — ` +
+          'its sections are not in the payload and this renderer does not fetch them',
+      },
+    }
+  }
 
   const element = renderLayout(page, website)
 

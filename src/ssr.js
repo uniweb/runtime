@@ -39,7 +39,12 @@ export {
   hydrateDataStore,
   prefetchIcons,
 
-  // Layer 3: Per-page rendering
+  // Layer 3: Per-page rendering.
+  // `resolvePage` belongs beside `renderPage` and its absence was a real bug:
+  // this list handed callers a renderer that takes a Page and no supported way
+  // to get one, so a host wrote its own lookup three times — and the obvious
+  // one, an exact match over `website.pages`, cannot match a dynamic route.
+  resolvePage,
   renderPage,
   classifyRenderError,
 

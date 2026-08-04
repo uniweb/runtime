@@ -13,7 +13,8 @@
   },
   "files": [
     "src",
-    "dist"
+    "dist",
+    "!dist/app/**/*.map"
   ],
   "scripts": {
     "build:ssr": "vite build --config vite.config.ssr.js",
@@ -22,7 +23,7 @@
     "build:worker": "node build-worker.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "npm run build:ssr"
+    "prepublishOnly": "npm run build && npm run build:worker"
   },
   "keywords": [
     "uniweb",

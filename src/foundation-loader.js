@@ -105,22 +105,26 @@ export async function loadFoundation(source) {
 export async function loadExtensions(urls) {
   if (!urls?.length) return []
 
-  // Resolve extension URLs against base path for subdirectory deployments
-  // e.g., /effects/foundation.js → /templates/extensions/effects/foundation.js
-  const basePath = import.meta.env?.BASE_URL || '/'
-  function resolveUrl(source) {
-    if (basePath === '/') return source
-    if (typeof source === 'string' && source.startsWith('/')) {
-      return basePath + source.slice(1)
-    }
-    if (typeof source === 'object' && source.url?.startsWith('/')) {
-      return { ...source, url: basePath + source.url.slice(1) }
-    }
-    return source
-  }
-
+  // No base resolution here, deliberately: a module URL that reaches the
+  // runtime is FINAL. `loadFoundation()` anchors a root-relative URL to the
+  // document origin (which HOST serves it) and nothing else, so an extension
+  // and the primary foundation resolve by exactly one rule.
+  //
+  // This used to prefix root-relative URLs with `import.meta.env.BASE_URL`
+  // while the primary — which reaches `loadFoundation()` straight from
+  // `initRuntime()` — did not, so one string resolved to two places depending
+  // on which slot it sat in. Two reasons that was wrong: a module URL is a
+  // SERVE LOCATION, not a path under the site's mount point (a host may serve
+  // a site under one subpath and serve its foundation from an entirely
+  // different root, so prefixing would corrupt it); and
+  // BASE_URL is a build-time constant of whichever bundle the runtime shipped
+  // in, which `setup.js buildDefaultFetcher()` had already ruled the wrong
+  // authority for the sibling problem.
+  //
+  // The deployment base is now applied by the producer, which knows it:
+  // `@uniweb/build` → `src/site/extension-urls.js`.
   const results = await Promise.allSettled(
-    urls.map((url) => loadFoundation(resolveUrl(url))),
+    urls.map((url) => loadFoundation(url)),
   )
 
   const loaded = []

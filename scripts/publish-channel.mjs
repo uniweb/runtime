@@ -51,8 +51,6 @@ import { fileURLToPath } from 'node:url'
 import { addVersion, parseIndex, serializeIndex } from './channel-index.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const pkgRoot = resolve(here, '..')
-const DIST = join(pkgRoot, 'dist')
 
 const args = process.argv.slice(2)
 const flag = (name) => {
@@ -62,6 +60,22 @@ const flag = (name) => {
 const has = (name) => args.includes(`--${name}`)
 
 const channelDir = flag('channel')
+/**
+ * The package to publish FROM — a directory holding `package.json` + `dist/`.
+ *
+ * Defaults to this repo, which is right for a local run. CI passes an extracted
+ * **npm tarball** instead, and that is the important case: this repo declares
+ * `@uniweb/core: workspace:*`, so a standalone clone cannot install or build at
+ * all — the package is a workspace member, and only the (private) monorepo can
+ * build it.
+ *
+ * Publishing from the tarball is better than a workaround for that. The channel
+ * then carries **exactly the bytes npm shipped**, so "the runtime a site gets"
+ * and "the runtime in the channel" are the same artifact by construction rather
+ * than by two builds agreeing. A local build can differ from a published one at
+ * the same version number; this removes that gap instead of documenting it.
+ */
+const fromDir = resolve(flag('from') || resolve(here, '..'))
 const dryRun = has('dry-run')
 // CI re-runs on every push; an unchanged version is a no-op there, not a fault.
 // A HUMAN republishing an existing version is still an error — the difference is
@@ -71,7 +85,7 @@ const layout = flag('layout') || 'split'
 
 if (!channelDir) {
   console.error(
-    'Usage: publish-channel.mjs --channel <dir> [--layout split|flat] [--skip-if-published] [--dry-run]'
+    'Usage: publish-channel.mjs --channel <dir> [--from <pkg-dir>] [--layout split|flat] [--skip-if-published] [--dry-run]'
   )
   process.exit(2)
 }
@@ -110,7 +124,8 @@ function destPath(rel, group) {
   return join(group === 'browser' ? 'public' : 'internal', rel)
 }
 
-const pkg = JSON.parse(readFileSync(join(pkgRoot, 'package.json'), 'utf8'))
+const DIST = join(fromDir, 'dist')
+const pkg = JSON.parse(readFileSync(join(fromDir, 'package.json'), 'utf8'))
 const { name, version } = pkg
 
 /** Every file under `dir`, as paths relative to it. */

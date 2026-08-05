@@ -1,42 +1,56 @@
 # Publish the runtime distribution channel to GitHub Pages.
 #
-# Generated? No — hand-written, because this repo is the only publisher of this
-# channel. If a second artifact ever needs one, generalise then.
-#
 #   https://<owner>.github.io/<repo>/runtime/index.json      what exists · latest · deprecated
 #   https://<owner>.github.io/<repo>/runtime/<version>/…     the artifacts
 #
-# ── Why the index is written last, and why that matters here ──
+# ── It publishes what npm SHIPPED, not what this tree builds ──
+#
+# This package declares `@uniweb/core: workspace:*`, so a standalone clone of
+# this repo cannot install or build at all — it is a workspace member, and only
+# the monorepo can build it. A build-from-source workflow is therefore not
+# merely awkward here; it is impossible.
+#
+# Publishing the npm tarball is better than a workaround for that. The channel
+# then carries **exactly the bytes a customer installs**, so "the runtime a site
+# gets" and "the runtime in the channel" are the same artifact by construction
+# rather than by two builds happening to agree. Measured while building this:
+# npm's 0.9.7 and a local 0.9.7 fingerprint DIFFERENTLY, because a build flag
+# moved between them — a version number does not determine its bytes, which is
+# exactly why the index records `integrity` rather than assuming it.
+#
+# A consequence worth knowing: this job needs no package manager, no install and
+# no build. `publish-channel.mjs` is dependency-free Node by design, and that
+# choice is what lets this run on nothing but `npm pack` + node.
+#
+# ── Why the index is written last ──
 #
 # A consumer polls the index; the moment it names a version it fetches that
-# version's files. If the index landed first, a poller could see a version
-# announced and 404 on one of its objects — then stock a PARTIAL version and
-# announce it downstream. `publish-channel.mjs` stages the artifacts and renames
-# them into place, then writes the index as its final act, and this workflow
-# ships both in ONE commit so the tree never exists in a half-published state.
+# version's files. `publish-channel.mjs` stages the artifacts and renames them
+# into place, then writes the index as its final act, and this workflow ships
+# both in ONE commit so the tree never exists half-published.
 #
-# ⚠️ What this workflow CANNOT give you: cache headers. GitHub Pages serves
-# everything `Cache-Control: max-age=600` and does not allow per-file headers —
-# measured, not assumed. So `index.json` is cached up to 10 minutes (with an
-# ETag, so revalidation is cheap) and `<version>/**` is NOT marked immutable
-# even though it is. A consumer needing `no-cache` on the index has to re-serve
-# this channel from a host where headers are settable; that is a property of
-# Pages, not of the channel format.
+# ⚠️ What this cannot give you: cache headers. GitHub Pages serves everything
+# `Cache-Control: max-age=600` and allows no per-file headers — measured. So the
+# index is cached up to 10 minutes (with an ETag, so revalidation is cheap) and
+# `<version>/**` is not marked immutable even though it is. A consumer needing
+# `no-cache` on the index must re-serve this channel from a host where headers
+# are settable; that is a property of Pages, not of the channel format.
 
 name: Publish runtime channel
 
 on:
-  push:
-    branches: [main]
-    # The build inputs. A docs-only commit should not spend a publish.
-    paths:
-      - 'src/**'
-      - 'scripts/**'
-      - 'vite.config.app.js'
-      - 'build-worker.js'
-      - 'package.json'
-      - '.github/workflows/publish-channel.yml'
+  # Picks up whatever npm currently publishes as `latest`. Publishing to npm is
+  # a human decision made elsewhere; this only mirrors the result, so a schedule
+  # is the honest trigger rather than a push to this repo — the repo's source is
+  # not what gets published.
+  schedule:
+    - cron: '17 * * * *'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (default: npm latest)'
+        required: false
+        default: 'latest'
 
 permissions:
   contents: write # pushes to the gh-pages branch
@@ -51,40 +65,22 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the runtime
+      # Only for `scripts/publish-channel.mjs` — none of this repo's source is
+      # published by this job.
+      - name: Check out the publisher
         uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11
-      # Node 22, not this package's `engines.node` floor of 20.19.
-      #
-      # pnpm 11 declares `>=22.13` and imports `node:sqlite`, which Node 20 does
-      # not have — so pnpm 11 + Node 20 fails at setup, before a single step of
-      # the actual job. The framework already knows this: `PNPM_MIN_NODE` in the
-      # CLI's versions.js maps 11 → 22, and `resolveCiNodeVersion()` raises the
-      # major to satisfy the package manager, because a project's declared
-      # minimum is a lower bound on what its CODE needs, not a ceiling.
-      #
-      # Written out rather than "20" because this file is hand-maintained and
-      # cannot call that resolver. If the pinned pnpm major moves, this moves
-      # with it — `PNPM_MIN_NODE` is the source of truth.
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: pnpm
 
-      - name: Install
-        run: pnpm install --frozen-lockfile
-
-      # Both halves. `build` emits the browser bundle + dist/ssr.js;
-      # `build:worker` emits worker-runtime.js and the shims. A version
-      # publishes both halves or neither, and the publish script refuses a
-      # build that is missing one.
-      - name: Build
+      - name: Fetch the published package from npm
         run: |
-          pnpm build
-          pnpm build:worker
+          VERSION="${{ github.event.inputs.version || 'latest' }}"
+          mkdir -p .npmpkg && cd .npmpkg
+          npm pack "@uniweb/runtime@${VERSION}" --silent
+          tar -xzf ./*.tgz
+          node -p "'Fetched ' + require('./package/package.json').name + '@' + require('./package/package.json').version"
 
       # A separate checkout of the served branch, created on first run.
       - name: Check out the channel branch
@@ -105,10 +101,14 @@ jobs:
             git commit -m "Initialise the runtime channel"
           fi
 
-      # Idempotent on purpose: re-running on an unchanged version is a no-op
-      # here, while a human republishing one is still refused.
+      # Idempotent on purpose: an hourly run on an unchanged version is a no-op,
+      # while a human republishing one is still refused.
       - name: Publish into the channel
-        run: node scripts/publish-channel.mjs --channel .channel --skip-if-published
+        run: |
+          node scripts/publish-channel.mjs \
+            --channel .channel \
+            --from .npmpkg/package \
+            --skip-if-published
 
       # One commit, so the artifacts and the index that names them land
       # together. Nothing to commit means the version was already published.
@@ -119,7 +119,7 @@ jobs:
             echo "Channel unchanged — nothing to publish."
             exit 0
           fi
-          VERSION=$(node -p "require('../package.json').version")
+          VERSION=$(node -p "require('../.npmpkg/package/package.json').version")
           git add -A
           git commit -m "runtime ${VERSION}"
           git push origin gh-pages

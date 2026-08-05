@@ -1,0 +1,120 @@
+{
+  "schema": 1,
+  "name": "@uniweb/runtime",
+  "latest": "0.9.7",
+  "versions": {
+    "0.9.7": {
+      "published": "2026-08-05T14:07:58.619Z",
+      "files": {
+        "browser": [
+          {
+            "path": "public/app/_importmap/@uniweb-core.js",
+            "size": 922,
+            "contentType": "text/javascript; charset=utf-8"
+          },
+          {
+            "path": "public/app/_importmap/react-dom-server.js",
+            "size": 189153,
+            "contentType": "text/javascript; charset=utf-8"
+          },
+          {
+            "path": "public/app/_importmap/react-dom.js",
+            "size": 806,
+            "contentType": "text/javascript; charset=utf-8"
+          },
+          {
+            "path": "public/app/_importmap/react-jsx-dev-runtime.js",
+            "size": 397,
+            "contentType": "text/javascript; charset=utf-8"
+          },
+          {
+            "path": "public/app/_importmap/react-jsx-runtime.js",
+            "size": 292,
+            "contentType": "text/javascript; charset=utf-8"
+          },
+          {
+            "path": "public/app/_importmap/react.js",
+            "size": 1823,
+            "contentType": "text/javascript; charset=utf-8"
+          },
+          {
+            "path": "public/app/assets/_commonjsHelpers-CqkleIqs.js",
+            "size": 170,
+            "contentType": "text/javascript; charset=utf-8"
+          },
+          {
+            "path": "public/app/assets/_importmap_react-CrAkajDz.js",
+            "size": 191,
+            "contentType": "text/javascript; charset=utf-8"
+          },
+          {
+            "path": "public/app/assets/core-BI26Dvfl.js",
+            "size": 173231,
+            "contentType": "text/javascript; charset=utf-8"
+          },
+          {
+            "path": "public/app/assets/index-CxUeIbEw.js",
+            "size": 7640,
+            "contentType": "text/javascript; charset=utf-8"
+          },
+          {
+            "path": "public/app/assets/index-Dfiy0YWz.js",
+            "size": 266780,
+            "contentType": "text/javascript; charset=utf-8"
+          },
+          {
+            "path": "public/app/assets/index-VvOM7xKK.js",
+            "size": 3697,
+            "contentType": "text/javascript; charset=utf-8"
+          },
+          {
+            "path": "public/app/assets/jsx-runtime-0PlsXv6K.js",
+            "size": 599,
+            "contentType": "text/javascript; charset=utf-8"
+          },
+          {
+            "path": "public/app/index.html",
+            "size": 1154,
+            "contentType": "text/html; charset=utf-8"
+          },
+          {
+            "path": "public/app/manifest.json",
+            "size": 640,
+            "contentType": "application/json; charset=utf-8"
+          }
+        ],
+        "isolate": [
+          {
+            "path": "internal/shims/react-dom.js",
+            "size": 964,
+            "contentType": "text/javascript; charset=utf-8"
+          },
+          {
+            "path": "internal/shims/react-jsx-runtime.js",
+            "size": 330,
+            "contentType": "text/javascript; charset=utf-8"
+          },
+          {
+            "path": "internal/shims/react.js",
+            "size": 2266,
+            "contentType": "text/javascript; charset=utf-8"
+          },
+          {
+            "path": "internal/shims/uniweb-core.js",
+            "size": 1774,
+            "contentType": "text/javascript; charset=utf-8"
+          },
+          {
+            "path": "internal/worker-runtime.js",
+            "size": 1319141,
+            "contentType": "text/javascript; charset=utf-8"
+          }
+        ]
+      },
+      "integrity": {
+        "browser": "sha256-ae75edadc154bd5869a9de17dcb7fc0abddd1ee198bb2af5be58902e6c57f241",
+        "isolate": "sha256-01d028f78b9497b769237ce1633d856b0814ac94770a25c3980fe60d71f6e1ce"
+      }
+    }
+  }
+}

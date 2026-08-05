@@ -63,10 +63,41 @@ const has = (name) => args.includes(`--${name}`)
 
 const channelDir = flag('channel')
 const dryRun = has('dry-run')
+const layout = flag('layout') || 'flat'
 
 if (!channelDir) {
-  console.error('Usage: publish-channel.mjs --channel <dir> [--dry-run]')
+  console.error('Usage: publish-channel.mjs --channel <dir> [--layout flat|split] [--dry-run]')
   process.exit(2)
+}
+if (!['flat', 'split'].includes(layout)) {
+  console.error(`Unknown --layout '${layout}'. Expected 'flat' or 'split'.`)
+  process.exit(2)
+}
+
+/**
+ * Where a file lands, which is the only thing the two layouts differ on.
+ *
+ *   flat    <version>/app/**              <version>/worker-runtime.js · shims/*
+ *   split   <version>/public/app/**       <version>/internal/worker-runtime.js · shims/*
+ *
+ * `flat` is today's shape and the default, so nothing moves by surprise.
+ *
+ * `split` makes the public/internal boundary **enforceable by a path rule** — a
+ * bucket policy or a route can deny `/internal/` without reading the index.
+ * That matters because the boundary is currently a convention every consumer
+ * re-derives, and it has already been got wrong: the isolate half was measured
+ * world-readable on a public asset domain, where nothing outside the SSR
+ * isolate ever requests it. A declaration protects a consumer that reads it; a
+ * prefix protects one that does not.
+ *
+ * The index records the paths a version ACTUALLY published, so a consumer never
+ * has to know which layout produced them — it reads `files.browser` and fetches
+ * exactly those. Integrity is unaffected either way: it hashes contents, not
+ * locations.
+ */
+function destPath(rel, group) {
+  if (layout === 'flat') return rel
+  return join(group === 'browser' ? 'public' : 'internal', rel)
 }
 
 const pkg = JSON.parse(readFileSync(join(pkgRoot, 'package.json'), 'utf8'))
@@ -155,14 +186,19 @@ const integrity = {
   browser: integrityOf(files.browser),
   isolate: integrityOf(files.isolate)
 }
+// The index carries the paths this version ACTUALLY published, so a consumer
+// fetches what it reads and never has to know which layout produced them.
 const next = addVersion(index, {
   version,
   published: new Date().toISOString(),
-  files,
+  files: {
+    browser: files.browser.map((f) => destPath(f, 'browser')),
+    isolate: files.isolate.map((f) => destPath(f, 'isolate'))
+  },
   integrity
 })
 
-console.log(`${name} → channel`)
+console.log(`${name} → channel  (layout: ${layout})`)
 console.log(`  version   ${version}`)
 console.log(`  browser   ${files.browser.length} file(s)  ${integrity.browser}`)
 console.log(`  isolate   ${files.isolate.length} file(s)  ${integrity.isolate}   (internal — read via binding, not a URL)`)
@@ -175,10 +211,12 @@ if (dryRun) {
 }
 
 mkdirSync(versionDir, { recursive: true })
-for (const rel of allFiles) {
-  const dest = join(versionDir, rel)
-  mkdirSync(dirname(dest), { recursive: true })
-  cpSync(join(DIST, rel), dest)
+for (const [group, list] of Object.entries(files)) {
+  for (const rel of list) {
+    const dest = join(versionDir, destPath(rel, group))
+    mkdirSync(dirname(dest), { recursive: true })
+    cpSync(join(DIST, rel), dest)
+  }
 }
 mkdirSync(dirname(indexPath), { recursive: true })
 writeFileSync(indexPath, serializeIndex(next))

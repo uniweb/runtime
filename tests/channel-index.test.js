@@ -5,6 +5,7 @@ import {
   compareVersions,
   computeLatest,
   createIndex,
+  GROUP_ANCHORS,
   deprecateVersion,
   groupRelativePaths,
   parseIndex,
@@ -19,7 +20,11 @@ const pub = (index, version, extra = {}) =>
     version,
     published: '2026-08-05T00:00:00Z',
     files: {
-      browser: [{ path: 'app/index.html', size: 10, contentType: 'text/html', sha256: H('a') }],
+      browser: [
+        { path: 'app/index.html', size: 10, contentType: 'text/html', sha256: H('a') },
+        // Invariant 7 — each group's root-level anchor.
+        { path: 'app/manifest.json', size: 5, contentType: 'application/json', sha256: H('f') }
+      ],
       isolate: [
         { path: 'worker-runtime.js', size: 20, contentType: 'text/javascript', sha256: H('b') }
       ]
@@ -211,7 +216,7 @@ describe('the browser/isolate boundary is declared, not derived', () => {
   it('records both halves separately', () => {
     const i = pub(fresh(), '0.9.7')
     const v = JSON.parse(serializeIndex(i)).versions['0.9.7']
-    expect(v.files.browser.map((f) => f.path)).toEqual(['app/index.html'])
+    expect(v.files.browser.map((f) => f.path)).toEqual(['app/index.html', 'app/manifest.json'])
     expect(v.files.isolate.map((f) => f.path)).toEqual(['worker-runtime.js'])
   })
 
@@ -272,7 +277,8 @@ describe('file entries carry their own metadata', () => {
             sha256: H('c'),
             extra: 'dropped'
           },
-          { path: 'app/a.js', size: 1, contentType: 'text/javascript', sha256: H('d') }
+          { path: 'app/a.js', size: 1, contentType: 'text/javascript', sha256: H('d') },
+          { path: 'app/manifest.json', size: 4, contentType: 'application/json', sha256: H('f') }
         ],
         isolate: [
           { path: 'worker-runtime.js', size: 3, contentType: 'text/javascript', sha256: H('e') }
@@ -281,7 +287,7 @@ describe('file entries carry their own metadata', () => {
       integrity: { browser: 'sha256-b', isolate: 'sha256-i' }
     })
     const browser = JSON.parse(serializeIndex(i)).versions['1.0.0'].files.browser
-    expect(browser.map((f) => f.path)).toEqual(['app/a.js', 'app/z.js'])
+    expect(browser.map((f) => f.path)).toEqual(['app/a.js', 'app/manifest.json', 'app/z.js'])
     expect(Object.keys(browser[0])).toEqual(['path', 'size', 'contentType', 'sha256'])
   })
 
@@ -472,5 +478,84 @@ describe('group-relative paths are layout-independent', () => {
   it('handles a single file and an empty group without inventing a prefix', () => {
     expect(groupRelativePaths(['public/app/manifest.json'])).toEqual(['manifest.json'])
     expect(groupRelativePaths([])).toEqual([])
+  })
+})
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * INVARIANT 7 — every group carries a root-level anchor
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * Two jobs in one rule. The anchor is the group's principal artifact, so its
+ * absence means the group is broken rather than small — and because it sits at
+ * the group root, it bounds invariant 6's prefix rule.
+ *
+ * The isolate half is why this is enforced rather than assumed: the publisher
+ * collected `worker-runtime.js` only when it existed, so a package built
+ * without its SSR step published a shims-only isolate half silently — and that
+ * is the group a consumer has no second way to sanity-check.
+ */
+describe('every group carries a root-level anchor', () => {
+  const ok = (paths) =>
+    paths.map((path) => ({ path, size: 1, contentType: 'text/plain', sha256: H('a') }))
+
+  const add = (browser, isolate) =>
+    addVersion(fresh(), {
+      version: '1.0.0',
+      files: { browser: ok(browser), isolate: ok(isolate) },
+      integrity: { browser: 'sha256-b', isolate: 'sha256-i' }
+    })
+
+  it('accepts a well-formed version under either layout', () => {
+    expect(() =>
+      add(['public/app/manifest.json', 'public/app/assets/x.js'], ['internal/worker-runtime.js'])
+    ).not.toThrow()
+    expect(() => add(['app/manifest.json'], ['worker-runtime.js', 'shims/react.js'])).not.toThrow()
+  })
+
+  it('refuses a shims-only isolate half — the case that used to publish silently', () => {
+    expect(() => add(['app/manifest.json'], ['shims/react.js', 'shims/react-dom.js'])).toThrow(
+      /'isolate' group has no 'worker-runtime\.js'/
+    )
+  })
+
+  it('refuses a browser half with no manifest', () => {
+    expect(() => add(['app/assets/x.js'], ['worker-runtime.js'])).toThrow(
+      /'browser' group has no 'manifest\.json'/
+    )
+  })
+
+  /**
+   * The failure invariant 6 cannot see on its own: every file below the group
+   * root, so the common prefix eats a real directory and the derived keys look
+   * entirely plausible. The anchor is what turns it into a refusal.
+   */
+  it('refuses the over-strip shape, which is invisible in the paths alone', () => {
+    const sunk = ['public/app/assets/a.js', 'public/app/assets/b.js']
+    // Nothing about these names looks wrong — and stripping swallows `assets/`.
+    expect(groupRelativePaths(sunk)).toEqual(['a.js', 'b.js'])
+    expect(() => add(sunk, ['worker-runtime.js'])).toThrow(/over-stripping/)
+  })
+
+  it('checks the anchor by position, not by literal path', () => {
+    // Same anchor, three different absolute paths — all valid.
+    for (const prefix of ['', 'app/', 'public/app/']) {
+      expect(() => add([`${prefix}manifest.json`], ['worker-runtime.js'])).not.toThrow()
+    }
+  })
+
+  it('reports a malformed entry before a missing anchor', () => {
+    // A dropped `size` is the more basic problem; naming the anchor instead
+    // would point away from it.
+    expect(() =>
+      addVersion(fresh(), {
+        version: '1.0.0',
+        files: {
+          browser: [{ path: 'app/assets/x.js' }],
+          isolate: ok(['worker-runtime.js'])
+        },
+        integrity: { browser: 'sha256-b', isolate: 'sha256-i' }
+      })
+    ).toThrow(/needs \{ path, size, contentType \}/)
   })
 })

@@ -107,9 +107,39 @@
  *    `index.html`, `assets/…`, `_importmap/…`; isolate to `worker-runtime.js`,
  *    `shims/…`. No layout to know, nothing to update if a third ever exists.
  *
+ *    ⭐ **What makes that safe is invariant 7, not luck.** The rule over-strips
+ *    if every file in a group sits below the group root — one lone
+ *    `…/app/assets/i.js` would elide `assets/` and yield keys that look
+ *    perfectly reasonable, with nothing in the paths to reveal it. A
+ *    **root-level ANCHOR bounds the prefix**, and each group has one.
+ *
  *    ⚠️ **The index deliberately does NOT record which layout produced it.** A
  *    `layout` field is a field consumers would branch on, which reintroduces
  *    precisely the coupling this invariant removes. The paths are the answer.
+ *
+ * 7. **Every group carries a root-level anchor, and a version without one is
+ *    refused.**
+ *
+ *        browser  →  manifest.json        isolate  →  worker-runtime.js
+ *
+ *    Each is the group's principal artifact — the browser half is unusable
+ *    without the manifest naming its entry, preloads and import map; the
+ *    isolate half is unusable without the SSR bundle, `shims/*` being its
+ *    peers. So a group missing its anchor is not a smaller delivery set, it is
+ *    a **broken one**, and the same reasoning as the empty-group refusal
+ *    applies: it is an unstated boundary rather than "fewer files".
+ *
+ *    This is enforced rather than assumed because the publisher could not
+ *    previously state it: `worker-runtime.js` was collected only `if
+ *    (existsSync(...))`, so a package built without its SSR step published a
+ *    shims-only isolate half with no complaint — the exact group that has no
+ *    second way to notice, since a consumer cross-checking the browser anchor
+ *    has nothing equivalent to check here.
+ *
+ *    ⭐ The anchor does double duty: it makes the group verifiably complete,
+ *    AND it is what bounds invariant 6's prefix rule, since a file at the group
+ *    root means the common directory prefix cannot reach past it. **A consumer
+ *    may rely on both.**
  *
  * Pure functions over plain data — no I/O, no dependencies. The publishing
  * script owns the filesystem; this owns the rules.
@@ -136,6 +166,19 @@ export const INDEX_SCHEMA_VERSION = 1
  * `app/` means.
  */
 export const DELIVERY_GROUPS = ['browser', 'isolate']
+
+/**
+ * Each group's principal artifact, at the group root — invariant 7.
+ *
+ * A group without its anchor is broken rather than small, and the anchor is
+ * also what stops invariant 6's prefix rule from over-stripping. Enforced in
+ * `addVersion`, so it binds any publisher rather than only the one in this
+ * repo.
+ */
+export const GROUP_ANCHORS = {
+  browser: 'manifest.json',
+  isolate: 'worker-runtime.js'
+}
 
 /**
  * Parse a semver-ish version into comparable parts.
@@ -329,6 +372,22 @@ export function addVersion(index, { version, published, files, integrity }) {
             `Got: ${JSON.stringify(f.sha256)}`
         )
       }
+    }
+  }
+  // Invariant 7, last: a malformed entry is a more basic problem than a missing
+  // anchor, and reporting "no manifest.json" to someone whose real mistake is a
+  // dropped `size` points them away from it. Checked on group-RELATIVE names so
+  // it holds under any layout — the anchor is a position within the group, not
+  // a literal path.
+  for (const group of DELIVERY_GROUPS) {
+    const anchor = GROUP_ANCHORS[group]
+    if (!groupRelativePaths(files[group]).includes(anchor)) {
+      throw new Error(
+        `addVersion(${version}): the '${group}' group has no '${anchor}' at its root. ` +
+          `That is the group's principal artifact — a group without it is broken, not merely ` +
+          `smaller — and it is what stops a consumer's common-prefix rule from over-stripping. ` +
+          `Got: ${files[group].map((f) => f.path).join(', ')}`
+      )
     }
   }
   const next = {

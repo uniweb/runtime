@@ -57,9 +57,21 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           version: 11
+      # Node 22, not this package's `engines.node` floor of 20.19.
+      #
+      # pnpm 11 declares `>=22.13` and imports `node:sqlite`, which Node 20 does
+      # not have — so pnpm 11 + Node 20 fails at setup, before a single step of
+      # the actual job. The framework already knows this: `PNPM_MIN_NODE` in the
+      # CLI's versions.js maps 11 → 22, and `resolveCiNodeVersion()` raises the
+      # major to satisfy the package manager, because a project's declared
+      # minimum is a lower bound on what its CODE needs, not a ceiling.
+      #
+      # Written out rather than "20" because this file is hand-maintained and
+      # cannot call that resolver. If the pinned pnpm major moves, this moves
+      # with it — `PNPM_MIN_NODE` is the source of truth.
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: pnpm
 
       - name: Install

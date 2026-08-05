@@ -63,7 +63,7 @@ const has = (name) => args.includes(`--${name}`)
 
 const channelDir = flag('channel')
 const dryRun = has('dry-run')
-const layout = flag('layout') || 'flat'
+const layout = flag('layout') || 'split'
 
 if (!channelDir) {
   console.error('Usage: publish-channel.mjs --channel <dir> [--layout flat|split] [--dry-run]')
@@ -77,18 +77,22 @@ if (!['flat', 'split'].includes(layout)) {
 /**
  * Where a file lands, which is the only thing the two layouts differ on.
  *
+ *   split   <version>/public/app/**       <version>/internal/worker-runtime.js · shims/*   (default)
  *   flat    <version>/app/**              <version>/worker-runtime.js · shims/*
- *   split   <version>/public/app/**       <version>/internal/worker-runtime.js · shims/*
  *
- * `flat` is today's shape and the default, so nothing moves by surprise.
+ * ⚠️ **The prefix is self-description, NOT enforcement** — and that correction
+ * came from the consumer. On the target host an object-store custom domain
+ * serves the WHOLE store; there is no per-prefix ACL to deny `/internal/` on,
+ * so a prefix alone leaves the objects world-readable at their new paths.
  *
- * `split` makes the public/internal boundary **enforceable by a path rule** — a
- * bucket policy or a route can deny `/internal/` without reading the index.
- * That matters because the boundary is currently a convention every consumer
- * re-derives, and it has already been got wrong: the isolate half was measured
- * world-readable on a public asset domain, where nothing outside the SSR
- * isolate ever requests it. A declaration protects a consumer that reads it; a
- * prefix protects one that does not.
+ * What actually enforces it is **two stores**: a public one with a domain, and
+ * an internal one with none, reachable only through a binding. Enforcement by
+ * *absence of an address* rather than by rule — and it costs nothing.
+ *
+ * The split is still the default, for what it genuinely buys: each half is
+ * self-describing, a mis-stocked object is obvious on sight, and a stocker can
+ * route the two halves to two stores without consulting the index. `flat`
+ * remains for a consumer whose key layout already assumes it.
  *
  * The index records the paths a version ACTUALLY published, so a consumer never
  * has to know which layout produced them — it reads `files.browser` and fetches
@@ -131,6 +135,50 @@ function deliveryFiles() {
 }
 
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')
+
+/**
+ * Content type, stated by the producer rather than derived by each consumer.
+ *
+ * Object metadata is invisible to every check a stocker runs — it shows in no
+ * listing and survives no byte comparison, so an integrity match says nothing
+ * about it. This lane has already paid for that once: `uniweb runtime register`
+ * stores no `Cache-Control` on any object it uploads, and nothing noticed.
+ *
+ * An unknown extension THROWS rather than falling back to
+ * `application/octet-stream`. A wrong content-type on a JS module is a page
+ * that does not run, discovered by a visitor; a failed publish is discovered
+ * here.
+ */
+const CONTENT_TYPES = {
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.woff2': 'font/woff2',
+  '.map': 'application/json; charset=utf-8'
+}
+function contentTypeOf(rel) {
+  const ext = rel.slice(rel.lastIndexOf('.'))
+  const ct = CONTENT_TYPES[ext]
+  if (!ct) {
+    throw new Error(
+      `No content type known for '${ext}' (${rel}). Add it to CONTENT_TYPES rather ` +
+        `than letting a consumer guess — a wrong type on a module is a page that does not run.`
+    )
+  }
+  return ct
+}
+
+/** A file's published metadata: where it lands, how big, and what it is. */
+function describe(rel, group) {
+  return {
+    path: destPath(rel, group),
+    size: statSync(join(DIST, rel)).size,
+    contentType: contentTypeOf(rel)
+  }
+}
 
 /**
  * Content fingerprint: sha256 over the SORTED, newline-joined per-file hashes.
@@ -182,21 +230,29 @@ if (existsSync(versionDir)) {
 // Fingerprinted per group, not once overall: the two halves land in DIFFERENT
 // sinks, so a consumer that takes only one half can still verify what it got.
 // A single digest over both would be uncheckable by either of them alone.
-const integrity = {
-  browser: integrityOf(files.browser),
-  isolate: integrityOf(files.isolate)
-}
+let integrity, next
+try {
+  integrity = {
+    browser: integrityOf(files.browser),
+    isolate: integrityOf(files.isolate)
+  }
 // The index carries the paths this version ACTUALLY published, so a consumer
 // fetches what it reads and never has to know which layout produced them.
-const next = addVersion(index, {
-  version,
-  published: new Date().toISOString(),
-  files: {
-    browser: files.browser.map((f) => destPath(f, 'browser')),
-    isolate: files.isolate.map((f) => destPath(f, 'isolate'))
-  },
-  integrity
-})
+  next = addVersion(index, {
+    version,
+    published: new Date().toISOString(),
+    files: {
+      browser: files.browser.map((f) => describe(f, 'browser')),
+      isolate: files.isolate.map((f) => describe(f, 'isolate'))
+    },
+    integrity
+  })
+} catch (err) {
+  // A clean message, not a stack: every throw reachable here names something a
+  // human has to fix in this repo (an unknown extension, a malformed entry).
+  console.error(`Cannot publish ${version}: ${err.message}`)
+  process.exit(1)
+}
 
 console.log(`${name} → channel  (layout: ${layout})`)
 console.log(`  version   ${version}`)

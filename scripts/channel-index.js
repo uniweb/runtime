@@ -205,6 +205,21 @@ export function addVersion(index, { version, published, files, integrity }) {
           `it is an unstated boundary.`
       )
     }
+    for (const f of files[group]) {
+      // Every entry states its own metadata. A consumer re-serving these objects
+      // has to set content-type somewhere, and DERIVING it from a file extension
+      // is the shape that already bit this lane: `runtime register` stores no
+      // Cache-Control on any of its objects, and object metadata shows in no
+      // listing and survives no byte-level check — an integrity match says
+      // nothing about it. Stated once by the producer, it cannot be derived
+      // differently by two stockers.
+      if (!f?.path || typeof f.size !== 'number' || !f.contentType) {
+        throw new Error(
+          `addVersion(${version}): every file in '${group}' needs { path, size, contentType }. ` +
+            `Got: ${JSON.stringify(f)}`
+        )
+      }
+    }
     if (!integrity?.[group]) {
       throw new Error(`addVersion(${version}): 'integrity.${group}' is required.`)
     }
@@ -216,8 +231,8 @@ export function addVersion(index, { version, published, files, integrity }) {
       [version]: {
         published: published || new Date().toISOString(),
         files: {
-          browser: [...files.browser].sort(),
-          isolate: [...files.isolate].sort()
+          browser: sortFiles(files.browser),
+          isolate: sortFiles(files.isolate)
         },
         integrity: { browser: integrity.browser, isolate: integrity.isolate }
       }
@@ -261,6 +276,13 @@ export function deprecateVersion(index, version, { reason, supersededBy } = {}) 
  * a fixed order, so a re-publish that changes nothing produces an identical
  * file and a diff shows only real change.
  */
+/** Files sorted by path, normalized to exactly the three declared fields. */
+function sortFiles(list) {
+  return [...list]
+    .map(({ path, size, contentType }) => ({ path, size, contentType }))
+    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+}
+
 export function serializeIndex(index) {
   const versions = {}
   for (const v of Object.keys(index.versions).sort(compareVersions)) {

@@ -14,7 +14,10 @@ const pub = (index, version, extra = {}) =>
   addVersion(index, {
     version,
     published: '2026-08-05T00:00:00Z',
-    files: { browser: ['app/index.html'], isolate: ['worker-runtime.js'] },
+    files: {
+      browser: [{ path: 'app/index.html', size: 10, contentType: 'text/html' }],
+      isolate: [{ path: 'worker-runtime.js', size: 20, contentType: 'text/javascript' }]
+    },
     integrity: { browser: `sha256-b-${version}`, isolate: `sha256-i-${version}` },
     ...extra
   })
@@ -71,7 +74,10 @@ describe('immutability — the invariant the channel exists for', () => {
     expect(() =>
       addVersion(fresh(), {
         version: '1.0.0',
-        files: { browser: ['app/x.js'], isolate: ['worker-runtime.js'] },
+        files: {
+          browser: [{ path: 'app/x.js', size: 1, contentType: 'text/javascript' }],
+          isolate: [{ path: 'worker-runtime.js', size: 1, contentType: 'text/javascript' }]
+        },
         integrity: { browser: 'sha256-b' } // isolate missing
       })
     ).toThrow(/integrity\.isolate/)
@@ -199,8 +205,8 @@ describe('the browser/isolate boundary is declared, not derived', () => {
   it('records both halves separately', () => {
     const i = pub(fresh(), '0.9.7')
     const v = JSON.parse(serializeIndex(i)).versions['0.9.7']
-    expect(v.files.browser).toEqual(['app/index.html'])
-    expect(v.files.isolate).toEqual(['worker-runtime.js'])
+    expect(v.files.browser.map((f) => f.path)).toEqual(['app/index.html'])
+    expect(v.files.isolate.map((f) => f.path)).toEqual(['worker-runtime.js'])
   })
 
   it('fingerprints each half separately, so one-half consumers can verify', () => {
@@ -216,9 +222,52 @@ describe('the browser/isolate boundary is declared, not derived', () => {
     expect(() =>
       addVersion(fresh(), {
         version: '1.0.0',
-        files: { browser: ['app/x.js'], isolate: [] },
+        files: {
+          browser: [{ path: 'app/x.js', size: 1, contentType: 'text/javascript' }],
+          isolate: []
+        },
         integrity: { browser: 'sha256-b', isolate: 'sha256-i' }
       })
     ).toThrow(/files\.isolate/)
+  })
+})
+
+/**
+ * Every file states its own metadata, because the consumer that re-serves these
+ * objects has to set a content type somewhere — and DERIVING it from a file
+ * extension is the shape this lane has already paid for: `uniweb runtime
+ * register` stores no `Cache-Control` on any object it uploads, and nothing
+ * noticed, because object metadata shows in no listing and survives no
+ * byte-level check. An integrity match says nothing about it.
+ */
+describe('file entries carry their own metadata', () => {
+  it('requires path, size and contentType on every entry', () => {
+    expect(() =>
+      addVersion(fresh(), {
+        version: '1.0.0',
+        files: {
+          browser: [{ path: 'app/x.js' }], // no size, no contentType
+          isolate: [{ path: 'worker-runtime.js', size: 1, contentType: 'text/javascript' }]
+        },
+        integrity: { browser: 'sha256-b', isolate: 'sha256-i' }
+      })
+    ).toThrow(/needs \{ path, size, contentType \}/)
+  })
+
+  it('normalizes to exactly those three fields, sorted by path', () => {
+    const i = addVersion(fresh(), {
+      version: '1.0.0',
+      files: {
+        browser: [
+          { path: 'app/z.js', size: 2, contentType: 'text/javascript', extra: 'dropped' },
+          { path: 'app/a.js', size: 1, contentType: 'text/javascript' }
+        ],
+        isolate: [{ path: 'worker-runtime.js', size: 3, contentType: 'text/javascript' }]
+      },
+      integrity: { browser: 'sha256-b', isolate: 'sha256-i' }
+    })
+    const browser = JSON.parse(serializeIndex(i)).versions['1.0.0'].files.browser
+    expect(browser.map((f) => f.path)).toEqual(['app/a.js', 'app/z.js'])
+    expect(Object.keys(browser[0])).toEqual(['path', 'size', 'contentType'])
   })
 })

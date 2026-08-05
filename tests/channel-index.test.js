@@ -6,6 +6,7 @@ import {
   computeLatest,
   createIndex,
   GROUP_ANCHORS,
+  INTEGRITY_ALGORITHM,
   deprecateVersion,
   groupRelativePaths,
   parseIndex,
@@ -591,5 +592,58 @@ describe('every group carries a root-level anchor', () => {
         integrity: { browser: 'sha256-b', isolate: 'sha256-i' }
       })
     ).toThrow(/needs \{ path, size, contentType \}/)
+  })
+})
+
+/**
+ * The index states its own digest construction — invariant 4's last mile.
+ *
+ * Two independent implementers derived the file shape correctly and both failed
+ * to derive the digest; one tried eight constructions. `index.json` is served at
+ * a URL, so a consumer can hold the document and never see this repo.
+ *
+ * ⚠️ Additive ONLY. Both consumers confirmed an unknown key is inert at every
+ * level, on the condition that `schema` is not bumped to carry it: an added key
+ * is ignored, `schema: 2` is a refusal, and shipped together the refusal wins
+ * and the key is never read.
+ */
+describe('the index states how its digests are built', () => {
+  it('carries integrityAlgorithm without bumping schema', () => {
+    const doc = JSON.parse(serializeIndex(pub(fresh(), '0.9.9')))
+    expect(doc.schema).toBe(1) // ← the condition both consumers set
+    expect(doc.integrityAlgorithm).toContain('sha256')
+  })
+
+  it('describes the construction the code actually uses', () => {
+    // A stale description is worse than none: it would be believed.
+    const text = INTEGRITY_ALGORITHM.toLowerCase()
+    expect(text).toContain('sorted')
+    expect(text).toContain('lf')
+    expect(text).toContain('no trailing newline')
+    expect(text).toContain('contents only')
+  })
+
+  it('restates it when rewriting an index that predates the field', () => {
+    // Adding it to an existing index is safe — it is not a per-version identity
+    // field, so invariant 2 is untouched and versions are carried verbatim.
+    const legacy = {
+      schema: 1,
+      name: '@uniweb/runtime',
+      latest: '0.9.8',
+      versions: {
+        '0.9.8': {
+          published: '2026-08-05T14:49:31Z',
+          files: {
+            browser: [{ path: 'app/manifest.json', size: 640, contentType: 'application/json' }],
+            isolate: [{ path: 'worker-runtime.js', size: 12, contentType: 'text/javascript' }]
+          },
+          integrity: { browser: 'sha256-b17c6c7c', isolate: 'sha256-01d028f7' }
+        }
+      }
+    }
+    const doc = JSON.parse(serializeIndex(parseIndex(legacy)))
+    expect(doc.integrityAlgorithm).toBe(INTEGRITY_ALGORITHM)
+    expect(doc.versions['0.9.8'].integrity.browser).toBe('sha256-b17c6c7c')
+    expect('sha256' in doc.versions['0.9.8'].files.browser[0]).toBe(false)
   })
 })

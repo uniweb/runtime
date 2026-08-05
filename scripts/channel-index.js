@@ -152,6 +152,34 @@
 export const INDEX_SCHEMA_VERSION = 1
 
 /**
+ * The index's own statement of how its digests are built — invariant 4, in the
+ * document rather than only in this file.
+ *
+ * ⭐ **Why it is worth a field: `index.json` is served at a URL.** A consumer can
+ * hold the whole document and never see this repo, and two independent
+ * implementers proved that is not hypothetical — both derived the shape
+ * correctly, both failed to derive the digest, and both refused to guess rather
+ * than shipping a check that verifies nothing. One of them tried eight
+ * constructions. A line in the document they already have costs nothing.
+ *
+ * ⚠️ **Additive, and `schema` must NOT be bumped to carry it.** An unknown key
+ * is ignored by a conforming reader; `schema: 2` is a statement that the reader
+ * no longer understands the document, and a correct consumer *refuses* rather
+ * than best-effort-parsing fields it may not know. Shipped together, the refusal
+ * wins and the key is never read. Both consumers confirmed the key is inert at
+ * every level (top, per-version, per-file) with tests, on that condition.
+ *
+ * Prose, not a parseable grammar: it is a pointer for a human implementing the
+ * check, and the executable statement is `tests/channel-index.test.js`'s
+ * conformance vector.
+ */
+export const INTEGRITY_ALGORITHM =
+  'per-file: sha256 of the file bytes, lowercase hex. ' +
+  'per-group: sha256-<lowercase hex of sha256(utf8(  ' +
+  'the per-file hex digests, SORTED as strings, joined with LF, no trailing newline  ' +
+  '))>. Hashes contents only — never paths, sizes or names; duplicates are not collapsed.'
+
+/**
  * The two halves of a runtime, and they go to different places.
  *
  *   browser — `app/**`. Fetched by a visitor's browser over a URL. **Public.**
@@ -311,7 +339,13 @@ export function groupRelativePaths(files, group) {
 /** An empty channel index. */
 export function createIndex({ name }) {
   if (!name) throw new Error('createIndex: `name` is required')
-  return { schema: INDEX_SCHEMA_VERSION, name, latest: null, versions: {} }
+  return {
+    schema: INDEX_SCHEMA_VERSION,
+    name,
+    integrityAlgorithm: INTEGRITY_ALGORITHM,
+    latest: null,
+    versions: {}
+  }
 }
 
 /**
@@ -336,6 +370,11 @@ export function parseIndex(json, { name } = {}) {
   return {
     schema: INDEX_SCHEMA_VERSION,
     name: obj.name || name,
+    // Restated on every write rather than carried through: it describes THIS
+    // publisher's construction, and a stale string would be worse than none.
+    // Safe to add to an existing index — it is not a per-version identity
+    // field, so invariant 2 is untouched.
+    integrityAlgorithm: INTEGRITY_ALGORITHM,
     latest: obj.latest ?? null,
     versions: { ...(obj.versions || {}) }
   }
@@ -521,7 +560,13 @@ export function serializeIndex(index) {
     }
   }
   return `${JSON.stringify(
-    { schema: index.schema, name: index.name, latest: index.latest, versions },
+    {
+      schema: index.schema,
+      name: index.name,
+      integrityAlgorithm: index.integrityAlgorithm || INTEGRITY_ALGORITHM,
+      latest: index.latest,
+      versions
+    },
     null,
     2
   )}\n`

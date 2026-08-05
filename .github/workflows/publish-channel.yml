@@ -1,0 +1,113 @@
+# Publish the runtime distribution channel to GitHub Pages.
+#
+# Generated? No — hand-written, because this repo is the only publisher of this
+# channel. If a second artifact ever needs one, generalise then.
+#
+#   https://<owner>.github.io/<repo>/runtime/index.json      what exists · latest · deprecated
+#   https://<owner>.github.io/<repo>/runtime/<version>/…     the artifacts
+#
+# ── Why the index is written last, and why that matters here ──
+#
+# A consumer polls the index; the moment it names a version it fetches that
+# version's files. If the index landed first, a poller could see a version
+# announced and 404 on one of its objects — then stock a PARTIAL version and
+# announce it downstream. `publish-channel.mjs` stages the artifacts and renames
+# them into place, then writes the index as its final act, and this workflow
+# ships both in ONE commit so the tree never exists in a half-published state.
+#
+# ⚠️ What this workflow CANNOT give you: cache headers. GitHub Pages serves
+# everything `Cache-Control: max-age=600` and does not allow per-file headers —
+# measured, not assumed. So `index.json` is cached up to 10 minutes (with an
+# ETag, so revalidation is cheap) and `<version>/**` is NOT marked immutable
+# even though it is. A consumer needing `no-cache` on the index has to re-serve
+# this channel from a host where headers are settable; that is a property of
+# Pages, not of the channel format.
+
+name: Publish runtime channel
+
+on:
+  push:
+    branches: [main]
+    # The build inputs. A docs-only commit should not spend a publish.
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'vite.config.app.js'
+      - 'build-worker.js'
+      - 'package.json'
+      - '.github/workflows/publish-channel.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write # pushes to the gh-pages branch
+
+# Never two publishes at once: both would read the same index, and the second
+# would overwrite the first's entry rather than appending to it.
+concurrency:
+  group: publish-runtime-channel
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the runtime
+        uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Both halves. `build` emits the browser bundle + dist/ssr.js;
+      # `build:worker` emits worker-runtime.js and the shims. A version
+      # publishes both halves or neither, and the publish script refuses a
+      # build that is missing one.
+      - name: Build
+        run: |
+          pnpm build
+          pnpm build:worker
+
+      # A separate checkout of the served branch, created on first run.
+      - name: Check out the channel branch
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git worktree add .channel gh-pages
+          else
+            git worktree add --detach .channel
+            cd .channel
+            git checkout --orphan gh-pages
+            git rm -rf . >/dev/null 2>&1 || true
+            # Pages would otherwise run Jekyll and drop paths beginning with _
+            # — which is every `_importmap/` file in the browser half.
+            touch .nojekyll
+            git add .nojekyll
+            git commit -m "Initialise the runtime channel"
+          fi
+
+      # Idempotent on purpose: re-running on an unchanged version is a no-op
+      # here, while a human republishing one is still refused.
+      - name: Publish into the channel
+        run: node scripts/publish-channel.mjs --channel .channel --skip-if-published
+
+      # One commit, so the artifacts and the index that names them land
+      # together. Nothing to commit means the version was already published.
+      - name: Push the channel
+        working-directory: .channel
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Channel unchanged — nothing to publish."
+            exit 0
+          fi
+          VERSION=$(node -p "require('../package.json').version")
+          git add -A
+          git commit -m "runtime ${VERSION}"
+          git push origin gh-pages

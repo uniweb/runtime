@@ -44,7 +44,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -63,10 +63,16 @@ const has = (name) => args.includes(`--${name}`)
 
 const channelDir = flag('channel')
 const dryRun = has('dry-run')
+// CI re-runs on every push; an unchanged version is a no-op there, not a fault.
+// A HUMAN republishing an existing version is still an error — the difference is
+// intent, so it is opt-in rather than a softened default.
+const skipIfPublished = has('skip-if-published')
 const layout = flag('layout') || 'split'
 
 if (!channelDir) {
-  console.error('Usage: publish-channel.mjs --channel <dir> [--layout flat|split] [--dry-run]')
+  console.error(
+    'Usage: publish-channel.mjs --channel <dir> [--layout split|flat] [--skip-if-published] [--dry-run]'
+  )
   process.exit(2)
 }
 if (!['flat', 'split'].includes(layout)) {
@@ -213,6 +219,10 @@ const index = parseIndex(
 
 // Immutability, checked against BOTH the record and the reality.
 if (index.versions[version]) {
+  if (skipIfPublished) {
+    console.log(`${version} is already published — nothing to do.`)
+    process.exit(0)
+  }
   console.error(
     `Refusing to publish: ${version} is already in the channel index.\n` +
       `Published versions are immutable — bump the version instead.`
@@ -266,14 +276,41 @@ if (dryRun) {
   process.exit(0)
 }
 
-mkdirSync(versionDir, { recursive: true })
-for (const [group, list] of Object.entries(files)) {
-  for (const rel of list) {
-    const dest = join(versionDir, destPath(rel, group))
-    mkdirSync(dirname(dest), { recursive: true })
-    cpSync(join(DIST, rel), dest)
+// ── Ordering: artifacts first, index LAST. And the version appears whole. ──
+//
+// A remote reader polls `index.json`; the moment it names a version it will
+// fetch that version's files. If the index went first, or if the directory
+// appeared file-by-file, a poller could see `0.9.8` announced and 404 on one of
+// its shims — then stock a PARTIAL version and announce it. A static host's
+// deploy is not atomic across files, so this cannot be left to luck.
+//
+// Two properties, both from the same shape:
+//   1. files are staged and RENAMED into place, so a version directory appears
+//      complete or not at all — and a failed publish leaves nothing behind to
+//      block a retry (an aborted copy used to leave a partial dir that the next
+//      run refused as "on disk but not in the index");
+//   2. the index is the LAST write, so "the index names it" implies "the bytes
+//      are there" — the commit-marker pattern, one layer up from the way
+//      `manifest.json` is written last within a version.
+const staging = join(channelDir, 'runtime', `.staging-${version}`)
+try {
+  rmSync(staging, { recursive: true, force: true })
+  for (const [group, list] of Object.entries(files)) {
+    for (const rel of list) {
+      const dest = join(staging, destPath(rel, group))
+      mkdirSync(dirname(dest), { recursive: true })
+      cpSync(join(DIST, rel), dest)
+    }
   }
+  mkdirSync(dirname(versionDir), { recursive: true })
+  renameSync(staging, versionDir)
+} catch (err) {
+  rmSync(staging, { recursive: true, force: true })
+  console.error(`Failed to stage ${version}: ${err.message}\nThe channel is unchanged.`)
+  process.exit(1)
 }
+
+// Only now — every artifact is in place and fetchable.
 mkdirSync(dirname(indexPath), { recursive: true })
 writeFileSync(indexPath, serializeIndex(next))
 

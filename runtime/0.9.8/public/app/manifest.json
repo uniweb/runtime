@@ -1,0 +1,20 @@
+{
+  "version": "0.9.8",
+  "entry": "assets/index-Dfiy0YWz.js",
+  "preloads": [
+    "assets/_commonjsHelpers-CqkleIqs.js",
+    "assets/index-VvOM7xKK.js",
+    "assets/index-CxUeIbEw.js",
+    "assets/_importmap_react-CrAkajDz.js",
+    "assets/jsx-runtime-0PlsXv6K.js",
+    "assets/core-BI26Dvfl.js"
+  ],
+  "importMap": {
+    "react": "_importmap/react.js",
+    "react-dom": "_importmap/react-dom.js",
+    "react-dom/server": "_importmap/react-dom-server.js",
+    "react/jsx-runtime": "_importmap/react-jsx-runtime.js",
+    "react/jsx-dev-runtime": "_importmap/react-jsx-dev-runtime.js",
+    "@uniweb/core": "_importmap/@uniweb-core.js"
+  }
+}

@@ -41,6 +41,43 @@
  *    was published, and a consumer can check the bytes it fetched against it.
  *    That turns "our CI promises" into "you can verify".
  *
+ *    ⛔ **A digest is useless unless its construction is STATED.** A consumer
+ *    that guesses gets one of two failures, and both are worse than no check: a
+ *    wrong guess that never matches is dead weight that gets disabled, or one
+ *    that is skipped on mismatch is a check reporting success while verifying
+ *    nothing. So the two digests are specified here, exactly, in the file that
+ *    defines the format — not in a message someone has to have read.
+ *
+ *    **Per-file — `files[group][i].sha256`.** Lowercase hex `sha256` of that
+ *    file's bytes. Verifiable as each file arrives, and it names the file that
+ *    is wrong. It also binds **path → content**, which the group digest below
+ *    deliberately does not.
+ *
+ *    **Per-group — `integrity[group]`.** Pins the SET:
+ *
+ *        h[i]   = lowercase_hex(sha256(bytes of file i))   for each file in the group
+ *        sorted = sort(h)          ← over the HEX STRINGS, not over paths
+ *        joined = "\n".join(sorted)          ← LF, and NO trailing newline
+ *        digest = "sha256-" + lowercase_hex(sha256(utf8(joined)))
+ *
+ *    Note what that does and does not say. It hashes **contents, not
+ *    locations**, and sorts, so it is independent of the order `files[group]`
+ *    lists them and of content-hashed filenames changing. Duplicates are NOT
+ *    collapsed — two identical files contribute two entries. And because paths
+ *    are absent from it, the group digest alone would accept the right bytes
+ *    written to the wrong keys; that is the hole `sha256` per file closes.
+ *
+ *    ⚠️ **`sha256` per file is absent from versions published before it
+ *    existed** (0.9.7, 0.9.8) and can never be added to them — invariant 2. Its
+ *    absence is therefore a normal state, not a malformed index: verify the
+ *    group digest, which every version has. This is the one field a consumer
+ *    should tolerate missing; it is optional metadata, not half of a two-half
+ *    contract like `files.browser`/`files.isolate`.
+ *
+ *    A conformance vector for both, so an implementation in another language can
+ *    check itself against a known answer, is in `tests/channel-index.test.js`
+ *    ("digest construction").
+ *
  * 5. **Serialization is deterministic.** Stable key order and sorted versions,
  *    so re-running a publish produces byte-identical output and a diff shows
  *    only what actually changed.
@@ -197,6 +234,11 @@ export function addVersion(index, { version, published, files, integrity }) {
         `Bump the version rather than republishing.`
     )
   }
+  // Both halves are checked BEFORE any single file is, so the more fundamental
+  // error wins. Validating group-by-group would report a missing `sha256` on
+  // the first browser file to someone whose actual mistake was omitting the
+  // isolate half entirely — a per-file complaint pointing away from a
+  // structural error.
   for (const group of DELIVERY_GROUPS) {
     if (!Array.isArray(files?.[group]) || !files[group].length) {
       throw new Error(
@@ -205,6 +247,11 @@ export function addVersion(index, { version, published, files, integrity }) {
           `it is an unstated boundary.`
       )
     }
+    if (!integrity?.[group]) {
+      throw new Error(`addVersion(${version}): 'integrity.${group}' is required.`)
+    }
+  }
+  for (const group of DELIVERY_GROUPS) {
     for (const f of files[group]) {
       // Every entry states its own metadata. A consumer re-serving these objects
       // has to set content-type somewhere, and DERIVING it from a file extension
@@ -219,9 +266,17 @@ export function addVersion(index, { version, published, files, integrity }) {
             `Got: ${JSON.stringify(f)}`
         )
       }
-    }
-    if (!integrity?.[group]) {
-      throw new Error(`addVersion(${version}): 'integrity.${group}' is required.`)
+      // Required on new versions, and deliberately not back-fillable onto old
+      // ones (invariant 2). A consumer that can verify each file as it arrives
+      // fails on the file rather than on the group of 15 — and it is the only
+      // thing binding a path to its content, since the group digest hashes
+      // contents alone.
+      if (!/^[0-9a-f]{64}$/.test(f.sha256 || '')) {
+        throw new Error(
+          `addVersion(${version}): '${f.path}' needs a lowercase-hex sha256 of its bytes. ` +
+            `Got: ${JSON.stringify(f.sha256)}`
+        )
+      }
     }
   }
   const next = {
@@ -276,10 +331,21 @@ export function deprecateVersion(index, version, { reason, supersededBy } = {}) 
  * a fixed order, so a re-publish that changes nothing produces an identical
  * file and a diff shows only real change.
  */
-/** Files sorted by path, normalized to exactly the three declared fields. */
+/**
+ * Files sorted by path, normalized to exactly the declared fields.
+ *
+ * `sha256` is carried only when present: `addVersion` requires it, but this
+ * must not synthesize an `undefined` key onto an entry that predates it, or a
+ * re-serialized old version would gain a field — which invariant 2 forbids.
+ */
 function sortFiles(list) {
   return [...list]
-    .map(({ path, size, contentType }) => ({ path, size, contentType }))
+    .map(({ path, size, contentType, sha256 }) => ({
+      path,
+      size,
+      contentType,
+      ...(sha256 ? { sha256 } : {})
+    }))
     .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
 }
 

@@ -192,12 +192,22 @@ function contentTypeOf(rel) {
   return ct
 }
 
-/** A file's published metadata: where it lands, how big, and what it is. */
+/**
+ * A file's published metadata: where it lands, how big, what it is, and what it
+ * hashes to.
+ *
+ * The per-file `sha256` came from the consumer side: a group digest tells you
+ * *something among 15 files* is wrong, and leaves you to bisect. Per-file names
+ * it, is checkable as each file arrives rather than after all 15 are held, and
+ * is the only thing binding a path to its content — the group digest hashes
+ * contents alone, so it would accept the right bytes at the wrong keys.
+ */
 function describe(rel, group) {
   return {
     path: destPath(rel, group),
     size: statSync(join(DIST, rel)).size,
-    contentType: contentTypeOf(rel)
+    contentType: contentTypeOf(rel),
+    sha256: sha256(readFileSync(join(DIST, rel)))
   }
 }
 
@@ -208,6 +218,14 @@ function describe(rel, group) {
  * concept in the framework rather than two. Sorting makes it order-independent;
  * hashing contents (not names) keeps content-hashed filenames from perturbing
  * it.
+ *
+ * ⛔ **This construction can never change.** Every version already published
+ * records a digest computed this way, and a consumer verifies fetched bytes
+ * against it — so altering the algorithm does not "improve" the check, it
+ * silently invalidates every version in the channel while the index still
+ * claims they are fine. The exact spec, a conformance vector for other
+ * languages, and what it does NOT cover are in `channel-index.js` (invariant 4)
+ * and `tests/channel-index.test.js`.
  */
 function integrityOf(files) {
   const perFile = files.map((rel) => sha256(readFileSync(join(DIST, rel)))).sort()

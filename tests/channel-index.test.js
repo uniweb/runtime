@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { createHash } from 'node:crypto'
 import {
   addVersion,
   compareVersions,
@@ -10,13 +11,17 @@ import {
   serializeIndex
 } from '../scripts/channel-index.js'
 
+const H = (c) => c.repeat(64) // a syntactically valid lowercase-hex sha256
+
 const pub = (index, version, extra = {}) =>
   addVersion(index, {
     version,
     published: '2026-08-05T00:00:00Z',
     files: {
-      browser: [{ path: 'app/index.html', size: 10, contentType: 'text/html' }],
-      isolate: [{ path: 'worker-runtime.js', size: 20, contentType: 'text/javascript' }]
+      browser: [{ path: 'app/index.html', size: 10, contentType: 'text/html', sha256: H('a') }],
+      isolate: [
+        { path: 'worker-runtime.js', size: 20, contentType: 'text/javascript', sha256: H('b') }
+      ]
     },
     integrity: { browser: `sha256-b-${version}`, isolate: `sha256-i-${version}` },
     ...extra
@@ -254,20 +259,156 @@ describe('file entries carry their own metadata', () => {
     ).toThrow(/needs \{ path, size, contentType \}/)
   })
 
-  it('normalizes to exactly those three fields, sorted by path', () => {
+  it('normalizes to exactly the declared fields, sorted by path', () => {
     const i = addVersion(fresh(), {
       version: '1.0.0',
       files: {
         browser: [
-          { path: 'app/z.js', size: 2, contentType: 'text/javascript', extra: 'dropped' },
-          { path: 'app/a.js', size: 1, contentType: 'text/javascript' }
+          {
+            path: 'app/z.js',
+            size: 2,
+            contentType: 'text/javascript',
+            sha256: H('c'),
+            extra: 'dropped'
+          },
+          { path: 'app/a.js', size: 1, contentType: 'text/javascript', sha256: H('d') }
         ],
-        isolate: [{ path: 'worker-runtime.js', size: 3, contentType: 'text/javascript' }]
+        isolate: [
+          { path: 'worker-runtime.js', size: 3, contentType: 'text/javascript', sha256: H('e') }
+        ]
       },
       integrity: { browser: 'sha256-b', isolate: 'sha256-i' }
     })
     const browser = JSON.parse(serializeIndex(i)).versions['1.0.0'].files.browser
     expect(browser.map((f) => f.path)).toEqual(['app/a.js', 'app/z.js'])
-    expect(Object.keys(browser[0])).toEqual(['path', 'size', 'contentType'])
+    expect(Object.keys(browser[0])).toEqual(['path', 'size', 'contentType', 'sha256'])
+  })
+
+  it('requires a lowercase-hex sha256 on every entry', () => {
+    const bad = (sha256) => () =>
+      addVersion(fresh(), {
+        version: '1.0.0',
+        files: {
+          browser: [{ path: 'app/x.js', size: 1, contentType: 'text/javascript', sha256 }],
+          isolate: [
+            { path: 'worker-runtime.js', size: 1, contentType: 'text/javascript', sha256: H('a') }
+          ]
+        },
+        integrity: { browser: 'sha256-b', isolate: 'sha256-i' }
+      })
+
+    expect(bad(undefined)).toThrow(/needs a lowercase-hex sha256/)
+    expect(bad('sha256-' + H('a'))).toThrow(/needs a lowercase-hex sha256/) // bare hex, not prefixed
+    expect(bad(H('A'))).toThrow(/needs a lowercase-hex sha256/) // uppercase
+    expect(bad('abc')).toThrow(/needs a lowercase-hex sha256/) // truncated
+  })
+
+  /**
+   * Invariant 2 in the one place it is easy to break by being helpful: a
+   * version published before `sha256` existed must not GAIN the field when the
+   * index is read and written again. `sha256` is absent from 0.9.7 and 0.9.8 in
+   * the live channel and must stay absent.
+   */
+  it('never back-fills sha256 onto a version published without it', () => {
+    const legacy = {
+      schema: 1,
+      name: '@uniweb/runtime',
+      latest: '0.9.8',
+      versions: {
+        '0.9.8': {
+          published: '2026-08-05T14:49:31Z',
+          files: {
+            browser: [{ path: 'public/app/manifest.json', size: 640, contentType: 'application/json' }],
+            isolate: [{ path: 'internal/worker-runtime.js', size: 1319141, contentType: 'text/javascript' }]
+          },
+          integrity: { browser: 'sha256-b17c6c7c', isolate: 'sha256-01d028f7' }
+        }
+      }
+    }
+    const round = JSON.parse(serializeIndex(pub(parseIndex(legacy), '0.9.9')))
+    const old = round.versions['0.9.8'].files.browser[0]
+    expect(Object.keys(old)).toEqual(['path', 'size', 'contentType'])
+    expect('sha256' in old).toBe(false)
+    expect(round.versions['0.9.8'].integrity.browser).toBe('sha256-b17c6c7c')
+    // …while the newly added version does carry it.
+    expect(round.versions['0.9.9'].files.browser[0].sha256).toBe(H('a'))
+  })
+})
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * CONFORMANCE VECTOR — the group digest construction
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * The consumers of this index are a Rust service and a Cloudflare Worker;
+ * neither can import the code above. A prose spec they must re-implement from is
+ * where a hash construction goes wrong silently, so this pins it to a fixed
+ * input with a known answer that any language can check itself against.
+ *
+ *   three files with ASCII contents "a", "b", "c"
+ *
+ *     a → ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb
+ *     b → 3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d
+ *     c → 2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6
+ *
+ *   sorted BY DIGEST → c, b, a   ← note: the REVERSE of path order
+ *   joined with "\n", no trailing newline, hashed as UTF-8 text
+ *
+ *     sha256-5e54b010de6b14acfa6d459634775982e59708a0b727bdc247e64f971cfe506f
+ *
+ * ⭐ The vector is chosen so the digest order reverses the path order. An
+ * implementation that sorts by path — the most natural wrong guess, since the
+ * index lists files by path — produces a different answer and fails here rather
+ * than in production.
+ */
+describe('digest construction', () => {
+  const sha = (s) => createHash('sha256').update(Buffer.from(s, 'utf8')).digest('hex')
+
+  const A = 'ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb'
+  const B = '3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d'
+  const C = '2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6'
+  const EXPECTED = 'sha256-5e54b010de6b14acfa6d459634775982e59708a0b727bdc247e64f971cfe506f'
+
+  // The published algorithm, restated independently of the publisher script so
+  // the two must agree.
+  const groupDigest = (contents) =>
+    `sha256-${sha(contents.map((c) => sha(c)).sort().join('\n'))}`
+
+  it('per-file digests are a plain sha256 of the bytes, lowercase hex', () => {
+    expect(sha('a')).toBe(A)
+    expect(sha('b')).toBe(B)
+    expect(sha('c')).toBe(C)
+  })
+
+  it('sorts by DIGEST, not by path — and the vector proves the difference', () => {
+    expect([A, B, C].sort()).toEqual([C, B, A])
+    expect(groupDigest(['a', 'b', 'c'])).toBe(EXPECTED)
+  })
+
+  it('is independent of the order the files are listed in', () => {
+    expect(groupDigest(['c', 'a', 'b'])).toBe(EXPECTED)
+    expect(groupDigest(['b', 'c', 'a'])).toBe(EXPECTED)
+  })
+
+  it('does not collapse duplicates — two identical files contribute two entries', () => {
+    expect(groupDigest(['a', 'a'])).not.toBe(groupDigest(['a']))
+  })
+
+  it('joins with LF and no trailing newline', () => {
+    // The two most likely near-misses, both of which produce a plausible digest.
+    const trailing = `sha256-${sha([A, B, C].sort().join('\n') + '\n')}`
+    const crlf = `sha256-${sha([A, B, C].sort().join('\r\n'))}`
+    expect(trailing).not.toBe(EXPECTED)
+    expect(crlf).not.toBe(EXPECTED)
+  })
+
+  /**
+   * What the group digest deliberately does NOT cover, stated as a test so it
+   * is not mistaken for an oversight: it hashes contents alone, so the right
+   * bytes written to the wrong keys pass. Per-file `sha256` is what binds a
+   * path to its content.
+   */
+  it('does not bind paths — which is why per-file sha256 exists', () => {
+    expect(groupDigest(['a', 'b'])).toBe(groupDigest(['b', 'a']))
   })
 })

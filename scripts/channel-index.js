@@ -1,0 +1,251 @@
+/**
+ * The runtime distribution channel index.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHAT THIS IS
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * A runtime is published as versioned, immutable directories on a static host:
+ *
+ *   runtime/index.json      ← this file's output
+ *   runtime/<version>/…     ← worker-runtime.js, shims/*, app/**
+ *
+ * `index.json` answers the three questions a consumer has, which are one
+ * question wearing three hats: **what versions exist**, **which should I use**,
+ * and **which must I avoid**. A package registry splits those across registry
+ * metadata and a per-version API; here they are one document, one GET, no
+ * registry client and no auth.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * THE INVARIANTS, AND WHY EACH IS ENFORCED HERE RATHER THAN PROMISED
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * 1. **A published version is immutable.** Re-publishing a version throws. The
+ *    artifacts at `<version>/` are what a consumer key-looks-up by version and
+ *    may have pinned months ago; changing them under that name is the defect
+ *    this whole channel exists to make impossible.
+ *
+ * 2. **The index is append-or-annotate.** A version can be *added*, and an
+ *    existing one can be *annotated* (deprecated). Its identity fields —
+ *    `published`, `files`, `integrity` — can never change. Enforced by
+ *    construction: no function here rewrites them.
+ *
+ * 3. **`latest` is DERIVED, never asserted.** It is recomputed on every
+ *    mutation, so deprecating the current latest moves it back automatically
+ *    rather than leaving a pointer at a version we just called poison. A field
+ *    a human sets is a field that drifts from what it describes.
+ *
+ * 4. **Integrity is recorded, so immutability is verifiable rather than
+ *    trusted.** A CI that can overwrite an artifact could also rewrite the index
+ *    to say the overwrite was fine — so the index carries a fingerprint of what
+ *    was published, and a consumer can check the bytes it fetched against it.
+ *    That turns "our CI promises" into "you can verify".
+ *
+ * 5. **Serialization is deterministic.** Stable key order and sorted versions,
+ *    so re-running a publish produces byte-identical output and a diff shows
+ *    only what actually changed.
+ *
+ * Pure functions over plain data — no I/O, no dependencies. The publishing
+ * script owns the filesystem; this owns the rules.
+ */
+
+export const INDEX_SCHEMA_VERSION = 1
+
+/**
+ * Parse a semver-ish version into comparable parts.
+ * Returns null for anything that is not `MAJOR.MINOR.PATCH[-prerelease]`.
+ */
+export function parseVersion(v) {
+  if (typeof v !== 'string') return null
+  const m = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(v.trim())
+  if (!m) return null
+  return {
+    major: Number(m[1]),
+    minor: Number(m[2]),
+    patch: Number(m[3]),
+    prerelease: m[4] ?? null
+  }
+}
+
+/**
+ * Compare two versions. `-1` / `0` / `1`, semver precedence.
+ *
+ * Numeric comparison per component — `0.9.10` is above `0.9.7`, which a string
+ * sort gets backwards, and a channel that picked `latest` by string sort would
+ * do so silently the first time a minor reached double digits.
+ *
+ * A prerelease sorts BELOW its release (`1.0.0-rc.1` < `1.0.0`).
+ */
+export function compareVersions(a, b) {
+  const pa = parseVersion(a)
+  const pb = parseVersion(b)
+  if (!pa || !pb) throw new Error(`Not a version: ${!pa ? a : b}`)
+
+  for (const k of ['major', 'minor', 'patch']) {
+    if (pa[k] !== pb[k]) return pa[k] < pb[k] ? -1 : 1
+  }
+  if (pa.prerelease === pb.prerelease) return 0
+  // A release outranks any prerelease of the same version.
+  if (pa.prerelease === null) return 1
+  if (pb.prerelease === null) return -1
+
+  // Both prereleases: dot-separated identifiers, numeric before alphanumeric.
+  const ia = pa.prerelease.split('.')
+  const ib = pb.prerelease.split('.')
+  for (let i = 0; i < Math.max(ia.length, ib.length); i++) {
+    const x = ia[i]
+    const y = ib[i]
+    if (x === undefined) return -1
+    if (y === undefined) return 1
+    const nx = /^\d+$/.test(x)
+    const ny = /^\d+$/.test(y)
+    if (nx && ny) {
+      if (Number(x) !== Number(y)) return Number(x) < Number(y) ? -1 : 1
+    } else if (nx !== ny) {
+      return nx ? -1 : 1 // numeric identifiers rank below alphanumeric
+    } else if (x !== y) {
+      return x < y ? -1 : 1
+    }
+  }
+  return 0
+}
+
+/** An empty channel index. */
+export function createIndex({ name }) {
+  if (!name) throw new Error('createIndex: `name` is required')
+  return { schema: INDEX_SCHEMA_VERSION, name, latest: null, versions: {} }
+}
+
+/**
+ * Validate and normalize an index read from disk.
+ *
+ * Refuses an unknown schema version rather than guessing: a newer publisher may
+ * have written fields this one would silently drop on the next write, and a
+ * silent drop is how an index stops describing the channel.
+ */
+export function parseIndex(json, { name } = {}) {
+  if (json == null) return createIndex({ name })
+  const obj = typeof json === 'string' ? JSON.parse(json) : json
+  if (obj.schema !== INDEX_SCHEMA_VERSION) {
+    throw new Error(
+      `Channel index schema ${obj.schema} is not ${INDEX_SCHEMA_VERSION}. ` +
+        `Refusing to rewrite an index this publisher does not understand.`
+    )
+  }
+  if (name && obj.name && obj.name !== name) {
+    throw new Error(`Channel index is for '${obj.name}', not '${name}'.`)
+  }
+  return {
+    schema: INDEX_SCHEMA_VERSION,
+    name: obj.name || name,
+    latest: obj.latest ?? null,
+    versions: { ...(obj.versions || {}) }
+  }
+}
+
+/**
+ * The version a consumer should use: the highest **released, non-deprecated**
+ * version. Prereleases never become `latest` — they are published so they can
+ * be pinned deliberately, not fallen into.
+ *
+ * Returns null when the channel has nothing usable, which is a real state (a
+ * fresh channel, or every version deprecated) and must not be confused with the
+ * highest version.
+ */
+export function computeLatest(index) {
+  const usable = Object.entries(index.versions)
+    .filter(([, meta]) => !meta.deprecated)
+    .map(([v]) => v)
+    .filter((v) => parseVersion(v)?.prerelease === null)
+  if (!usable.length) return null
+  return usable.sort(compareVersions).at(-1)
+}
+
+/**
+ * Add a newly published version. Returns a NEW index; never mutates.
+ *
+ * Throws if the version is already present — that is invariant 1, and it is the
+ * single most important line in this file. A publisher that overwrites a
+ * version breaks every consumer that pinned it, silently, at a time of its own
+ * choosing.
+ */
+export function addVersion(index, { version, published, files, integrity }) {
+  if (!parseVersion(version)) throw new Error(`Not a version: ${version}`)
+  if (index.versions[version]) {
+    throw new Error(
+      `Version ${version} is already published and versions are immutable. ` +
+        `Bump the version rather than republishing.`
+    )
+  }
+  if (!Array.isArray(files) || !files.length) {
+    throw new Error(`addVersion(${version}): 'files' must be a non-empty array.`)
+  }
+  if (!integrity) {
+    throw new Error(`addVersion(${version}): 'integrity' is required.`)
+  }
+  const next = {
+    ...index,
+    versions: {
+      ...index.versions,
+      [version]: {
+        published: published || new Date().toISOString(),
+        files: files.length,
+        integrity
+      }
+    }
+  }
+  next.latest = computeLatest(next)
+  return next
+}
+
+/**
+ * Mark a version deprecated. Annotation, not mutation: identity fields are
+ * carried through untouched.
+ *
+ * `latest` is recomputed, so deprecating the current latest steps it back to
+ * the highest remaining usable version rather than leaving consumers pointed at
+ * something we just declared poison.
+ */
+export function deprecateVersion(index, version, { reason, supersededBy } = {}) {
+  const existing = index.versions[version]
+  if (!existing) throw new Error(`Cannot deprecate unpublished version ${version}.`)
+  if (!reason) throw new Error(`deprecateVersion(${version}): a 'reason' is required.`)
+  if (supersededBy && !index.versions[supersededBy]) {
+    throw new Error(`supersededBy ${supersededBy} is not a published version.`)
+  }
+  const next = {
+    ...index,
+    versions: {
+      ...index.versions,
+      [version]: {
+        ...existing,
+        deprecated: { reason, ...(supersededBy ? { supersededBy } : {}) }
+      }
+    }
+  }
+  next.latest = computeLatest(next)
+  return next
+}
+
+/**
+ * Deterministic JSON. Versions sorted by precedence (oldest first) and keys in
+ * a fixed order, so a re-publish that changes nothing produces an identical
+ * file and a diff shows only real change.
+ */
+export function serializeIndex(index) {
+  const versions = {}
+  for (const v of Object.keys(index.versions).sort(compareVersions)) {
+    const m = index.versions[v]
+    versions[v] = {
+      published: m.published,
+      files: m.files,
+      integrity: m.integrity,
+      ...(m.deprecated ? { deprecated: m.deprecated } : {})
+    }
+  }
+  return `${JSON.stringify(
+    { schema: index.schema, name: index.name, latest: index.latest, versions },
+    null,
+    2
+  )}\n`
+}

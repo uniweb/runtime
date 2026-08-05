@@ -6,6 +6,7 @@ import {
   computeLatest,
   createIndex,
   deprecateVersion,
+  groupRelativePaths,
   parseIndex,
   parseVersion,
   serializeIndex
@@ -411,5 +412,65 @@ describe('digest construction', () => {
    */
   it('does not bind paths — which is why per-file sha256 exists', () => {
     expect(groupDigest(['a', 'b'])).toBe(groupDigest(['b', 'a']))
+  })
+})
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * INVARIANT 6 — the prefix carries no meaning
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * `--layout split|flat` differ only in the prefix they write. A consumer that
+ * recognises or requires one rejects a correctly published channel of the other
+ * kind — bytes, index and digests all valid, refused on a parsing assumption.
+ * These pin the collapse, using the real path shapes of a published version.
+ */
+describe('group-relative paths are layout-independent', () => {
+  const SPLIT_BROWSER = [
+    'public/app/_importmap/react.js',
+    'public/app/assets/core-BI26Dvfl.js',
+    'public/app/index.html',
+    'public/app/manifest.json'
+  ]
+  const FLAT_BROWSER = SPLIT_BROWSER.map((p) => p.replace(/^public\//, ''))
+
+  // Note the asymmetry: flat's isolate half has NO common prefix at all, because
+  // worker-runtime.js sits at the root beside shims/. The rule still collapses.
+  const SPLIT_ISOLATE = ['internal/shims/react.js', 'internal/worker-runtime.js']
+  const FLAT_ISOLATE = SPLIT_ISOLATE.map((p) => p.replace(/^internal\//, ''))
+
+  it('yields identical names for the browser half under both layouts', () => {
+    const expected = [
+      '_importmap/react.js',
+      'assets/core-BI26Dvfl.js',
+      'index.html',
+      'manifest.json'
+    ]
+    expect(groupRelativePaths(SPLIT_BROWSER)).toEqual(expected)
+    expect(groupRelativePaths(FLAT_BROWSER)).toEqual(expected)
+  })
+
+  it('yields identical names for the isolate half under both layouts', () => {
+    const expected = ['shims/react.js', 'worker-runtime.js']
+    expect(groupRelativePaths(SPLIT_ISOLATE)).toEqual(expected)
+    expect(groupRelativePaths(FLAT_ISOLATE)).toEqual(expected)
+  })
+
+  it('accepts file records, not just path strings', () => {
+    const records = SPLIT_BROWSER.map((path) => ({ path, size: 1, contentType: 'text/plain' }))
+    expect(groupRelativePaths(records)).toEqual(groupRelativePaths(SPLIT_BROWSER))
+  })
+
+  it('strips whole segments only — a shared substring is not a shared directory', () => {
+    // 'appendix/' and 'app/' share the characters "app" but no directory.
+    expect(groupRelativePaths(['app/x.js', 'appendix/y.js'])).toEqual([
+      'app/x.js',
+      'appendix/y.js'
+    ])
+  })
+
+  it('handles a single file and an empty group without inventing a prefix', () => {
+    expect(groupRelativePaths(['public/app/manifest.json'])).toEqual(['manifest.json'])
+    expect(groupRelativePaths([])).toEqual([])
   })
 })

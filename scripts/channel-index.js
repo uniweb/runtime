@@ -82,6 +82,35 @@
  *    so re-running a publish produces byte-identical output and a diff shows
  *    only what actually changed.
  *
+ * 6. **`path` is where the file IS. The prefix carries no meaning — do not
+ *    parse it for one.** The publisher takes `--layout split|flat`, and the two
+ *    differ ONLY in the prefix they write:
+ *
+ *        split (default)   public/app/**        internal/worker-runtime.js · internal/shims/*
+ *        flat              app/**               worker-runtime.js · shims/*
+ *
+ *    Group membership — `files.browser` vs `files.isolate` — is the
+ *    instruction. `public/` and `internal/` are self-description, and (see
+ *    `publish-channel.mjs`) they are not enforcement either.
+ *
+ *    ⛔ **So a consumer must not recognise, require, or refuse a prefix.** A
+ *    check that hardcodes `public/` rejects a `flat` channel whose bytes,
+ *    index and digests are all correct — a hard failure that reads like data
+ *    corruption but is a parsing assumption. This is not hypothetical: a
+ *    consumer built its fixture around the `flat` shape, passed its own suite
+ *    against a document nobody had published, and then added exactly that
+ *    refusal.
+ *
+ *    **If you need a group-relative name, strip the longest common DIRECTORY
+ *    prefix of that group's paths.** Verified against a real version: both
+ *    layouts collapse to identical names — browser to `manifest.json`,
+ *    `index.html`, `assets/…`, `_importmap/…`; isolate to `worker-runtime.js`,
+ *    `shims/…`. No layout to know, nothing to update if a third ever exists.
+ *
+ *    ⚠️ **The index deliberately does NOT record which layout produced it.** A
+ *    `layout` field is a field consumers would branch on, which reintroduces
+ *    precisely the coupling this invariant removes. The paths are the answer.
+ *
  * Pure functions over plain data — no I/O, no dependencies. The publishing
  * script owns the filesystem; this owns the rules.
  */
@@ -165,6 +194,29 @@ export function compareVersions(a, b) {
     }
   }
   return 0
+}
+
+/**
+ * Group-relative names for one group's files — invariant 6, as code.
+ *
+ * Strips the longest common directory prefix, which is what makes the result
+ * identical whether the version was published `split` or `flat`. Exported so
+ * the rule is normative rather than advisory: a consumer that needs stable
+ * names has a correct implementation instead of a prefix to guess at.
+ *
+ * Takes `files[group]` (records) or a plain array of path strings.
+ *
+ * @returns {string[]} names in the input's order
+ */
+export function groupRelativePaths(files) {
+  const paths = files.map((f) => (typeof f === 'string' ? f : f.path))
+  if (!paths.length) return []
+  const dirs = paths.map((p) => p.split('/').slice(0, -1))
+  const shortest = Math.min(...dirs.map((d) => d.length))
+  let shared = 0
+  while (shared < shortest && dirs.every((d) => d[shared] === dirs[0][shared])) shared++
+  const prefix = shared ? `${dirs[0].slice(0, shared).join('/')}/` : ''
+  return paths.map((p) => p.slice(prefix.length))
 }
 
 /** An empty channel index. */

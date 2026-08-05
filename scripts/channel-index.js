@@ -101,17 +101,21 @@
  *    against a document nobody had published, and then added exactly that
  *    refusal.
  *
- *    **If you need a group-relative name, strip the longest common DIRECTORY
- *    prefix of that group's paths.** Verified against a real version: both
- *    layouts collapse to identical names — browser to `manifest.json`,
+ *    **If you need a group-relative name, use `groupRelativePaths(files,
+ *    group)`.** The group's ANCHOR (invariant 7) sits at the group root, so the
+ *    directory containing it IS the layout prefix — exactly, with no heuristic.
+ *    Both layouts collapse to identical names: browser to `manifest.json`,
  *    `index.html`, `assets/…`, `_importmap/…`; isolate to `worker-runtime.js`,
  *    `shims/…`. No layout to know, nothing to update if a third ever exists.
  *
- *    ⭐ **What makes that safe is invariant 7, not luck.** The rule over-strips
- *    if every file in a group sits below the group root — one lone
- *    `…/app/assets/i.js` would elide `assets/` and yield keys that look
- *    perfectly reasonable, with nothing in the paths to reveal it. A
- *    **root-level ANCHOR bounds the prefix**, and each group has one.
+ *    ⛔ **Do NOT reach for the longest common directory prefix.** It is the
+ *    obvious implementation, it agrees with the anchored rule on every group
+ *    that has an anchor, and it is wrong in a way its own output cannot show:
+ *    a group whose files all sit below the group root has a common prefix that
+ *    eats a real directory — `public/app/assets/{a,b}.js` yields `a.js`,
+ *    `b.js`. A single-file group is the same failure at its most reachable,
+ *    since one path carries no evidence about where the prefix ends. Anchoring
+ *    has exactly one answer where the heuristic has a plausible one.
  *
  *    ⚠️ **The index deliberately does NOT record which layout produced it.** A
  *    `layout` field is a field consumers would branch on, which reintroduces
@@ -240,25 +244,67 @@ export function compareVersions(a, b) {
 }
 
 /**
- * Group-relative names for one group's files — invariant 6, as code.
+ * Group-relative names for one group's files — invariants 6 and 7, as code.
  *
- * Strips the longest common directory prefix, which is what makes the result
- * identical whether the version was published `split` or `flat`. Exported so
- * the rule is normative rather than advisory: a consumer that needs stable
- * names has a correct implementation instead of a prefix to guess at.
+ * **The group's ANCHOR defines the prefix: the anchor sits at the group root,
+ * so the directory containing it is exactly the layout prefix.** Strip that
+ * from every path and the result is identical whether the version was published
+ * `split` or `flat`. Exported so the rule is normative rather than advisory — a
+ * consumer needing stable names gets a correct implementation instead of a
+ * prefix to guess at.
+ *
+ * ⭐ **This deliberately does NOT use the longest common directory prefix**,
+ * which is the obvious implementation and is wrong in a way that cannot be seen
+ * in its output. A group whose files all sit below the group root has a common
+ * prefix that eats a real directory:
+ *
+ *     ['public/app/assets/a.js', 'public/app/assets/b.js']  →  ['a.js', 'b.js']
+ *
+ * Nothing about those names looks wrong, and a single-file group is the same
+ * failure at its most reachable — one path carries no evidence about where the
+ * prefix ends. Anchoring removes the guess: with the anchor there is exactly one
+ * answer, and without it there is none, so this **throws** rather than
+ * returning a plausible one. (Both implementations of this rule refuse here —
+ * agreed with the channel's other consumer, whose refusal was right and whose
+ * question prompted the fix.)
  *
  * Takes `files[group]` (records) or a plain array of path strings.
  *
- * @returns {string[]} names in the input's order
+ * @param {Array<string|{path:string}>} files
+ * @param {'browser'|'isolate'} group
+ * @returns {string[]} names, in the input's order
  */
-export function groupRelativePaths(files) {
+export function groupRelativePaths(files, group) {
+  const anchor = GROUP_ANCHORS[group]
+  if (!anchor) {
+    throw new Error(
+      `groupRelativePaths: unknown group '${group}'. Expected one of: ${DELIVERY_GROUPS.join(', ')}.`
+    )
+  }
   const paths = files.map((f) => (typeof f === 'string' ? f : f.path))
   if (!paths.length) return []
-  const dirs = paths.map((p) => p.split('/').slice(0, -1))
-  const shortest = Math.min(...dirs.map((d) => d.length))
-  let shared = 0
-  while (shared < shortest && dirs.every((d) => d[shared] === dirs[0][shared])) shared++
-  const prefix = shared ? `${dirs[0].slice(0, shared).join('/')}/` : ''
+
+  // The anchor nearest the root wins, so a same-named file deeper in the tree
+  // cannot be mistaken for it.
+  const candidates = paths
+    .filter((p) => p === anchor || p.endsWith(`/${anchor}`))
+    .sort((a, b) => a.length - b.length)
+  if (!candidates.length) {
+    throw new Error(
+      `groupRelativePaths: the '${group}' group has no '${anchor}' at its root, so its ` +
+        `layout prefix cannot be determined. Refusing to guess — a plausible-looking wrong ` +
+        `answer here becomes keys nothing ever looks up. Got: ${paths.join(', ')}`
+    )
+  }
+  const prefix = candidates[0].slice(0, candidates[0].length - anchor.length)
+
+  const stray = paths.find((p) => !p.startsWith(prefix))
+  if (stray) {
+    throw new Error(
+      `groupRelativePaths: '${stray}' is outside the '${group}' group's root '${prefix}'. ` +
+        `Every file in a group shares one prefix; this one does not.`
+    )
+  }
   return paths.map((p) => p.slice(prefix.length))
 }
 
@@ -380,13 +426,16 @@ export function addVersion(index, { version, published, files, integrity }) {
   // it holds under any layout — the anchor is a position within the group, not
   // a literal path.
   for (const group of DELIVERY_GROUPS) {
-    const anchor = GROUP_ANCHORS[group]
-    if (!groupRelativePaths(files[group]).includes(anchor)) {
+    // One implementation of the rule: if a consumer could not derive this
+    // group's names, the version must not publish. The helper's refusal IS the
+    // invariant, so there is no second copy here to drift from it.
+    try {
+      groupRelativePaths(files[group], group)
+    } catch (err) {
       throw new Error(
-        `addVersion(${version}): the '${group}' group has no '${anchor}' at its root. ` +
-          `That is the group's principal artifact — a group without it is broken, not merely ` +
-          `smaller — and it is what stops a consumer's common-prefix rule from over-stripping. ` +
-          `Got: ${files[group].map((f) => f.path).join(', ')}`
+        `addVersion(${version}): ${err.message} ` +
+          `That artifact is the group's principal one — a group without it is broken, not ` +
+          `merely smaller.`
       )
     }
   }

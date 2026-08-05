@@ -440,7 +440,7 @@ describe('group-relative paths are layout-independent', () => {
   ]
   const FLAT_BROWSER = SPLIT_BROWSER.map((p) => p.replace(/^public\//, ''))
 
-  // Note the asymmetry: flat's isolate half has NO common prefix at all, because
+  // Note the asymmetry: flat's isolate half has NO prefix at all, because
   // worker-runtime.js sits at the root beside shims/. The rule still collapses.
   const SPLIT_ISOLATE = ['internal/shims/react.js', 'internal/worker-runtime.js']
   const FLAT_ISOLATE = SPLIT_ISOLATE.map((p) => p.replace(/^internal\//, ''))
@@ -452,32 +452,65 @@ describe('group-relative paths are layout-independent', () => {
       'index.html',
       'manifest.json'
     ]
-    expect(groupRelativePaths(SPLIT_BROWSER)).toEqual(expected)
-    expect(groupRelativePaths(FLAT_BROWSER)).toEqual(expected)
+    expect(groupRelativePaths(SPLIT_BROWSER, 'browser')).toEqual(expected)
+    expect(groupRelativePaths(FLAT_BROWSER, 'browser')).toEqual(expected)
   })
 
   it('yields identical names for the isolate half under both layouts', () => {
     const expected = ['shims/react.js', 'worker-runtime.js']
-    expect(groupRelativePaths(SPLIT_ISOLATE)).toEqual(expected)
-    expect(groupRelativePaths(FLAT_ISOLATE)).toEqual(expected)
+    expect(groupRelativePaths(SPLIT_ISOLATE, 'isolate')).toEqual(expected)
+    expect(groupRelativePaths(FLAT_ISOLATE, 'isolate')).toEqual(expected)
   })
 
   it('accepts file records, not just path strings', () => {
     const records = SPLIT_BROWSER.map((path) => ({ path, size: 1, contentType: 'text/plain' }))
-    expect(groupRelativePaths(records)).toEqual(groupRelativePaths(SPLIT_BROWSER))
+    expect(groupRelativePaths(records, 'browser')).toEqual(
+      groupRelativePaths(SPLIT_BROWSER, 'browser')
+    )
   })
 
-  it('strips whole segments only — a shared substring is not a shared directory', () => {
-    // 'appendix/' and 'app/' share the characters "app" but no directory.
-    expect(groupRelativePaths(['app/x.js', 'appendix/y.js'])).toEqual([
-      'app/x.js',
-      'appendix/y.js'
+  /**
+   * The case that killed the longest-common-prefix implementation. One path
+   * carries no evidence about where the prefix ends, so the heuristic answered
+   * from the only thing it had — the whole dirname — and produced a name that
+   * looks perfectly reasonable. Anchoring makes it exact instead: the anchor's
+   * own directory IS the prefix, whether the group has one file or fifteen.
+   */
+  it('resolves a single-file group exactly, when that file is the anchor', () => {
+    expect(groupRelativePaths(['public/app/manifest.json'], 'browser')).toEqual([
+      'manifest.json'
     ])
+    expect(groupRelativePaths(['worker-runtime.js'], 'isolate')).toEqual(['worker-runtime.js'])
   })
 
-  it('handles a single file and an empty group without inventing a prefix', () => {
-    expect(groupRelativePaths(['public/app/manifest.json'])).toEqual(['manifest.json'])
-    expect(groupRelativePaths([])).toEqual([])
+  it('refuses rather than guessing when the group has no anchor', () => {
+    // Single file, not the anchor — the heuristic returned ['x.js'] silently.
+    expect(() => groupRelativePaths(['public/app/assets/x.js'], 'browser')).toThrow(
+      /Refusing to guess/
+    )
+    // Whole group sunk below the root — the heuristic returned ['a.js','b.js'].
+    expect(() =>
+      groupRelativePaths(['public/app/assets/a.js', 'public/app/assets/b.js'], 'browser')
+    ).toThrow(/Refusing to guess/)
+  })
+
+  it('refuses a file outside the group root', () => {
+    // 'appendix/' and 'app/' share the characters "app" but no directory, so a
+    // substring-based strip would silently mangle the second path.
+    expect(() => groupRelativePaths(['app/manifest.json', 'appendix/y.js'], 'browser')).toThrow(
+      /outside the 'browser' group's root/
+    )
+  })
+
+  it('takes the anchor nearest the root when the name repeats deeper', () => {
+    expect(
+      groupRelativePaths(['app/manifest.json', 'app/nested/manifest.json'], 'browser')
+    ).toEqual(['manifest.json', 'nested/manifest.json'])
+  })
+
+  it('returns [] for an empty group and rejects an unknown group', () => {
+    expect(groupRelativePaths([], 'browser')).toEqual([])
+    expect(() => groupRelativePaths(['manifest.json'], 'nope')).toThrow(/unknown group/)
   })
 })
 
@@ -532,9 +565,10 @@ describe('every group carries a root-level anchor', () => {
    */
   it('refuses the over-strip shape, which is invisible in the paths alone', () => {
     const sunk = ['public/app/assets/a.js', 'public/app/assets/b.js']
-    // Nothing about these names looks wrong — and stripping swallows `assets/`.
-    expect(groupRelativePaths(sunk)).toEqual(['a.js', 'b.js'])
-    expect(() => add(sunk, ['worker-runtime.js'])).toThrow(/over-stripping/)
+    // A longest-common-prefix strip answers ['a.js','b.js'] here — names with
+    // nothing wrong-looking about them. The anchored rule has no answer at all.
+    expect(() => groupRelativePaths(sunk, 'browser')).toThrow(/Refusing to guess/)
+    expect(() => add(sunk, ['worker-runtime.js'])).toThrow(/Refusing to guess/)
   })
 
   it('checks the anchor by position, not by literal path', () => {

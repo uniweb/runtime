@@ -100,7 +100,7 @@ export const INDEX_SCHEMA_VERSION = 1
  * browser — three consumers, three derivations, no statement anywhere. The
  * derivation was already being got wrong: the isolate half (1.3 MB of SSR
  * bundle and shims) was measured world-readable on a public asset domain, where
- * nothing outside the Worker ever requests it.
+ * nothing outside the SSR isolate ever requests it.
  *
  * Declaring membership once, at the producer, is the cheapest place to say it —
  * every consumer reads this one document, and none of them has to know what

@@ -340,10 +340,11 @@ describe('file entries carry their own metadata', () => {
  * CONFORMANCE VECTOR — the group digest construction
  * ─────────────────────────────────────────────────────────────────────────────
  *
- * The consumers of this index are a Rust service and a Cloudflare Worker;
- * neither can import the code above. A prose spec they must re-implement from is
- * where a hash construction goes wrong silently, so this pins it to a fixed
- * input with a known answer that any language can check itself against.
+ * A channel index is read by whatever stocks a host, in whatever language that
+ * is written in — so most consumers cannot import the code above and must
+ * re-implement the digest from a prose spec. That is where a hash construction
+ * goes wrong silently, so this pins it to a fixed input with a known answer that
+ * any language can check itself against.
  *
  *   three files with ASCII contents "a", "b", "c"
  *

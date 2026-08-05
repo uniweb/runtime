@@ -39,12 +39,25 @@
 name: Publish runtime channel
 
 on:
-  # Picks up whatever npm currently publishes as `latest`. Publishing to npm is
-  # a human decision made elsewhere; this only mirrors the result, so a schedule
-  # is the honest trigger rather than a push to this repo — the repo's source is
-  # not what gets published.
+  # A release tag is the real signal, and it is SAFE to trigger on because of
+  # the order the publish script uses:
+  #
+  #   pnpm version <bump>   → version commit + tag, locally
+  #   pnpm publish          → npm
+  #   git push --tags       → the tag reaches GitHub LAST
+  #
+  # So by the time a tag lands here, npm already has the version — no race
+  # between the trigger and the thing it fetches.
+  push:
+    tags: ['v*']
+
+  # A safety net, not the mechanism. A tag run that fails (or a version
+  # published without one) would otherwise leave the channel stale forever.
+  # Daily rather than hourly now that tags carry the signal; the job is
+  # idempotent, so a redundant run is a fast no-op.
   schedule:
-    - cron: '17 * * * *'
+    - cron: '17 6 * * *'
+
   workflow_dispatch:
     inputs:
       version:
@@ -88,7 +101,13 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
-            git worktree add .channel gh-pages
+            # `actions/checkout` fetches only the ref that triggered the run, so
+            # the branch exists on the remote but has no local ref — fetch it
+            # explicitly rather than assuming a full clone. (`-B` points a local
+            # gh-pages at the remote tip so the later `git push origin gh-pages`
+            # has a branch to push, rather than a detached HEAD.)
+            git fetch --depth=1 origin gh-pages
+            git worktree add -B gh-pages .channel origin/gh-pages
           else
             git worktree add --detach .channel
             cd .channel
@@ -101,7 +120,7 @@ jobs:
             git commit -m "Initialise the runtime channel"
           fi
 
-      # Idempotent on purpose: an hourly run on an unchanged version is a no-op,
+      # Idempotent on purpose: a redundant run on an unchanged version is a no-op,
       # while a human republishing one is still refused.
       - name: Publish into the channel
         run: |

@@ -17,6 +17,18 @@
  * same set the npm tarball ships (`files: !dist/app/**\/*.map`). Three
  * producers, one set — a sourcemap is dev-only, and this bucket is public.
  *
+ * ── Two halves, two sinks, and the index says which is which ──
+ *
+ * `browser` (`app/**`) is fetched by a visitor over a URL. `isolate`
+ * (`worker-runtime.js` + `shims/*`) is read by the SSR isolate through a
+ * storage binding and is **never requested over a URL** — it is internal.
+ *
+ * They are grouped in the index because until now the split was known only by
+ * convention, re-derived by every consumer from "`app/` means browser", and
+ * already got wrong: the isolate half was measured world-readable on a public
+ * asset domain. Fingerprints are per group for the same reason — the halves
+ * land in different sinks, so a consumer holding one half can still verify it.
+ *
  * `dist/ssr.js` is deliberately absent: it is a MODULE, reached by
  * `import '@uniweb/runtime/ssr'`, and belongs to the npm package. This channel
  * carries the artifacts a host SERVES, which are assets — nothing here is
@@ -75,14 +87,16 @@ function walk(dir, base = dir) {
  * with it.
  */
 function deliveryFiles() {
-  const out = []
-  if (existsSync(join(DIST, 'worker-runtime.js'))) out.push('worker-runtime.js')
-  for (const f of walk(join(DIST, 'shims'))) out.push(join('shims', f))
+  const isolate = []
+  if (existsSync(join(DIST, 'worker-runtime.js'))) isolate.push('worker-runtime.js')
+  for (const f of walk(join(DIST, 'shims'))) isolate.push(join('shims', f))
+
+  const browser = []
   for (const f of walk(join(DIST, 'app'))) {
-    if (f.endsWith('.map')) continue // dev-only, and this bucket is public
-    out.push(join('app', f))
+    if (f.endsWith('.map')) continue // dev-only; the build now emits them unreferenced
+    browser.push(join('app', f))
   }
-  return out.sort()
+  return { browser: browser.sort(), isolate: isolate.sort() }
 }
 
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')
@@ -101,8 +115,12 @@ function integrityOf(files) {
 }
 
 const files = deliveryFiles()
-if (!files.length) {
-  console.error(`No delivery artifacts in ${DIST}. Run \`pnpm build && pnpm build:worker\` first.`)
+const allFiles = [...files.browser, ...files.isolate]
+if (!files.browser.length || !files.isolate.length) {
+  console.error(
+    `Incomplete build in ${DIST} (browser: ${files.browser.length}, isolate: ${files.isolate.length}).\n` +
+      `Run \`pnpm build && pnpm build:worker\` — a version publishes both halves or neither.`
+  )
   process.exit(1)
 }
 
@@ -130,7 +148,13 @@ if (existsSync(versionDir)) {
   process.exit(1)
 }
 
-const integrity = integrityOf(files)
+// Fingerprinted per group, not once overall: the two halves land in DIFFERENT
+// sinks, so a consumer that takes only one half can still verify what it got.
+// A single digest over both would be uncheckable by either of them alone.
+const integrity = {
+  browser: integrityOf(files.browser),
+  isolate: integrityOf(files.isolate)
+}
 const next = addVersion(index, {
   version,
   published: new Date().toISOString(),
@@ -140,8 +164,8 @@ const next = addVersion(index, {
 
 console.log(`${name} → channel`)
 console.log(`  version   ${version}`)
-console.log(`  files     ${files.length}`)
-console.log(`  integrity ${integrity}`)
+console.log(`  browser   ${files.browser.length} file(s)  ${integrity.browser}`)
+console.log(`  isolate   ${files.isolate.length} file(s)  ${integrity.isolate}   (internal — read via binding, not a URL)`)
 console.log(`  latest    ${next.latest}${next.latest === version ? ' (this build)' : ''}`)
 
 if (dryRun) {
@@ -151,7 +175,7 @@ if (dryRun) {
 }
 
 mkdirSync(versionDir, { recursive: true })
-for (const rel of files) {
+for (const rel of allFiles) {
   const dest = join(versionDir, rel)
   mkdirSync(dirname(dest), { recursive: true })
   cpSync(join(DIST, rel), dest)
@@ -159,4 +183,4 @@ for (const rel of files) {
 mkdirSync(dirname(indexPath), { recursive: true })
 writeFileSync(indexPath, serializeIndex(next))
 
-console.log(`\nWrote ${files.length} file(s) to runtime/${version}/ and updated index.json`)
+console.log(`\nWrote ${allFiles.length} file(s) to runtime/${version}/ and updated index.json`)

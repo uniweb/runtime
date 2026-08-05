@@ -52,6 +52,26 @@
 export const INDEX_SCHEMA_VERSION = 1
 
 /**
+ * The two halves of a runtime, and they go to different places.
+ *
+ *   browser — `app/**`. Fetched by a visitor's browser over a URL. **Public.**
+ *   isolate — `worker-runtime.js` + `shims/*`. Read by the SSR isolate through
+ *             a storage binding, **never over a URL**. Internal.
+ *
+ * ⛔ **This grouping is a boundary declaration, not a convenience.** It held
+ * until now only because every consumer independently knew that `app/` means
+ * browser — three consumers, three derivations, no statement anywhere. The
+ * derivation was already being got wrong: the isolate half (1.3 MB of SSR
+ * bundle and shims) was measured world-readable on a public asset domain, where
+ * nothing outside the Worker ever requests it.
+ *
+ * Declaring membership once, at the producer, is the cheapest place to say it —
+ * every consumer reads this one document, and none of them has to know what
+ * `app/` means.
+ */
+export const DELIVERY_GROUPS = ['browser', 'isolate']
+
+/**
  * Parse a semver-ish version into comparable parts.
  * Returns null for anything that is not `MAJOR.MINOR.PATCH[-prerelease]`.
  */
@@ -177,11 +197,17 @@ export function addVersion(index, { version, published, files, integrity }) {
         `Bump the version rather than republishing.`
     )
   }
-  if (!Array.isArray(files) || !files.length) {
-    throw new Error(`addVersion(${version}): 'files' must be a non-empty array.`)
-  }
-  if (!integrity) {
-    throw new Error(`addVersion(${version}): 'integrity' is required.`)
+  for (const group of DELIVERY_GROUPS) {
+    if (!Array.isArray(files?.[group]) || !files[group].length) {
+      throw new Error(
+        `addVersion(${version}): 'files.${group}' must be a non-empty array. ` +
+          `Every version declares both halves — a missing one is not "no files", ` +
+          `it is an unstated boundary.`
+      )
+    }
+    if (!integrity?.[group]) {
+      throw new Error(`addVersion(${version}): 'integrity.${group}' is required.`)
+    }
   }
   const next = {
     ...index,
@@ -189,8 +215,11 @@ export function addVersion(index, { version, published, files, integrity }) {
       ...index.versions,
       [version]: {
         published: published || new Date().toISOString(),
-        files: files.length,
-        integrity
+        files: {
+          browser: [...files.browser].sort(),
+          isolate: [...files.isolate].sort()
+        },
+        integrity: { browser: integrity.browser, isolate: integrity.isolate }
       }
     }
   }
@@ -238,8 +267,8 @@ export function serializeIndex(index) {
     const m = index.versions[v]
     versions[v] = {
       published: m.published,
-      files: m.files,
-      integrity: m.integrity,
+      files: { browser: m.files.browser, isolate: m.files.isolate },
+      integrity: { browser: m.integrity.browser, isolate: m.integrity.isolate },
       ...(m.deprecated ? { deprecated: m.deprecated } : {})
     }
   }

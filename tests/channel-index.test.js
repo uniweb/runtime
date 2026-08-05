@@ -14,8 +14,8 @@ const pub = (index, version, extra = {}) =>
   addVersion(index, {
     version,
     published: '2026-08-05T00:00:00Z',
-    files: ['a.js', 'b.js'],
-    integrity: `sha256-${version}`,
+    files: { browser: ['app/index.html'], isolate: ['worker-runtime.js'] },
+    integrity: { browser: `sha256-b-${version}`, isolate: `sha256-i-${version}` },
     ...extra
   })
 
@@ -64,13 +64,17 @@ describe('immutability — the invariant the channel exists for', () => {
     const d = deprecateVersion(i, '0.9.5', { reason: 'incoherent' })
     expect(d.versions['0.9.5'].published).toBe(i.versions['0.9.5'].published)
     expect(d.versions['0.9.5'].integrity).toBe(i.versions['0.9.5'].integrity)
-    expect(d.versions['0.9.5'].files).toBe(i.versions['0.9.5'].files)
+    expect(d.versions['0.9.5'].files).toEqual(i.versions['0.9.5'].files)
   })
 
-  it('requires an integrity fingerprint — immutability has to be verifiable', () => {
+  it('requires an integrity fingerprint per group — immutability has to be verifiable', () => {
     expect(() =>
-      addVersion(fresh(), { version: '1.0.0', files: ['a.js'], integrity: null })
-    ).toThrow(/integrity/)
+      addVersion(fresh(), {
+        version: '1.0.0',
+        files: { browser: ['app/x.js'], isolate: ['worker-runtime.js'] },
+        integrity: { browser: 'sha256-b' } // isolate missing
+      })
+    ).toThrow(/integrity\.isolate/)
   })
 })
 
@@ -179,6 +183,42 @@ describe('the shape a consumer reads', () => {
     expect(doc.latest).toBe('0.9.7') //   which should I use
     expect(Object.keys(doc.versions)).toEqual(['0.9.5', '0.9.7']) // what exists
     expect(doc.versions['0.9.5'].deprecated.reason).toMatch(/incoherent/) // avoid
-    expect(doc.versions['0.9.7'].integrity).toBeTruthy() // and verify
+    expect(doc.versions['0.9.7'].integrity.browser).toBeTruthy() // and verify
+    expect(doc.versions['0.9.7'].integrity.isolate).toBeTruthy()
+  })
+})
+
+/**
+ * The two halves go to different sinks, and until this was declared the split
+ * was known only by convention — every consumer re-deriving "`app/` means
+ * browser". The derivation was already being got wrong: the isolate half was
+ * measured world-readable on a public asset domain, when nothing outside the
+ * SSR isolate ever requests it.
+ */
+describe('the browser/isolate boundary is declared, not derived', () => {
+  it('records both halves separately', () => {
+    const i = pub(fresh(), '0.9.7')
+    const v = JSON.parse(serializeIndex(i)).versions['0.9.7']
+    expect(v.files.browser).toEqual(['app/index.html'])
+    expect(v.files.isolate).toEqual(['worker-runtime.js'])
+  })
+
+  it('fingerprints each half separately, so one-half consumers can verify', () => {
+    // A single digest over both would be uncheckable by a sink that takes only
+    // the browser half — which is exactly what the blob store does.
+    const v = JSON.parse(serializeIndex(pub(fresh(), '0.9.7'))).versions['0.9.7']
+    expect(v.integrity.browser).not.toBe(v.integrity.isolate)
+  })
+
+  it('refuses a version that declares only one half', () => {
+    // Not "no isolate files" — an unstated boundary. A version publishes both
+    // halves or neither.
+    expect(() =>
+      addVersion(fresh(), {
+        version: '1.0.0',
+        files: { browser: ['app/x.js'], isolate: [] },
+        integrity: { browser: 'sha256-b', isolate: 'sha256-i' }
+      })
+    ).toThrow(/files\.isolate/)
   })
 })

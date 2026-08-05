@@ -90,6 +90,20 @@ export default defineConfig({
   build: {
     outDir: resolve(__dirname, 'dist/app'),
     emptyOutDir: true,
-    sourcemap: true,
+    // 'hidden' emits the maps but omits the `//# sourceMappingURL=` comment.
+    //
+    // These maps are dev-only and every delivery path drops them — the npm
+    // tarball (`files: !dist/app/**/*.map`), `uniweb runtime register`, the
+    // seed, and the distribution channel. With `sourcemap: true` the shipped
+    // JS still POINTS at maps that are not there, so every one of those paths
+    // ships a dangling reference; the one path that happened to carry the maps
+    // was also publishing 7 files of embedded original source into a public
+    // bucket.
+    //
+    // 'hidden' is the only setting that is correct on all of them at once:
+    // maps exist locally for debugging, nothing references them, and dropping
+    // them leaves nothing dangling. (`dist/ssr.js` keeps its map and its
+    // reference — it ships as a module, and the pair travels together.)
+    sourcemap: 'hidden',
   },
 })

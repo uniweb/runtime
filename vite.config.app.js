@@ -78,6 +78,24 @@ const HOST_BRIDGES = [
   },
 
   '@uniweb/theming',
+
+  // The reconciler. React 19 keeps `createRoot`/`hydrateRoot` on this subpath,
+  // and `react-dom` (main) does NOT cover it — Rollup's external matcher is
+  // exact-string, the same trap `react-dom/server` sits in.
+  //
+  // Bridged for the PAIRING INVARIANT: React requires the reconciler and
+  // `react` to be version-matched. A host bundling its own `react-dom/client`
+  // pairs the channel's `react` with a build-pinned reconciler — fine while
+  // they agree, and wrong precisely when a host renders an OLDER runtime
+  // version, which is the case the versioned lane exists for. Bridging makes
+  // them channel-matched by construction.
+  //
+  // Free, measured: the shell's own entry already imports `createRoot`
+  // (`src/index.jsx`), so the reconciler chunk is in the entry closure either
+  // way. Bridging adds an export surface, not bytes — entry closure 449 KB
+  // both with and without. Verified one instance: the entry and the bridge
+  // both reach the same reconciler chunk.
+  'react-dom/client',
 ]
 
 const APP_EXTERNALS = [...DEFAULT_EXTERNALS, ...HOST_BRIDGES]

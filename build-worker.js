@@ -9,10 +9,16 @@
  * It is not part of `pnpm build` (which is `build:ssr` + `build:app`), so a
  * local build does not produce it and you run `pnpm build:worker` when you want
  * it. But `prepublishOnly` IS `npm run build && npm run build:worker`, so every
- * published version carries this flavor: `files` is ["src","dist", …], and the
- * only `dist` exclusion is `dist/app/**/*.map`. Verified against the published
- * tarball — `@uniweb/runtime@0.10.0` ships `dist/worker-runtime.js` plus all
- * four `dist/shims/*.js`.
+ * published version carries this flavor: `files` is ["src","dist", …], and its
+ * only `dist` exclusion is the sourcemaps under `dist/app`. Verified against the
+ * published tarball — `@uniweb/runtime@0.10.0` ships `dist/worker-runtime.js`
+ * plus all four shims under `dist/shims`.
+ *
+ * (Do not write that exclusion as a literal glob here: the `**` + `/` + `*`
+ * sequence contains the block-comment terminator, so it ends this comment
+ * mid-sentence and the rest of the file parses as code. It did exactly that on
+ * 2026-08-08 and broke `build:worker`, hence `prepublishOnly`, hence the whole
+ * publish. Use `//` line comments if you need the literal.)
  *
  * ⚠️ This comment said the opposite until 2026-08-08 — "NOT shipped in the npm
  * tarball: package.json `files` is ["src","dist"]" — which contradicted itself

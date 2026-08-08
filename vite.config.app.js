@@ -19,7 +19,68 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 import { readFileSync, writeFileSync } from 'fs'
-import { importMapPlugin, DEFAULT_EXTERNALS } from '@uniweb/build/import-map-plugin'
+import { importMapPlugin, DEFAULT_EXTERNALS, bridgeFileName } from '@uniweb/build/import-map-plugin'
+
+/**
+ * Bridges this build adds ON TOP of the foundation-facing default set.
+ *
+ * These exist for a host that renders Uniweb content ITSELF rather than just
+ * booting the shell — e.g. a live-preview host that drives the runtime through
+ * its own React tree. Such a host should import the runtime's library surface
+ * from the version the site actually uses, not bundle a second copy: a bundled
+ * copy silently drifts a version away from the site it is rendering.
+ *
+ * ⛔ These are deliberately NOT in `DEFAULT_EXTERNALS`. That list is the
+ * FOUNDATION-facing contract — what every foundation and site build
+ * externalizes — and foundations import none of these. Widening it would
+ * change what every foundation links against to serve one host.
+ *
+ * Router and theming are here for INSTANCE identity, not convenience: the
+ * host's `MemoryRouter`/`useNavigate` must be the same module instance as the
+ * runtime's internal `Routes` (two router copies = context that silently
+ * reads empty), and a second `@uniweb/theming` copy means live theme edits
+ * compute tokens with a `buildTheme` that can drift from the one that
+ * rendered the page.
+ *
+ * `hasDefault` is declared where the module cannot be enumerated by importing
+ * it in Node — see the `External` typedef in the plugin. `/provider`'s entire
+ * surface IS its default export, and getting that wrong is silent.
+ */
+const HOST_BRIDGES = [
+  { spec: '@uniweb/runtime/provider', hasDefault: true },   // RuntimeProvider
+  { spec: '@uniweb/runtime/setup', hasDefault: false },     // initUniweb, decodeData, …
+  '@uniweb/runtime/foundation-loader',                      // loadFoundation, loadExtensions
+  '@uniweb/runtime/default-fetcher',                        // createDefaultFetcher
+
+  // ⛔ NAMED, not wholesale — this one line is worth 106 KB on every site.
+  //
+  // A bridge re-exports whatever it names, so `export *` on this package
+  // retains react-router's DATA-router runtime (createBrowserRouter,
+  // RouterProvider, Form, Await, HydratedRouter…) that the runtime never
+  // uses — and because the shell's entry shares the chunk, the entry's own
+  // closure absorbs it. Measured on this build, entry closure:
+  //
+  //     baseline (no host bridges)  441 KB
+  //     + this list                 449 KB   (+8)
+  //     + `react-router-dom` bare   555 KB   (+114)
+  //
+  // Everything below is the DECLARATIVE surface, which is nearly free. Adding
+  // a data-router export here would re-introduce the whole 106 KB — measure
+  // the entry closure before extending it, don't assume the next one is free.
+  {
+    spec: 'react-router-dom',
+    named: [
+      'MemoryRouter', 'BrowserRouter', 'HashRouter', 'Routes', 'Route',
+      'Link', 'NavLink', 'Navigate', 'Outlet',
+      'useNavigate', 'useLocation', 'useParams', 'useSearchParams',
+      'useMatch', 'useResolvedPath', 'useHref', 'useInRouterContext',
+    ],
+  },
+
+  '@uniweb/theming',
+]
+
+const APP_EXTERNALS = [...DEFAULT_EXTERNALS, ...HOST_BRIDGES]
 
 /**
  * Emit manifest.json after the build completes.
@@ -46,9 +107,13 @@ function manifestPlugin() {
         .map(c => c.fileName)
 
       // Import map: bare specifier → relative path to bridge module
+      // Same list and same naming helper the plugin emits with — a manifest
+      // that names a bridge the build did not emit is a 404 at import time,
+      // and nothing before the browser would catch it.
       const importMap = {}
-      for (const specifier of DEFAULT_EXTERNALS) {
-        const fileName = `_importmap/${specifier.replace(/\//g, '-')}.js`
+      for (const external of APP_EXTERNALS) {
+        const specifier = typeof external === 'string' ? external : external.spec
+        const fileName = `_importmap/${bridgeFileName(specifier)}`
         if (bundle[fileName]) {
           importMap[specifier] = fileName
         }
@@ -78,6 +143,7 @@ export default defineConfig({
     react(),
     importMapPlugin({
       name: 'runtime-shell:import-map',
+      externals: APP_EXTERNALS,
     }),
     manifestPlugin(),
   ],

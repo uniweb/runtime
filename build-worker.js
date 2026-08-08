@@ -58,6 +58,35 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 /**
+ * The bridge set: every specifier a FOUNDATION may import that must resolve to
+ * the isolate's single shared instance.
+ *
+ * This is the foundation-facing subset of `@uniweb/build`'s `DEFAULT_EXTERNALS`,
+ * and it must stay in lockstep with it: whatever the SPA import map bridges, the
+ * SSR isolate shims must bridge too, or a foundation resolves the same import to
+ * two React instances — which breaks hooks at runtime with no build-time signal.
+ *
+ * Two deliberate exclusions, both of which a naive "keep them identical" check
+ * would get wrong: `react-dom/server` is runtime-internal (worker-runtime owns
+ * `renderToString`) and never a foundation import, and `react/jsx-dev-runtime`
+ * only appears in dev builds. To add a future shared package, add one row here.
+ *
+ * EXPORTED so the relationship can be asserted rather than promised in prose —
+ * `tests/build-worker.test.js` pins it against `DEFAULT_EXTERNALS`, including
+ * the two exclusions. It was a comment for months, and a comment is what the
+ * publish-breaking edit in this same header proved insufficient.
+ */
+export const BRIDGES = [
+  { spec: 'react', global: '__PLATFORM_REACT', shim: 'shims/react.js' },
+  { spec: 'react-dom', global: '__PLATFORM_REACT_DOM', shim: 'shims/react-dom.js' },
+  { spec: 'react/jsx-runtime', global: '__PLATFORM_JSX_RUNTIME', shim: 'shims/react-jsx-runtime.js' },
+  { spec: '@uniweb/core', global: '__PLATFORM_UNIWEB_CORE', shim: 'shims/uniweb-core.js' },
+]
+
+/** Specifiers in DEFAULT_EXTERNALS that the isolate deliberately does NOT bridge. */
+export const BRIDGE_EXCLUSIONS = ['react-dom/server', 'react/jsx-dev-runtime']
+
+/**
  * Bundle dist/ssr.js into the ssr-edge artifact set.
  *
  * Why globalThis instead of inter-module imports? The isolate's module loader
@@ -110,22 +139,6 @@ export async function buildWorkerRuntime(runtimeDir) {
   const distDir = join(runtimeDir, 'dist')
   const shimsDir = join(distDir, 'shims')
   if (!existsSync(shimsDir)) mkdirSync(shimsDir, { recursive: true })
-
-  // The bridge set: every specifier a FOUNDATION may import that must resolve to
-  // the isolate's single shared instance. This is the foundation-facing subset of
-  // `@uniweb/build`'s DEFAULT_EXTERNALS — it must stay in lockstep with it (and with
-  // the SPA import map, which bridges the same set): whatever the SPA import map
-  // bridges, the SSR isolate shims must bridge too, or a foundation resolves the
-  // same import to two React instances. `react-dom/server` is deliberately NOT here
-  // — it's runtime-internal (worker-runtime owns renderToString), never a foundation
-  // import; `react/jsx-dev-runtime` only appears in dev builds. To add a future
-  // shared package, add one row here — nothing else changes.
-  const BRIDGES = [
-    { spec: 'react', global: '__PLATFORM_REACT', shim: 'shims/react.js' },
-    { spec: 'react-dom', global: '__PLATFORM_REACT_DOM', shim: 'shims/react-dom.js' },
-    { spec: 'react/jsx-runtime', global: '__PLATFORM_JSX_RUNTIME', shim: 'shims/react-jsx-runtime.js' },
-    { spec: '@uniweb/core', global: '__PLATFORM_UNIWEB_CORE', shim: 'shims/uniweb-core.js' },
-  ]
 
   // Wrapper entry: set the globalThis bridges, then re-export the SSR pipeline.
   // esbuild bundles this with everything inlined (external: []).

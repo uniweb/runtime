@@ -4,14 +4,23 @@
  * Build the `ssr-edge` flavor of @uniweb/runtime — the worker-runtime.js SSR
  * isolate bundle plus its three globalThis-bridge shims — into dist/.
  *
- * OPT-IN, and deliberately so. This is NOT part of `pnpm build` and is NOT
- * shipped in the npm tarball: package.json `files` is ["src","dist"], and this
- * script lives at the repo root (unpublished). The published @uniweb/runtime
- * carries the `spa` (dist/app/**) and `ssr-node` (dist/ssr.js) flavors only; the
- * isolate target is produced on demand for whoever serves it. Keeping it opt-in
- * keeps the default build and the tarball lean while still giving a one-command
- * path to the artifact (so an SSR host or the `uniweb runtime register` CLI can
- * provision it without a bespoke build).
+ * OPT-IN LOCALLY, AUTOMATIC AT PUBLISH — and the distinction matters.
+ *
+ * It is not part of `pnpm build` (which is `build:ssr` + `build:app`), so a
+ * local build does not produce it and you run `pnpm build:worker` when you want
+ * it. But `prepublishOnly` IS `npm run build && npm run build:worker`, so every
+ * published version carries this flavor: `files` is ["src","dist", …], and the
+ * only `dist` exclusion is `dist/app/**/*.map`. Verified against the published
+ * tarball — `@uniweb/runtime@0.10.0` ships `dist/worker-runtime.js` plus all
+ * four `dist/shims/*.js`.
+ *
+ * ⚠️ This comment said the opposite until 2026-08-08 — "NOT shipped in the npm
+ * tarball: package.json `files` is ["src","dist"]" — which contradicted itself
+ * in its own sentence, since that glob is exactly what includes the artifact. It
+ * was written when the flavor really was local-only, and survived the 2026-08-04
+ * change that made `prepublishOnly` build every dist artifact. It matters
+ * because the npm tarball is what the distribution channel republishes, so
+ * "is it in the tarball" decides whether a host can get this flavor at all.
  *
  * Run it: `pnpm build:worker` (after `pnpm build:ssr`, which emits dist/ssr.js).
  *

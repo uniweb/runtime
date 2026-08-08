@@ -1,0 +1,35 @@
+// AUTO-GENERATED — modules-map shim re-exporting from globalThis.__PLATFORM_UNIWEB_CORE.
+// worker-runtime.js sets the bridge at module-eval time.
+const __ns = globalThis.__PLATFORM_UNIWEB_CORE
+export default __ns?.default ?? __ns
+export const Block = __ns.Block
+export const DATA_DIR = __ns.DATA_DIR
+export const DATA_URL_PREFIX = __ns.DATA_URL_PREFIX
+export const DataStore = __ns.DataStore
+export const EntityStore = __ns.EntityStore
+export const FetcherDispatcher = __ns.FetcherDispatcher
+export const ObservableState = __ns.ObservableState
+export const Page = __ns.Page
+export const Theme = __ns.Theme
+export const Uniweb = __ns.Uniweb
+export const Website = __ns.Website
+export const collectionDataUrl = __ns.collectionDataUrl
+export const collectionNameFromUrl = __ns.collectionNameFromUrl
+export const createUniweb = __ns.createUniweb
+export const deriveCacheKey = __ns.deriveCacheKey
+export const evaluateWhere = __ns.evaluateWhere
+export const getUniweb = __ns.getUniweb
+export const hasDarkScheme = __ns.hasDarkScheme
+export const isDataUrl = __ns.isDataUrl
+export const isRichSchema = __ns.isRichSchema
+export const isWildcardLanguages = __ns.isWildcardLanguages
+export const listRequestStyleNames = __ns.listRequestStyleNames
+export const matchWhere = __ns.matchWhere
+export const normalizeLanguageList = __ns.normalizeLanguageList
+export const normalizeSchema = __ns.normalizeSchema
+export const recordDataUrl = __ns.recordDataUrl
+export const resolveDefaultLocale = __ns.resolveDefaultLocale
+export const resolvePublishableLocales = __ns.resolvePublishableLocales
+export const resolveRequestStyle = __ns.resolveRequestStyle
+export const substitutePlaceholders = __ns.substitutePlaceholders
+export const validateLanguageConfig = __ns.validateLanguageConfig

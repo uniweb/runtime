@@ -46,6 +46,7 @@
   "engines": {
     "node": ">=20.19"
   },
+  "packageManager": "pnpm@10.30.0",
   "dependencies": {
     "@uniweb/core": "0.8.2",
     "@uniweb/theming": "0.1.15"

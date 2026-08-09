@@ -3,24 +3,33 @@
 #   https://<owner>.github.io/<repo>/runtime/index.json      what exists · latest · deprecated
 #   https://<owner>.github.io/<repo>/runtime/<version>/…     the artifacts
 #
-# ── It publishes what npm SHIPPED, not what this tree builds ──
+# ── It BUILDS the tag. It used to republish the npm tarball ──
 #
-# This package declares `@uniweb/core: workspace:*`, so a standalone clone of
-# this repo cannot install or build at all — it is a workspace member, and only
-# the monorepo can build it. A build-from-source workflow is therefore not
-# merely awkward here; it is impossible.
+# The old job ran `npm pack @uniweb/runtime@<version>` and republished the
+# tarball's `dist/`, because this package declares its siblings `workspace:*`
+# and a standalone clone could not install, let alone build.
 #
-# Publishing the npm tarball is better than a workaround for that. The channel
-# then carries **exactly the bytes a customer installs**, so "the runtime a site
-# gets" and "the runtime in the channel" are the same artifact by construction
-# rather than by two builds happening to agree. Measured while building this:
-# npm's 0.9.7 and a local 0.9.7 fingerprint DIFFERENTLY, because a build flag
-# moved between them — a version number does not determine its bytes, which is
-# exactly why the index records `integrity` rather than assuming it.
+# `package.standalone.json` + `pnpm-lock.yaml` removed that constraint, and
+# building is strictly better here for one reason: the npm tarball is meant to
+# stop carrying the delivery set at all. Those ~1.9 MB per version are not
+# importable by anything — no `exports` entry reaches them — and they exist in
+# the tarball today only because this job used to read them from there.
 #
-# A consequence worth knowing: this job needs no package manager, no install and
-# no build. `publish-channel.mjs` is dependency-free Node by design, and that
-# choice is what lets this run on nothing but `npm pack` + node.
+# ⚠️ **A lockfile is not optional for this.** Measured on v0.11.0: pinning the
+# five direct dependencies by hand still produced different bytes, because
+# `@uniweb/semantic-parser` declares `yaml: ^2.8.2` and a fresh install took
+# 2.9.0 where the workspace had 2.8.3 — real code in the SSR isolate bundle.
+# Two independent standalone checkouts built from the committed lockfile produce
+# 33/33 byte-identical delivery files; without it they do not.
+#
+# ── What this changes about the publish ordering ──
+#
+# `scripts/framework/publish.js` (in the development monorepo) documents that
+# `git push --tags` MUST come after `pnpm publish`, because this job used to
+# fetch the version from npm and would otherwise fire on a version npm did not
+# yet serve. **This job no longer touches npm**, so that particular race is
+# gone. The ordering may still be load-bearing for other reasons — do not
+# relax it on the strength of this comment alone.
 #
 # ── Why the index is written last ──
 #
@@ -30,38 +39,29 @@
 # both in ONE commit so the tree never exists half-published.
 #
 # ⚠️ What this cannot give you: cache headers. GitHub Pages serves everything
-# `Cache-Control: max-age=600` and allows no per-file headers — measured. So the
-# index is cached up to 10 minutes (with an ETag, so revalidation is cheap) and
-# `<version>/**` is not marked immutable even though it is. A consumer needing
-# `no-cache` on the index must re-serve this channel from a host where headers
-# are settable; that is a property of Pages, not of the channel format.
+# `Cache-Control: max-age=600` and allows no per-file headers — measured. That
+# is tolerable because the channel is PULLED BY MIRRORS, never by end users'
+# browsers; a consumer that needs `no-cache` on the index, or `immutable` on a
+# version, must re-serve this channel from a host where headers are settable.
 
 name: Publish runtime channel
 
 on:
-  # A release tag is the real signal, and it is SAFE to trigger on because of
-  # the order the publish script uses:
-  #
-  #   pnpm version <bump>   → version commit + tag, locally
-  #   pnpm publish          → npm
-  #   git push --tags       → the tag reaches GitHub LAST
-  #
-  # So by the time a tag lands here, npm already has the version — no race
-  # between the trigger and the thing it fetches.
+  # A release tag is the real signal.
   push:
     tags: ['v*']
 
-  # A safety net, not the mechanism. A tag run that fails (or a version
-  # published without one) would otherwise leave the channel stale forever.
-  # Daily rather than hourly now that tags carry the signal; the job is
-  # idempotent, so a redundant run is a fast no-op.
+  # A safety net, not the mechanism. A tag run that fails would otherwise leave
+  # the channel stale until someone noticed. The job is idempotent — a tag that
+  # is already published exits before it builds anything — so a redundant run is
+  # a fast no-op rather than wasted minutes.
   schedule:
     - cron: '17 6 * * *'
 
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to publish (default: npm latest)'
+        description: 'Version to publish, e.g. 0.11.0 (default: the latest tag)'
         required: false
         default: 'latest'
 
@@ -78,34 +78,38 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      # Only for `scripts/publish-channel.mjs` — none of this repo's source is
-      # published by this job.
-      - name: Check out the publisher
-        uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      # Full history: the tag has to be resolvable, and the scheduled run needs
+      # to find the latest one.
+      - uses: actions/checkout@v4
         with:
-          node-version: '22'
+          fetch-depth: 0
 
-      - name: Fetch the published package from npm
+      - name: Resolve the tag to build
+        id: ref
         run: |
-          VERSION="${{ github.event.inputs.version || 'latest' }}"
-          mkdir -p .npmpkg && cd .npmpkg
-          npm pack "@uniweb/runtime@${VERSION}" --silent
-          tar -xzf ./*.tgz
-          node -p "'Fetched ' + require('./package/package.json').name + '@' + require('./package/package.json').version"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            IN="${{ github.event.inputs.version }}"
+            if [ -n "$IN" ] && [ "$IN" != "latest" ]; then
+              TAG="v${IN#v}"
+            else
+              TAG="$(git describe --tags --abbrev=0 --match 'v*')"
+            fi
+          fi
+          if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::No such tag: $TAG"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Building $TAG"
 
-      # A separate checkout of the served branch, created on first run.
+      # The served branch, checked out as a worktree. Created on first run.
       - name: Check out the channel branch
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
-            # `actions/checkout` fetches only the ref that triggered the run, so
-            # the branch exists on the remote but has no local ref — fetch it
-            # explicitly rather than assuming a full clone. (`-B` points a local
-            # gh-pages at the remote tip so the later `git push origin gh-pages`
-            # has a branch to push, rather than a detached HEAD.)
             git fetch --depth=1 origin gh-pages
             git worktree add -B gh-pages .channel origin/gh-pages
           else
@@ -120,25 +124,98 @@ jobs:
             git commit -m "Initialise the runtime channel"
           fi
 
-      # Idempotent on purpose: a redundant run on an unchanged version is a no-op,
-      # while a human republishing one is still refused.
-      - name: Publish into the channel
+      # ⭐ BEFORE building, not after. A version is immutable, so a tag already
+      # in the index can never produce anything new — and checking first is what
+      # keeps the daily cron a few seconds instead of a full toolchain install
+      # and three builds. It is also what lets this job run against tags that
+      # predate the standalone manifest: they are already published, so it exits
+      # here rather than failing at a step their tree has no script for.
+      - name: Skip if this version is already in the channel
+        id: gate
         run: |
-          node scripts/publish-channel.mjs \
-            --channel .channel \
-            --from .npmpkg/package \
-            --skip-if-published
+          TAG="${{ steps.ref.outputs.tag }}"
+          VERSION="${TAG#v}"
+          INDEX=.channel/runtime/index.json
+          if [ -f "$INDEX" ] && node -e "
+                const i = require('./$INDEX');
+                process.exit(i.versions && i.versions['$VERSION'] ? 0 : 1);
+              "; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "$VERSION is already published — nothing to do."
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out the tag
+        if: steps.gate.outputs.already == 'false'
+        run: git checkout --detach "${{ steps.ref.outputs.tag }}"
+
+      # A tag whose package.json disagrees with its own name would publish under
+      # the wrong version — immutably. Cheap to check, impossible to undo.
+      - name: Verify the tag names the version it builds
+        if: steps.gate.outputs.already == 'false'
+        run: |
+          V="$(node -p "require('./package.json').version")"
+          if [ "v$V" != "${{ steps.ref.outputs.tag }}" ]; then
+            echo "::error::Tag ${{ steps.ref.outputs.tag }} contains package.json version $V"
+            exit 1
+          fi
+
+      # Both pinned. pnpm's version comes from package.json#packageManager, so
+      # it is pinned in exactly one place; a floating toolchain is the same
+      # class of drift as a floating dependency, one layer up.
+      - uses: pnpm/action-setup@v4
+        if: steps.gate.outputs.already == 'false'
+
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.already == 'false'
+        with:
+          node-version: '22.14.0'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      # This package is a workspace member: its `@uniweb/*` deps are
+      # `workspace:*`, which no registry understands. The twin is that manifest
+      # with them resolved, generated in the workspace and committed beside a
+      # lockfile derived from it.
+      - name: Use the standalone manifest
+        if: steps.gate.outputs.already == 'false'
+        run: node scripts/standalone-manifest.js --apply
+
+      # --frozen-lockfile is the point of this step: it fails when the manifest
+      # and the lockfile disagree, rather than silently re-resolving and
+      # building bytes nobody has ever run.
+      - name: Install (frozen)
+        if: steps.gate.outputs.already == 'false'
+        run: pnpm install --frozen-lockfile
+
+      # A version publishes both halves or neither — `publish-channel.mjs`
+      # refuses an incomplete set, but failing here names which build broke.
+      - name: Build every delivery flavor
+        if: steps.gate.outputs.already == 'false'
+        run: |
+          pnpm build
+          pnpm build:worker
+
+      # `--from` defaults to the repo root, which is what we just built into.
+      # `--skip-if-published` stays as a second guard: the gate above reads the
+      # index, this reads the directory, and a channel where those disagree is
+      # worse than either failure alone.
+      - name: Publish into the channel
+        if: steps.gate.outputs.already == 'false'
+        run: node scripts/publish-channel.mjs --channel .channel --skip-if-published
 
       # One commit, so the artifacts and the index that names them land
-      # together. Nothing to commit means the version was already published.
+      # together.
       - name: Push the channel
+        if: steps.gate.outputs.already == 'false'
         working-directory: .channel
         run: |
           if [ -z "$(git status --porcelain)" ]; then
-            echo "Channel unchanged — nothing to publish."
-            exit 0
+            echo "::error::Built ${{ steps.ref.outputs.tag }} but the channel is unchanged."
+            echo "The gate said this version was absent, so producing nothing is a fault, not a no-op."
+            exit 1
           fi
-          VERSION=$(node -p "require('../.npmpkg/package/package.json').version")
           git add -A
-          git commit -m "runtime ${VERSION}"
+          git commit -m "runtime ${{ steps.ref.outputs.tag }}"
           git push origin gh-pages

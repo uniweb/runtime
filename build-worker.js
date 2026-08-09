@@ -4,29 +4,37 @@
  * Build the `ssr-edge` flavor of @uniweb/runtime — the worker-runtime.js SSR
  * isolate bundle plus its three globalThis-bridge shims — into dist/.
  *
- * OPT-IN LOCALLY, AUTOMATIC AT PUBLISH — and the distinction matters.
+ * BUILT AT PUBLISH, BUT NOT SHIPPED BY NPM — and the distinction matters.
  *
  * It is not part of `pnpm build` (which is `build:ssr` + `build:app`), so a
- * local build does not produce it and you run `pnpm build:worker` when you want
- * it. But `prepublishOnly` IS `npm run build && npm run build:worker`, so every
- * published version carries this flavor: `files` is ["src","dist", …], and its
- * only `dist` exclusion is the sourcemaps under `dist/app`. Verified against the
- * published tarball — `@uniweb/runtime@0.10.0` ships `dist/worker-runtime.js`
- * plus all four shims under `dist/shims`.
+ * local build does not produce it; run `pnpm build:worker` when you want it.
+ * `prepublishOnly` DOES run it, but `files` no longer ships the result: the
+ * tarball carries `src` plus `dist/ssr.js` and its map, and nothing else.
  *
- * (Do not write that exclusion as a literal glob here: the `**` + `/` + `*`
- * sequence contains the block-comment terminator, so it ends this comment
- * mid-sentence and the rest of the file parses as code. It did exactly that on
- * 2026-08-08 and broke `build:worker`, hence `prepublishOnly`, hence the whole
- * publish. Use `//` line comments if you need the literal.)
+ * **A consumer reaches this flavor through the distribution channel, not
+ * through npm** — the channel workflow builds it from the tag. Nothing removed
+ * from the tarball was ever importable: no `exports` entry reaches this bundle
+ * or the browser shell, and they sat there only because the channel job used to
+ * read them from a packed tarball. It builds the tag now, so they left —
+ * 2.35 MB unpacked became 347 KB, measured on `0.11.1`.
  *
- * ⚠️ This comment said the opposite until 2026-08-08 — "NOT shipped in the npm
- * tarball: package.json `files` is ["src","dist"]" — which contradicted itself
- * in its own sentence, since that glob is exactly what includes the artifact. It
- * was written when the flavor really was local-only, and survived the 2026-08-04
- * change that made `prepublishOnly` build every dist artifact. It matters
- * because the npm tarball is what the distribution channel republishes, so
- * "is it in the tarball" decides whether a host can get this flavor at all.
+ * So why still build it at publish? As a pre-flight. A tag whose isolate build
+ * is broken would publish cleanly and then fail in the channel job, at a
+ * distance. Three seconds here turns that into a blocked release instead.
+ *
+ * ⚠️ **Both directions of this claim have been wrong within one week.** Until
+ * 2026-08-08 this header said the flavor was not in the tarball while
+ * `prepublishOnly` had been putting it there since 2026-08-04; that was
+ * corrected, and the correction went stale two commits later when `files`
+ * changed. ⇒ **Do not trust this paragraph for what ships.** Read `files` in
+ * package.json, or run `npm pack --dry-run`.
+ *
+ * ⛔ Do not write a sourcemap-exclusion glob in this block comment. The
+ * asterisk-then-slash sequence inside such a glob terminates the comment, the
+ * remaining prose parses as code, and this file dies with a SyntaxError — which
+ * broke a publish on 2026-08-08, because `prepublishOnly` runs it.
+ * `tests/build-worker.test.js` now fails on it; use a line comment if you need
+ * the literal.
  *
  * Run it: `pnpm build:worker` (after `pnpm build:ssr`, which emits dist/ssr.js).
  *

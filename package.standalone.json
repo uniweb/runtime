@@ -12,8 +12,8 @@
   },
   "files": [
     "src",
-    "dist",
-    "!dist/app/**/*.map"
+    "dist/ssr.js",
+    "dist/ssr.js.map"
   ],
   "scripts": {
     "build:ssr": "vite build --config vite.config.ssr.js",

@@ -90,9 +90,23 @@ function linkedVersion(name) {
   return read(p).version
 }
 
-/** The twin, derived deterministically so --check can compare byte for byte. */
+/**
+ * The twin, derived deterministically so --check can compare byte for byte.
+ *
+ * ⛔ **`version` is deliberately OMITTED, and this is not tidiness.** The twin
+ * is a generated file; `pnpm version` bumps `package.json` and does not touch
+ * it. If the twin carried a version it would be stale from the moment of every
+ * release, and `--apply` would then overwrite the real version with the old one.
+ *
+ * That is not hypothetical — it broke the v0.11.1 channel run: the twin still
+ * said `0.11.0`, `--apply` reinstated it, the publisher decided that version was
+ * already published and wrote nothing. Omitting the field makes the whole class
+ * unrepresentable, where wiring a `version` hook to regenerate the twin would
+ * only have kept it in sync as long as nobody forgot.
+ */
 function build(pkg) {
   const out = structuredClone(pkg)
+  delete out.version
   for (const { field, name } of workspaceDeps(pkg)) {
     // Pinned EXACTLY, not with a caret. The point of the twin is that CI builds
     // what a developer builds; a range lets a runner pick up a sibling release
@@ -151,8 +165,25 @@ if (!mode) {
 if (mode === '--apply') {
   // CI path: no workspace, no node_modules, nothing to read but the twin.
   if (!existsSync(STANDALONE)) fail(`${STANDALONE} is missing — run \`pnpm relock\`.`)
-  copyFileSync(STANDALONE, MANIFEST)
-  console.log(`standalone-manifest: applied ${STANDALONE} over ${MANIFEST}`)
+  const live = read(MANIFEST)
+  const twin = read(STANDALONE)
+
+  // MERGE, never replace — and carry the live version across. The twin has no
+  // version of its own (see build()); the checkout's is the authoritative one,
+  // because a tag build must publish the version its tag names.
+  if (!live.version) fail(`${MANIFEST} has no version — refusing to apply.`)
+  if (twin.version) {
+    // Warn, do not fail. A twin generated before the version field was dropped
+    // carries a stale one, and those twins are frozen inside published tags —
+    // failing here would make every such tag permanently unbuildable, which is
+    // a worse outcome than overriding a field we know to be wrong.
+    console.warn(
+      `standalone-manifest: ${STANDALONE} carries version ${twin.version}; ignoring it ` +
+        `in favour of ${MANIFEST}'s ${live.version}. Run \`pnpm relock\` to drop it.`
+    )
+  }
+  writeFileSync(MANIFEST, `${JSON.stringify({ ...twin, version: live.version }, null, 2)}\n`)
+  console.log(`standalone-manifest: applied ${STANDALONE} (version ${live.version} preserved)`)
   process.exit(0)
 }
 

@@ -146,9 +146,29 @@ jobs:
             echo "already=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Check out the tag
+      # ⚠️ SOURCE from the tag; TOOLING from the default branch. The split is
+      # deliberate and was learned the hard way.
+      #
+      # The artifacts must be built from the tag — that is the entire point, and
+      # the tag's `package.standalone.json` + `pnpm-lock.yaml` are build INPUTS
+      # that pin what that version was built against, so they come from the tag
+      # too.
+      #
+      # `scripts/` only orchestrates. If it came from the tag as well, a bug in
+      # the publisher or the manifest tooling would be frozen into every tag that
+      # carried it, and **no re-run could ever succeed** — the only remedy would
+      # be cutting a new release to fix a release that failed. That is exactly
+      # the corner v0.11.1 landed in.
+      - name: Check out the tag (keeping the current tooling)
         if: steps.gate.outputs.already == 'false'
-        run: git checkout --detach "${{ steps.ref.outputs.tag }}"
+        run: |
+          TOOLING="$(mktemp -d)"
+          cp -R scripts "$TOOLING/"
+          git checkout --detach "${{ steps.ref.outputs.tag }}"
+          rm -rf scripts
+          cp -R "$TOOLING/scripts" scripts
+          rm -rf "$TOOLING"
+          echo "Source at ${{ steps.ref.outputs.tag }}; scripts/ from ${{ github.ref_name }}"
 
       # A tag whose package.json disagrees with its own name would publish under
       # the wrong version — immutably. Cheap to check, impossible to undo.
@@ -181,6 +201,21 @@ jobs:
       - name: Use the standalone manifest
         if: steps.gate.outputs.already == 'false'
         run: node scripts/standalone-manifest.js --apply
+
+      # ⚠️ RE-CHECKED, because the step above rewrites the file the earlier check
+      # read. That is not belt-and-braces — it is the bug that broke the v0.11.1
+      # run: the twin carried a stale `version`, `--apply` reinstated it, and the
+      # publisher then decided the version was already published and wrote
+      # nothing. A check whose subject is mutated afterwards is not a check.
+      - name: Re-verify the version after applying the twin
+        if: steps.gate.outputs.already == 'false'
+        run: |
+          V="$(node -p "require('./package.json').version")"
+          if [ "v$V" != "${{ steps.ref.outputs.tag }}" ]; then
+            echo "::error::After --apply, package.json is $V but the tag is ${{ steps.ref.outputs.tag }}"
+            exit 1
+          fi
+          echo "Building ${{ steps.ref.outputs.tag }} as $V"
 
       # --frozen-lockfile is the point of this step: it fails when the manifest
       # and the lockfile disagree, rather than silently re-resolving and

@@ -25,8 +25,8 @@ importers:
         version: 7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     devDependencies:
       '@uniweb/build':
-        specifier: 0.18.0
-        version: 0.18.0(@uniweb/core@0.8.2)(@vitejs/plugin-react@4.7.0(vite@7.3.6(yaml@2.9.0)))(react-dom@19.2.8(react@19.2.8))(react-router-dom@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)(vite@7.3.6(yaml@2.9.0))
+        specifier: 0.18.1
+        version: 0.18.1(@uniweb/core@0.8.2)(@vitejs/plugin-react@4.7.0(vite@7.3.6(yaml@2.9.0)))(react-dom@19.2.8(react@19.2.8))(react-router-dom@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)(vite@7.3.6(yaml@2.9.0))
       '@vitejs/plugin-react':
         specifier: ^4.5.2
         version: 4.7.0(vite@7.3.6(yaml@2.9.0))
@@ -641,8 +641,8 @@ packages:
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
 
-  '@uniweb/build@0.18.0':
-    resolution: {integrity: sha512-FnVtKryhKf0ejhNZkuoufNxwV6kcNujJvhMHxBqmWTLZEPSnK9UvV05MqGRV9nW1yer9ZUNooXd8fhXrbcAaog==}
+  '@uniweb/build@0.18.1':
+    resolution: {integrity: sha512-TXsaW97IAVp+Q76BgnsTVdd5veLlte6flTEMr3hDBypEvgBkl8zJ1GiX9Y/kmeItcpVCbxxmzD5xHqm3A4hBWA==}
     engines: {node: '>=20.19'}
     hasBin: true
     peerDependencies:
@@ -683,8 +683,8 @@ packages:
     resolution: {integrity: sha512-3R9PzKKmgaCOlbFPvp9iQ/XDK/s/TQf8+E3m8JWdvpDUJfceRNTnDts/58GBSL4XEXNHiqXRusqya0hIQSOCfQ==}
     engines: {node: '>=20.19'}
 
-  '@uniweb/runtime@0.11.0':
-    resolution: {integrity: sha512-0hfEoMf2gjt+l4TAGU/9CTN1AXNE+G0h52NxB77a2I/t4/O38dqIQsH47xmMMeaF8w3sc5oFbtDGzJdggps6Eg==}
+  '@uniweb/runtime@0.11.1':
+    resolution: {integrity: sha512-lsmSv2lr8XgtdYyTpdWidBGYH7kmm6TbHl4lMNA1jy827doLax1sXMnfs2mxbHxMh7yhAMpCov1pG6xhiEdP3w==}
     engines: {node: '>=20.19'}
     peerDependencies:
       react: ^19.0.0
@@ -1512,7 +1512,7 @@ snapshots:
 
   '@types/estree@1.0.9': {}
 
-  '@uniweb/build@0.18.0(@uniweb/core@0.8.2)(@vitejs/plugin-react@4.7.0(vite@7.3.6(yaml@2.9.0)))(react-dom@19.2.8(react@19.2.8))(react-router-dom@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)(vite@7.3.6(yaml@2.9.0))':
+  '@uniweb/build@0.18.1(@uniweb/core@0.8.2)(@vitejs/plugin-react@4.7.0(vite@7.3.6(yaml@2.9.0)))(react-dom@19.2.8(react@19.2.8))(react-router-dom@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)(vite@7.3.6(yaml@2.9.0))':
     dependencies:
       '@citestyle/bibtex': 1.1.0
       '@uniweb/content-writer': 0.3.3
@@ -1525,7 +1525,7 @@ snapshots:
     optionalDependencies:
       '@uniweb/content-reader': 1.2.2
       '@uniweb/core': 0.8.2
-      '@uniweb/runtime': 0.11.0(react-dom@19.2.8(react@19.2.8))(react-router-dom@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)
+      '@uniweb/runtime': 0.11.1(react-dom@19.2.8(react@19.2.8))(react-router-dom@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)
       '@uniweb/schemas': 0.2.10
       '@uniweb/semantic-parser': 1.2.1
       '@vitejs/plugin-react': 4.7.0(vite@7.3.6(yaml@2.9.0))
@@ -1557,7 +1557,7 @@ snapshots:
       '@uniweb/content-writer': 0.3.3
       '@uniweb/core': 0.8.2
 
-  '@uniweb/runtime@0.11.0(react-dom@19.2.8(react@19.2.8))(react-router-dom@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)':
+  '@uniweb/runtime@0.11.1(react-dom@19.2.8(react@19.2.8))(react-router-dom@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)':
     dependencies:
       '@uniweb/core': 0.8.2
       '@uniweb/theming': 0.1.15

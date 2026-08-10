@@ -15,12 +15,32 @@
 # importable by anything — no `exports` entry reaches them — and they exist in
 # the tarball today only because this job used to read them from there.
 #
-# ⚠️ **A lockfile is not optional for this.** Measured on v0.11.0: pinning the
-# five direct dependencies by hand still produced different bytes, because
-# `@uniweb/semantic-parser` declares `yaml: ^2.8.2` and a fresh install took
-# 2.9.0 where the workspace had 2.8.3 — real code in the SSR isolate bundle.
-# Two independent standalone checkouts built from the committed lockfile produce
-# 33/33 byte-identical delivery files; without it they do not.
+# ⚠️ **A lockfile is not optional — and byte-identity is NOT the reason.**
+# Nobody diffs these 33 files. Reproducibility is how the rule was measured, not
+# what it is for. The reason is that without a lockfile, a tag build ships
+# transitive code that nobody has ever run.
+#
+# The example is live as of 2026-08-10: `@uniweb/semantic-parser` declares
+# `yaml: ^2.8.2`, the development workspace resolves 2.8.3, and the registry
+# serves 2.9.0 — so a fresh standalone install takes 2.9.0, and that is real
+# code in the SSR isolate bundle. Re-check it with:
+#
+#     npm view yaml version
+#     node -p "require('@uniweb/semantic-parser/package.json').dependencies.yaml"
+#
+# If those ever agree, this particular example is void; the property it
+# illustrates is not.
+#
+# Both delivery flavors are exposed, in ways that are hard to walk back. A
+# published channel version is immutable, so a bad transitive cannot be patched
+# in place — it takes a new version, and consumers pull on their own schedule.
+# The SSR isolate half fails server-side, which is the half least likely to be
+# noticed quickly.
+#
+# (How it was measured, on v0.11.0: pinning the five direct dependencies by hand
+# still produced different bytes. Two independent standalone checkouts built
+# from the committed lockfile produce 33/33 identical delivery files; without it
+# they do not.)
 #
 # ── What this changes about the publish ordering ──
 #

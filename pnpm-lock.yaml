@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@uniweb/core':
-        specifier: 0.8.3
-        version: 0.8.3
+        specifier: 0.8.4
+        version: 0.8.4
       '@uniweb/theming':
         specifier: 0.1.15
         version: 0.1.15
@@ -25,8 +25,8 @@ importers:
         version: 7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     devDependencies:
       '@uniweb/build':
-        specifier: 0.18.3
-        version: 0.18.3(@uniweb/core@0.8.3)(@vitejs/plugin-react@4.7.0(vite@7.3.6(yaml@2.9.0)))(react-dom@19.2.8(react@19.2.8))(react-router-dom@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)(vite@7.3.6(yaml@2.9.0))
+        specifier: 0.18.4
+        version: 0.18.4(@uniweb/core@0.8.4)(@vitejs/plugin-react@4.7.0(vite@7.3.6(yaml@2.9.0)))(react-dom@19.2.8(react@19.2.8))(react-router-dom@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)(vite@7.3.6(yaml@2.9.0))
       '@vitejs/plugin-react':
         specifier: ^4.5.2
         version: 4.7.0(vite@7.3.6(yaml@2.9.0))
@@ -641,13 +641,13 @@ packages:
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
 
-  '@uniweb/build@0.18.3':
-    resolution: {integrity: sha512-gkRoajhFnX6R06kqLAAUIxnblKnFM2ILwPmGMjZ2Ff3mYBqN9jdAPJ26IVUxD1MmHrNOvqgjnhc6ITpWJjE0Ng==}
+  '@uniweb/build@0.18.4':
+    resolution: {integrity: sha512-Or1sB28oL9KvI+ZOmSnRJcaP26BpN8/Ws4vBg9KFuYKuKmsqKUtWGjOQPO6zmsbzfd2oy1LI+fINHktHLLKOrQ==}
     engines: {node: '>=20.19'}
     hasBin: true
     peerDependencies:
       '@tailwindcss/vite': ^4.0.0
-      '@uniweb/core': 0.8.3
+      '@uniweb/core': ^0.8.4
       '@vitejs/plugin-react': ^4.0.0 || ^5.0.0
       react: ^19.0.0
       react-dom: ^19.0.0
@@ -675,16 +675,16 @@ packages:
   '@uniweb/content-writer@0.3.3':
     resolution: {integrity: sha512-4jM+ycJTUYFk0tiXriMl1tHPhXZdTjBv5OHtC2YmvrWUewUQ3U0KpsArQnCil9eJaWYNA2SifRGcDNqwELyosQ==}
 
-  '@uniweb/core@0.8.3':
-    resolution: {integrity: sha512-Kakf1YAemS2LoDi86RSfDCHOmS+4y37gmo9f3oHOSGUEo1v+1b/8m1Er1koTiAblbm/aakO6Qw0whwz1exiCFA==}
+  '@uniweb/core@0.8.4':
+    resolution: {integrity: sha512-mQxhvQKTNhqyXG+BdBPNJpdxim9VXUOs9GZbuZiwRIKvbUCoFghUVETTEOJtBY3cbPBfzomiwR2PIDKsmLVeNw==}
     engines: {node: '>=20.19'}
 
-  '@uniweb/projections@0.2.6':
-    resolution: {integrity: sha512-j6ZJQh2x3E3wF1HrLkDNyprUX2rCFCENy2eHf0dmCH1dxlatYd2QCYj2Jj3KPt2wvRQ2DoDkaXTu+JMtKX51kg==}
+  '@uniweb/projections@0.2.7':
+    resolution: {integrity: sha512-Eds6dWwkhvBCjhhL7+NDyhQegnisM6WPCPOh/VVb6y9UdRLurB0WsImpnUadvS20Kn4duHyeetByJA7eCEzSIQ==}
     engines: {node: '>=20.19'}
 
-  '@uniweb/runtime@0.11.3':
-    resolution: {integrity: sha512-rR+Cyf/G+SzoeLInTD/U5AHfLScrBMLFzNGOXo4IM2g7EPMVamWE+JlmJOcoIhocD/G8x1bTqorfrvSsBvuraQ==}
+  '@uniweb/runtime@0.11.4':
+    resolution: {integrity: sha512-518nNbl2nkcTcQ/DxVFZFK9CbYxpBKBd2XsDFCSDGV/2xdXmg8xY3+4jjZYUSNYgDWt5tPuZ4G3ygChw3o1sWQ==}
     engines: {node: '>=20.19'}
     peerDependencies:
       react: ^19.0.0
@@ -780,8 +780,8 @@ packages:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
 
-  electron-to-chromium@1.5.403:
-    resolution: {integrity: sha512-MQsYmdaLzvaCX5j+ZZBr5Fm6uCCnPQcRtlvmvRlWqrXy+BH2O4ffXIAScF+JQznQWB9brWp4lSD9Z4yNmaf2BA==}
+  electron-to-chromium@1.5.404:
+    resolution: {integrity: sha512-3WJtd7/lVq2Jnuz6wed1l9+1ZD2u2Tet1/1NBc4Iedkmgbu+I7YuAqdAQ8T+VZtnwysMsAf3IqSq9D1gyZjA2g==}
 
   es-module-lexer@2.3.1:
     resolution: {integrity: sha512-shc1dbU90Yl/xq1QrC7QRtfcwURZuVRfPhZbDoldJ1cn1gzDvBaBWlv0eFolj5+0znnPJz5TXLxsN77X/12KTA==}
@@ -1512,11 +1512,11 @@ snapshots:
 
   '@types/estree@1.0.9': {}
 
-  '@uniweb/build@0.18.3(@uniweb/core@0.8.3)(@vitejs/plugin-react@4.7.0(vite@7.3.6(yaml@2.9.0)))(react-dom@19.2.8(react@19.2.8))(react-router-dom@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)(vite@7.3.6(yaml@2.9.0))':
+  '@uniweb/build@0.18.4(@uniweb/core@0.8.4)(@vitejs/plugin-react@4.7.0(vite@7.3.6(yaml@2.9.0)))(react-dom@19.2.8(react@19.2.8))(react-router-dom@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)(vite@7.3.6(yaml@2.9.0))':
     dependencies:
       '@citestyle/bibtex': 1.1.0
       '@uniweb/content-writer': 0.3.3
-      '@uniweb/projections': 0.2.6
+      '@uniweb/projections': 0.2.7
       '@uniweb/theming': 0.1.15
       esbuild: 0.27.7
       js-yaml: 4.3.1
@@ -1524,8 +1524,8 @@ snapshots:
       yaml: 2.9.0
     optionalDependencies:
       '@uniweb/content-reader': 1.2.2
-      '@uniweb/core': 0.8.3
-      '@uniweb/runtime': 0.11.3(react-dom@19.2.8(react@19.2.8))(react-router-dom@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)
+      '@uniweb/core': 0.8.4
+      '@uniweb/runtime': 0.11.4(react-dom@19.2.8(react@19.2.8))(react-router-dom@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)
       '@uniweb/schemas': 0.2.10
       '@uniweb/semantic-parser': 1.2.1
       '@vitejs/plugin-react': 4.7.0(vite@7.3.6(yaml@2.9.0))
@@ -1547,19 +1547,19 @@ snapshots:
     dependencies:
       js-yaml: 4.3.1
 
-  '@uniweb/core@0.8.3':
+  '@uniweb/core@0.8.4':
     dependencies:
       '@uniweb/semantic-parser': 1.2.1
       '@uniweb/theming': 0.1.15
 
-  '@uniweb/projections@0.2.6':
+  '@uniweb/projections@0.2.7':
     dependencies:
       '@uniweb/content-writer': 0.3.3
-      '@uniweb/core': 0.8.3
+      '@uniweb/core': 0.8.4
 
-  '@uniweb/runtime@0.11.3(react-dom@19.2.8(react@19.2.8))(react-router-dom@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)':
+  '@uniweb/runtime@0.11.4(react-dom@19.2.8(react@19.2.8))(react-router-dom@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@uniweb/core': 0.8.3
+      '@uniweb/core': 0.8.4
       '@uniweb/theming': 0.1.15
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
@@ -1638,7 +1638,7 @@ snapshots:
     dependencies:
       baseline-browser-mapping: 2.11.13
       caniuse-lite: 1.0.30001809
-      electron-to-chromium: 1.5.403
+      electron-to-chromium: 1.5.404
       node-releases: 2.0.53
       update-browserslist-db: 1.3.1(browserslist@4.28.8)
 
@@ -1656,7 +1656,7 @@ snapshots:
 
   detect-libc@2.1.2: {}
 
-  electron-to-chromium@1.5.403: {}
+  electron-to-chromium@1.5.404: {}
 
   es-module-lexer@2.3.1: {}
 

@@ -48,8 +48,8 @@
   },
   "packageManager": "pnpm@10.30.0",
   "dependencies": {
-    "@uniweb/core": "workspace:*",
-    "@uniweb/theming": "workspace:*"
+    "@uniweb/core": "workspace:^",
+    "@uniweb/theming": "workspace:^"
   },
   "devDependencies": {
     "@uniweb/build": "workspace:*",

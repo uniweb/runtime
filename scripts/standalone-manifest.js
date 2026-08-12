@@ -39,7 +39,8 @@
  *
  *   --write    regenerate the twin from the versions this workspace links
  *   --apply    copy the twin over package.json (what CI does before installing)
- *   --check    fail if the twin disagrees with the live workspace
+ *   --check    fail if the twin disagrees with the live workspace, or the
+ *              lockfile with the twin (the pair is only meaningful together)
  *   --audit    same as --check but advisory — never fails a build
  *   --offline  skip the "is it actually on npm?" probe
  *
@@ -48,12 +49,14 @@
  * one edits another package's source.
  */
 
-import { existsSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, copyFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const MANIFEST = 'package.json'
 const STANDALONE = 'package.standalone.json'
+const LOCK = 'pnpm-lock.yaml'
 
 const read = (p) => JSON.parse(readFileSync(p, 'utf8'))
 
@@ -151,6 +154,110 @@ function publishedOnRegistry(name, version) {
   return { ok: r.stdout.trim() === version }
 }
 
+/** Block the thread. `npm view` is spawnSync, so this whole file is synchronous. */
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+// How long to keep asking. See verifyPublished() — this is a propagation
+// window, not a network-flake retry. Overridable (comma-separated ms, empty for
+// a single attempt) so a test can exercise the failure path without waiting out
+// the real window.
+const PROBE_DELAYS_MS = (process.env.UNIWEB_STANDALONE_PROBE_DELAYS ?? '3000,6000,12000,24000')
+  .split(',')
+  .map((n) => Number(n.trim()))
+  .filter((n) => Number.isFinite(n) && n > 0)
+
+/**
+ * ⛔ **"Not on the registry" is a race for the first minute after a publish,
+ * and answering it too fast is what broke the 0.11.5 release.**
+ *
+ * A single probe treats a negative as final. It is not: `npm view` forces
+ * `preferOnline`, so it does reach the network, but the registry's packument
+ * takes a beat to propagate after `pnpm publish` returns. Measured 2026-08-12,
+ * during the release that exposed this — the same probe loop, seconds apart:
+ *
+ *     @uniweb/core@0.8.5    published 38s earlier  →  found
+ *     @uniweb/build@0.18.5  published 10s earlier  →  "not on the registry"
+ *
+ * Both were published. The release aborted on the second one.
+ *
+ * This is exactly the case the caller cannot distinguish from a genuinely
+ * unpublished sibling, and it is the COMMON case: this probe runs at the end of
+ * a release, on versions minted moments ago (`runPostPublishRelock` in the
+ * monorepo's scripts/framework/publish.js). So a negative is retried over a
+ * window wider than propagation takes, and only a version still missing at the
+ * end is reported as unpublished.
+ *
+ * The failing set is retried as a GROUP, so the wait is bounded by the window
+ * (~45s) rather than multiplied by how many pins are pending.
+ */
+function verifyPublished(pins) {
+  let pending = pins
+  for (let attempt = 0; ; attempt++) {
+    const missing = []
+    for (const pin of pending) {
+      const r = publishedOnRegistry(pin.name, pin.version)
+      if (r.skipped) return { skipped: r.skipped, missing: [] }
+      if (!r.ok) missing.push(pin)
+    }
+    if (missing.length === 0) return { missing: [] }
+    if (attempt >= PROBE_DELAYS_MS.length) return { missing }
+
+    const wait = PROBE_DELAYS_MS[attempt]
+    const names = missing.map((p) => `${p.name}@${p.version}`).join(', ')
+    console.log(`  … ${names} not visible on the registry yet — retrying in ${wait / 1000}s`)
+    sleepSync(wait)
+    pending = missing
+  }
+}
+
+/**
+ * Does the committed lockfile actually agree with the twin?
+ *
+ * ⛔ **Nothing used to ask this, and `--check` claimed it did.** The pair is
+ * two generated files that are only meaningful together — CI runs `--apply`
+ * and then `pnpm install --frozen-lockfile`, which compares the manifest's
+ * specifiers against the lockfile's. Until 2026-08-12 this check tested only
+ * that `pnpm-lock.yaml` EXISTS, so a half-written pair passed both `--check`
+ * and the drift test that shells out to it — which is how a twin pinning
+ * `@uniweb/core 0.8.5` sat beside a lockfile pinning 0.8.4 with every guard
+ * reporting green.
+ *
+ * So ask pnpm rather than re-implementing its comparison: same command as the
+ * runner, in a directory pnpm cannot mistake for a workspace member (see
+ * relock.js's header for why that matters). `--lockfile-only --offline` makes
+ * it a specifier comparison and nothing else — no resolution, no downloads,
+ * ~130ms, and it works with an empty store.
+ */
+function lockfileAgreesWithTwin() {
+  if (!existsSync(LOCK)) return { ok: false, reason: `${LOCK} is missing` }
+  if (!existsSync(STANDALONE)) return { ok: false, reason: `${STANDALONE} is missing` }
+
+  const work = mkdtempSync(join(tmpdir(), 'uniweb-runtime-pair-'))
+  try {
+    copyFileSync(STANDALONE, join(work, MANIFEST))
+    copyFileSync(LOCK, join(work, LOCK))
+    const r = spawnSync(
+      'pnpm',
+      ['install', '--frozen-lockfile', '--lockfile-only', '--ignore-scripts', '--offline'],
+      { cwd: work, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
+    )
+    // Unverifiable is not a pass. A guard that goes quiet when its instrument
+    // is missing is the failure mode this whole function exists to end.
+    if (r.error) {
+      return { ok: false, reason: `pnpm could not be run (${r.error.code}), so the pair could not be verified` }
+    }
+    if (r.status === 0) return { ok: true }
+
+    const out = `${r.stdout}${r.stderr}`
+    const detail = out.includes('Failure reason:') ? out.slice(out.indexOf('Failure reason:')) : out
+    return { ok: false, reason: detail.trim() }
+  } finally {
+    rmSync(work, { recursive: true, force: true })
+  }
+}
+
 // ── CLI ─────────────────────────────────────────────────────────────────────
 
 const argv = process.argv.slice(2)
@@ -193,23 +300,36 @@ const next = build(pkg)
 const serialized = `${JSON.stringify(next, null, 2)}\n`
 
 if (mode === '--write') {
+  const pins = deps.map(({ field, name }) => ({ field, name, version: next[field][name] }))
+  for (const pin of pins) console.log(`  ${pin.name} → ${pin.version}`)
+
+  // ⛔ VERIFY FIRST, WRITE SECOND — the order is the fix, not a preference.
+  //
+  // This used to write the twin and then probe, so a probe failure exited 1
+  // with the twin already rewritten. relock.js then printed "nothing was
+  // changed beyond this point", which was false: the twin had moved and the
+  // lockfile had not, leaving a pair that cannot install and a dirty working
+  // tree that blocks the NEXT release (the monorepo publisher refuses a
+  // package with uncommitted changes). That is the 2026-08-12 incident.
+  //
+  // Writing only after every pin is confirmed makes a failed run a no-op here,
+  // which is what the message promised all along.
+  if (!offline) {
+    const { skipped, missing } = verifyPublished(pins)
+    if (skipped) console.log(`  ${skipped} — skipping the registry check`)
+    if (missing.length) {
+      for (const pin of missing) {
+        console.error(`  ⛔ ${pin.name}@${pin.version} is not on the registry — a standalone install cannot resolve it.`)
+      }
+      fail(
+        `${missing.length} pinned version(s) are unpublished, and ${STANDALONE} was NOT changed.\n` +
+          `  Publish them first, or re-run with --offline.`
+      )
+    }
+  }
+
   writeFileSync(STANDALONE, serialized)
   console.log(`standalone-manifest: wrote ${STANDALONE}`)
-  for (const { name } of deps) console.log(`  ${name} → ${next.dependencies?.[name] ?? next.devDependencies?.[name]}`)
-
-  if (!offline) {
-    let bad = 0
-    for (const { field, name } of deps) {
-      const v = next[field][name]
-      const r = publishedOnRegistry(name, v)
-      if (r.skipped) continue
-      if (!r.ok) {
-        console.error(`  ⛔ ${name}@${v} is not on the registry — a standalone install cannot resolve it.`)
-        bad++
-      }
-    }
-    if (bad) fail(`${bad} pinned version(s) are unpublished. Publish them first, or re-run with --offline.`)
-  }
   process.exit(0)
 }
 
@@ -226,8 +346,22 @@ if (!existsSync(STANDALONE)) {
   )
 }
 
-if (!existsSync('pnpm-lock.yaml')) {
-  problems.push('pnpm-lock.yaml is missing — the twin without a lockfile pins nothing transitively')
+if (!existsSync(LOCK)) {
+  problems.push(`${LOCK} is missing — the twin without a lockfile pins nothing transitively`)
+} else {
+  // The half that used to go unasked: the two files are a pair, and CI installs
+  // them together with --frozen-lockfile.
+  const pair = lockfileAgreesWithTwin()
+  if (!pair.ok) {
+    problems.push(
+      `${LOCK} disagrees with ${STANDALONE} — CI's \`pnpm install --frozen-lockfile\` would reject this pair.\n` +
+        `${pair.reason
+          .split('\n')
+          .map((l) => `    ${l}`)
+          .join('\n')}\n` +
+        `  Run \`pnpm relock\` to regenerate both together.`
+    )
+  }
 }
 
 if (problems.length) {

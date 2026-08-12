@@ -34,7 +34,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { cpSync, mkdtempSync, rmSync, existsSync } from 'node:fs'
+import { cpSync, mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -42,13 +42,54 @@ const TWIN = 'package.standalone.json'
 const LOCK = 'pnpm-lock.yaml'
 const offline = process.argv.includes('--offline')
 
+/**
+ * ## ⛔ All of it, or none of it
+ *
+ * The two files are a PAIR — half of a relock is not a partial success, it is a
+ * pair that `--frozen-lockfile` rejects, sitting uncommitted in a working tree
+ * where the monorepo's publisher refuses to release the package at all.
+ *
+ * That is not hypothetical. On 2026-08-12 the 0.11.5 release regenerated the
+ * twin, failed on the next line, and printed *"nothing was changed beyond this
+ * point"* — while the twin had in fact moved to `@uniweb/core 0.8.5` and the
+ * lockfile still said 0.8.4. The claim was the dangerous part: it is exactly
+ * what a reader needs in order to decide they can ignore the failure.
+ *
+ * So every file this script writes is snapshotted first and put back on any
+ * failure, and the message says which. Two independent guards now stand behind
+ * that promise rather than one sentence asserting it: the manifest step
+ * verifies its pins BEFORE writing (standalone-manifest.js), and this restores
+ * anything already written if a later step fails.
+ */
+const snapshot = new Map([TWIN, LOCK].map((f) => [f, existsSync(f) ? readFileSync(f) : null]))
+
+function restore() {
+  const restored = []
+  for (const [file, before] of snapshot) {
+    const now = existsSync(file) ? readFileSync(file) : null
+    if (before === null ? now === null : now?.equals(before)) continue
+    if (before === null) rmSync(file, { force: true })
+    else writeFileSync(file, before)
+    restored.push(file)
+  }
+  return restored
+}
+
+function abort(label, code) {
+  const restored = restore()
+  console.error(`\nrelock: "${label}" failed.`)
+  console.error(
+    restored.length
+      ? `relock: restored ${restored.join(' + ')} — the working tree is as it was.`
+      : 'relock: nothing had been written — the working tree is as it was.'
+  )
+  process.exit(code ?? 1)
+}
+
 function step(label, cmd, args, opts = {}) {
   console.log(`\n── ${label}`)
   const r = spawnSync(cmd, args, { stdio: 'inherit', ...opts })
-  if (r.status !== 0) {
-    console.error(`\nrelock: "${label}" failed — nothing was changed beyond this point.`)
-    process.exit(r.status ?? 1)
-  }
+  if (r.status !== 0) abort(label, r.status)
 }
 
 // 1. The twin, from the versions this workspace links (and verified against the
@@ -71,7 +112,7 @@ try {
   const produced = join(work, LOCK)
   if (!existsSync(produced)) {
     console.error(`relock: pnpm produced no ${LOCK} in ${work}`)
-    process.exit(1)
+    abort('resolve dependencies from the registry', 1)
   }
   cpSync(produced, LOCK)
   console.log(`\nrelock: wrote ${TWIN} + ${LOCK}`)
@@ -80,6 +121,11 @@ try {
 }
 
 // 3. Prove the pair agrees, rather than assuming the two steps above composed.
-//    This is the same comparison `--frozen-lockfile` performs on the runner, so
-//    a failure here is one that would otherwise have surfaced in CI.
+//    ⚠️ This line has said "the same comparison `--frozen-lockfile` performs on
+//    the runner" since it was written, and until 2026-08-12 it was FALSE —
+//    `--check` compared the twin against the workspace and merely asserted that
+//    a lockfile EXISTED, so it passed on a pair whose two halves named different
+//    versions. It now runs pnpm's own frozen install against the pair instead of
+//    re-implementing the comparison, which is the only way the sentence stays
+//    true as pnpm changes.
 step('verify the pair', process.execPath, [join('scripts', 'standalone-manifest.js'), '--check', '--offline'])

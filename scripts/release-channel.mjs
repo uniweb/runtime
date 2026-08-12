@@ -64,10 +64,25 @@ const dryRun = process.argv.includes('--dry-run')
 
 const { name, version } = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'))
 
+/**
+ * ⛔ Failure THROWS; it must never `process.exit()`.
+ *
+ * This script holds a git worktree, and `process.exit()` skips `finally`. The
+ * leak is not a temp directory — it is a REGISTERED worktree that outlives the
+ * run and accumulates one entry in `git worktree list` per invocation, pointing
+ * at a path the OS will eventually delete underneath it. Caught by reading
+ * `git worktree list` after the first dry run of this file, which had exited
+ * through the most common path of all: "already published, nothing to do".
+ */
+class ChannelError extends Error {
+  constructor(message, hint) {
+    super(message)
+    this.hint = hint
+  }
+}
+
 function fail(message, hint) {
-  console.error(`\nchannel: ${message}`)
-  if (hint) console.error(`channel: ${hint}`)
-  process.exit(1)
+  throw new ChannelError(message, hint)
 }
 
 function run(cmd, args, { cwd = pkgDir, capture = false } = {}) {
@@ -88,10 +103,9 @@ function mustRun(cmd, args, opts, hint) {
 
 console.log(`\n── ${name}@${version} → ${BRANCH}${dryRun ? ' (dry run)' : ''}`)
 
-mustRun('git', ['fetch', 'origin', BRANCH], {}, `is there a ${BRANCH} branch on origin?`)
-
-const work = mkdtempSync(join(tmpdir(), 'uniweb-runtime-channel-'))
-try {
+/** Everything that can fail. Returns; never exits — see ChannelError. */
+function publish(work) {
+  mustRun('git', ['fetch', 'origin', BRANCH], {}, `is there a ${BRANCH} branch on origin?`)
   // FETCH_HEAD, not origin/gh-pages — see the header.
   mustRun('git', ['worktree', 'add', '--detach', work, 'FETCH_HEAD'])
 
@@ -113,12 +127,12 @@ try {
   const status = run('git', ['status', '--porcelain'], { cwd: work, capture: true })
   if (!status.stdout.trim()) {
     console.log(`channel: ${version} is already published — nothing to push.`)
-    process.exit(0)
+    return
   }
 
   if (dryRun) {
     console.log(`\nchannel: [dry-run] would commit and push:\n${status.stdout}`)
-    process.exit(0)
+    return
   }
 
   // `runtime/` is everything publish-channel.mjs writes. Named rather than
@@ -134,7 +148,19 @@ try {
   )
 
   console.log(`\nchannel: published ${version}`)
+}
+
+const work = mkdtempSync(join(tmpdir(), 'uniweb-runtime-channel-'))
+try {
+  publish(work)
+} catch (err) {
+  if (!(err instanceof ChannelError)) throw err
+  console.error(`\nchannel: ${err.message}`)
+  if (err.hint) console.error(`channel: ${err.hint}`)
+  process.exitCode = 1
 } finally {
+  // DEREGISTER, not just delete: `git worktree remove` does both, where an
+  // `rmSync` alone leaves the registration pointing at a vanished path.
   spawnSync('git', ['worktree', 'remove', '--force', work], { cwd: pkgDir, stdio: 'ignore' })
   rmSync(work, { recursive: true, force: true })
 }

@@ -145,10 +145,23 @@ export default function PageRenderer() {
   // Auto-redirect for content-less pages (structural containers).
   // Folders with page.yml but no markdown keep their route in the hierarchy;
   // when visited directly, redirect to the first descendant with content.
-  const autoRedirectRoute = page && !page.redirect && !page.hasContent()
+  //
+  // The DECISION stays canonical — `getNavigableRoute()` and `page.route` are
+  // both canonical, and comparing a localized URL against a canonical route
+  // would make a folder-with-index redirect to itself forever.
+  const navigableRoute = page && !page.redirect && !page.hasContent()
     ? page.getNavigableRoute()
     : null
-  const shouldAutoRedirect = !!(autoRedirectRoute && autoRedirectRoute !== page?.route)
+  const shouldAutoRedirect = !!(navigableRoute && navigableRoute !== page?.route)
+
+  // The DESTINATION is localized. `getNavigableRoute()` returns a canonical
+  // route, so navigating to it raw dropped both the slug translation and the
+  // `/<locale>` prefix: visiting `/fr/Guide-de-démarrage-rapide` landed on
+  // `/Quick-Start-Guide/From-Idea-to-Website` and served the page in ENGLISH.
+  // getLocaleUrl() is the same helper the language switcher uses.
+  const autoRedirectRoute = shouldAutoRedirect
+    ? website?.getLocaleUrl?.(website.activeLocale, navigableRoute) || navigableRoute
+    : null
 
   // If no page found, try the 404 page (do NOT fall back to activePage/homepage)
   const isNotFound = !page && !redirectTarget

@@ -23,6 +23,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "prepublishOnly": "npm run build && npm run build:worker",
+    "channel:publish": "node scripts/release-channel.mjs",
     "relock": "node scripts/relock.js",
     "standalone:check": "node scripts/standalone-manifest.js --check"
   },

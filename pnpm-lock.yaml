@@ -683,8 +683,8 @@ packages:
     resolution: {integrity: sha512-SkEA0v+5ekbf1ZKPtL9BOumt8ez5tblAVVUUS4nYJUrn6UcJHPQNuR5Yg8Mct0qQGn12IHN6/iRH6wAyPdPISw==}
     engines: {node: '>=20.19'}
 
-  '@uniweb/runtime@0.11.5':
-    resolution: {integrity: sha512-R0n69tgloHO5XRYUJlXVxbSmyTPYM93j+csKD5QOrIReZWsz6ZtfFF3pOhbyJo8m4AtEjViGVuKik99s75XWmw==}
+  '@uniweb/runtime@0.11.6':
+    resolution: {integrity: sha512-WGgyzIfkFOEJ8Dpy1jOa7ahLXBDm7S8yd9ex2G/VaSCZbAUZQotY1eijv3v4it/1ML6kupPvUxu9tUMd+9Uj5Q==}
     engines: {node: '>=20.19'}
     peerDependencies:
       react: ^19.0.0
@@ -1525,7 +1525,7 @@ snapshots:
     optionalDependencies:
       '@uniweb/content-reader': 1.2.2
       '@uniweb/core': 0.8.5
-      '@uniweb/runtime': 0.11.5(react-dom@19.2.8(react@19.2.8))(react-router-dom@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)
+      '@uniweb/runtime': 0.11.6(react-dom@19.2.8(react@19.2.8))(react-router-dom@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)
       '@uniweb/schemas': 0.2.10
       '@uniweb/semantic-parser': 1.2.2
       '@vitejs/plugin-react': 4.7.0(vite@7.3.6(yaml@2.9.0))
@@ -1557,7 +1557,7 @@ snapshots:
       '@uniweb/content-writer': 0.3.3
       '@uniweb/core': 0.8.5
 
-  '@uniweb/runtime@0.11.5(react-dom@19.2.8(react@19.2.8))(react-router-dom@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)':
+  '@uniweb/runtime@0.11.6(react-dom@19.2.8(react@19.2.8))(react-router-dom@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)':
     dependencies:
       '@uniweb/core': 0.8.5
       '@uniweb/theming': 0.1.15

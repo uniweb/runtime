@@ -1,0 +1,73 @@
+# Does the distribution channel carry every version npm does?
+#
+#   https://<owner>.github.io/<repo>/runtime/index.json      what exists · latest · deprecated
+#   https://<owner>.github.io/<repo>/runtime/<version>/…     the artifacts
+#
+# ── This job used to BUILD the channel. It no longer does, and that is the point ──
+#
+# The release publishes the channel itself now, from the machine that built it
+# (`scripts/release-channel.mjs`, run by the monorepo publisher between
+# `pnpm publish` and the tag push). A runner cannot do it correctly:
+#
+# This package's `@uniweb/*` dependencies are `workspace:*`, which no registry
+# installs, so a standalone runner needed a committed manifest twin with those
+# specs resolved — and the twin had to be regenerated AFTER the release that
+# tagged it, because only then are the sibling versions final. So every tag
+# carried the PREVIOUS round's pins, and the artifacts were built against code
+# the release did not ship.
+#
+# Measured on v0.11.5 (2026-08-12), which is why this changed: the tag's twin
+# pinned `@uniweb/core 0.8.4` while the npm tarball for the same release
+# declared `^0.8.5`, and the artifacts this job published carried 0 copies of
+# core 0.8.5's route-decoding guard. v0.11.6, published by the release machine,
+# carries 2. Re-check either version with:
+#
+#     git archive origin/gh-pages runtime/<version> | tar -xO | grep -c 'includes("%")'
+#
+# `prepublishOnly` already builds those bytes at publish time, against siblings
+# the workspace SYMLINKS — their code is final regardless of which version
+# numbers have been bumped. That deleted the twin, its lockfile, `relock`, the
+# manifest tool and its drift test along with the rebuild.
+#
+# ── So what is left for CI ──
+#
+# Exactly one question, which the old daily cron was gesturing at without
+# asking: is anything missing? It runs no toolchain, installs nothing, builds
+# nothing — and unlike the retry it replaces, it sees EVERY gap rather than
+# only the newest tag.
+#
+# ⚠️ It cannot repair a gap, and nothing here should pretend otherwise: a
+# recovery build uses today's siblings, not the ones that release shipped with.
+# `scripts/audit-channel.mjs` states the recipe and that caveat in its header.
+
+name: Audit runtime channel
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      # Default branch for the script; the index comes from the served branch.
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+
+      # The BRANCH, not the Pages URL — Pages serves everything with a 10-minute
+      # cache and no way to set headers per file, so a fresh publish can be
+      # invisible there while git already has it.
+      - name: Read the channel index
+        run: |
+          git fetch origin gh-pages
+          git show FETCH_HEAD:runtime/index.json > /tmp/channel-index.json
+
+      - name: Every npm version since the channel began must be in it
+        run: node scripts/audit-channel.mjs /tmp/channel-index.json

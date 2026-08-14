@@ -9,6 +9,7 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { initUniweb, decodeData } from './setup.js'
+import { wireTracker } from './wire-foundation.js'
 import { loadFoundation, loadExtensions } from './foundation-loader.js'
 import { initAppearance } from './appearance.js'
 import RuntimeProvider from './RuntimeProvider.jsx'
@@ -89,6 +90,13 @@ async function initRuntime(foundationSource, options = {}) {
 
     // Derive basename
     const routerBasename = basename ?? getBasename()
+
+    // L2: give the tracker its destination, if the site or its host declares
+    // one. Must come AFTER the basename is derived — a root-relative endpoint
+    // is joined to it, and `website.basePath` is not filled until
+    // RuntimeProvider renders. No destination declared (the default) leaves the
+    // disabled tracker in place and costs nothing.
+    wireTracker(uniwebInstance, { basePath: routerBasename || '' })
 
     // Apply the visitor's color scheme before React renders. Must stay ahead of
     // createRoot().render() below — see appearance.js for why this is the only

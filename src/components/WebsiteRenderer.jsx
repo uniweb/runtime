@@ -10,6 +10,7 @@ import PageRenderer from './PageRenderer.jsx'
 import ThemeProvider from './ThemeProvider.jsx'
 import { useRememberScroll } from '../hooks/useRememberScroll.js'
 import { useLinkInterceptor } from '../hooks/useLinkInterceptor.js'
+import { usePageView } from '../hooks/usePageView.js'
 
 /**
  * WebsiteRenderer component
@@ -28,6 +29,11 @@ export default function WebsiteRenderer() {
 
   // Enable scroll memory for navigation
   useRememberScroll({ enabled: true })
+
+  // Report page views when the site has a tracking destination. Safe to call
+  // unconditionally — with no destination configured (the default) the tracker
+  // is disabled and this does nothing at all.
+  usePageView()
 
   if (!website) {
     return (

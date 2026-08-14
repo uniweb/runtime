@@ -46,6 +46,10 @@
 
 import React from 'react'
 import { deriveCacheKey, resolveDefaultLocale } from '@uniweb/core'
+// Leaf subpaths, not the package root: this file is pulled into the SSR/Worker
+// bundle, and `@uniweb/core` proper drags semantic-parser and theming with it.
+import { resolveService, readServiceOptions } from '@uniweb/core/services'
+import Tracker from '@uniweb/core/tracker'
 import { buildTheme } from '@uniweb/theming'
 
 /**
@@ -231,4 +235,55 @@ export function ensureThemeCss(uniweb, foundation) {
     // one that looks broken, but neither is worth a boot crash.
     console.warn('[uniweb] theme CSS generation failed:', err?.message || err)
   }
+}
+
+/**
+ * L2: give the site's tracker its destination.
+ *
+ * Replaces the disabled `Tracker` that `createUniweb` declares (see
+ * `core/src/uniweb.js`) with a configured one, when — and only when — a
+ * destination resolves. With none, the disabled default stays and every
+ * `track()` call in the site remains a silent no-op, which is the default
+ * state for the large majority of sites.
+ *
+ * ⛔ **WHY THE BASE PATH IS PASSED IN RATHER THAN READ OFF THE WEBSITE.**
+ * `resolveService` joins a root-relative endpoint to `website.basePath`, and
+ * that field is still `''` until `setBasePath()` runs — which happens later,
+ * from `RuntimeProvider`. Resolving against the website as-is would silently
+ * drop the prefix on every subdirectory deployment, and the symptom would be a
+ * collector quietly receiving nothing. So the caller supplies the basename it
+ * has already derived, and the lookup is done against that. `resolveService`
+ * reads only `.config` and `.basePath`, so a plain object is a complete input.
+ *
+ * ⚖️ **Not called from the SSR path, deliberately.** The tracker is
+ * browser-guarded, so wiring it there would produce a configured object that
+ * can never emit — a slot that looks live and is not. The SSR twin has no
+ * page-view effect either; suppression is structural rather than a flag.
+ *
+ * @param {object} uniweb - the singleton
+ * @param {object} [options]
+ * @param {string} [options.basePath] - the deployment base (router basename)
+ */
+export function wireTracker(uniweb, { basePath = '' } = {}) {
+  const website = uniweb?.activeWebsite
+  if (!website) return
+
+  // A plain lookup target: `resolveService` reads `.config` and `.basePath`
+  // only, so this is the whole of what it needs and carries the *correct* base.
+  const target = { config: website.config, basePath }
+
+  const { url } = resolveService(target, 'tracking')
+  if (!url) return // keep the disabled default — nothing armed, nothing queued
+
+  const options = readServiceOptions(target, 'tracking')
+
+  uniweb.tracking = new Tracker({
+    endpoint: url,
+    // Opt-in, not the default. Declaring a destination is itself the operator's
+    // decision to track; requiring a second affirmative step would be the
+    // framework presuming a jurisdiction on their behalf, which is exactly what
+    // it must not do. A site that needs the gate asks for it.
+    consentRequired: options.consent === 'required',
+    debug: !!options.debug
+  })
 }

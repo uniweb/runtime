@@ -118,31 +118,46 @@ describe('when tags load', () => {
 })
 
 describe('what counts as a tag', () => {
+  /**
+   * Normalization lives in the loader, not in `wireTracker` — it rides the
+   * dynamic boundary so a site with no tags never downloads it either. So these
+   * test `resolveTagUrls` directly rather than what the injected spy received.
+   */
+  async function resolve(declared, basePath = '') {
+    const { resolveTagUrls } = await import('../src/tag-loader.js')
+    return resolveTagUrls(declared, basePath)
+  }
+
   it('accepts a bare string and an object with src, in one list', async () => {
     const other = 'https://vendor.example.com/other.js'
-    const { loadTags } = await wire({ tracking: { tags: [TAG, { src: other }] } })
-
-    expect(loadTags.mock.calls[0][0]).toEqual([TAG, other])
+    expect(await resolve([TAG, { src: other }])).toEqual([TAG, other])
   })
 
   it('accepts a single entry that is not an array', async () => {
-    const { loadTags } = await wire({ tracking: { tags: TAG } })
-    expect(loadTags.mock.calls[0][0]).toEqual([TAG])
+    expect(await resolve(TAG)).toEqual([TAG])
   })
 
   it('joins a site-relative tag to the deployment base, like the endpoint', async () => {
-    const { loadTags } = await wire({ tracking: { tags: ['/js/tag.js'] } }, { basePath: '/docs' })
-    expect(loadTags.mock.calls[0][0]).toEqual(['/docs/js/tag.js'])
+    expect(await resolve(['/js/tag.js'], '/docs')).toEqual(['/docs/js/tag.js'])
   })
 
   it('leaves an absolute URL alone', async () => {
-    const { loadTags } = await wire({ tracking: { tags: [TAG] } }, { basePath: '/docs' })
-    expect(loadTags.mock.calls[0][0]).toEqual([TAG])
+    expect(await resolve([TAG], '/docs')).toEqual([TAG])
   })
 
   it('drops entries that carry no URL', async () => {
-    const { loadTags } = await wire({ tracking: { tags: [TAG, '', null, { nope: 1 }] } })
-    expect(loadTags.mock.calls[0][0]).toEqual([TAG])
+    expect(await resolve([TAG, '', null, { nope: 1 }])).toEqual([TAG])
+  })
+
+  it('is nothing when nothing is declared', async () => {
+    expect(await resolve(undefined)).toEqual([])
+  })
+
+  it('reaches the loader as the RAW declaration, base and all, for it to resolve', async () => {
+    const { loadTags } = await wire({ tracking: { tags: ['/js/tag.js'] } }, { basePath: '/docs' })
+
+    expect(loadTags.mock.calls[0][0]).toEqual(['/js/tag.js'])
+    expect(loadTags.mock.calls[0][1]).toMatchObject({ basePath: '/docs' })
   })
 })
 

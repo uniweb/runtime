@@ -10,7 +10,6 @@ import { createRoot } from 'react-dom/client'
 
 import { initUniweb, decodeData } from './setup.js'
 import { wireTracker } from './wire-foundation.js'
-import { loadTagScripts } from './tag-loader.js'
 import { loadFoundation, loadExtensions } from './foundation-loader.js'
 import { initAppearance } from './appearance.js'
 import RuntimeProvider from './RuntimeProvider.jsx'
@@ -101,9 +100,25 @@ async function initRuntime(foundationSource, options = {}) {
     // `loadTags` is passed in rather than imported by `wire-foundation.js`,
     // which is bundled for SSR/Workers where there is no DOM. This is the
     // browser entry, so this is where the DOM half belongs.
+    //
+    // ⭐ **Loaded on demand, and that is the point.** The import sits inside
+    // the callback, so the tag loader becomes its own chunk and **a site that
+    // declares no tags never downloads it** — which matters because the runtime
+    // and core are not tree-shaken and reach every site regardless. The extra
+    // request lands only on sites that do declare one, after hydration, and
+    // those are about to fetch a vendor script from another origin anyway.
     wireTracker(uniwebInstance, {
       basePath: routerBasename || '',
-      loadTags: loadTagScripts
+      loadTags: (declaredTags, opts) =>
+        import('./tag-loader.js')
+          .then((m) => m.loadTagScripts(declaredTags, opts))
+          // Same contract as a tag that 404s: nothing surfaces, because nobody
+          // downstream could act on it. `debug` is the operator's switch.
+          .catch((err) => {
+            if (opts?.debug) {
+              console.warn('[uniweb] tracking tag loader unavailable:', err?.message || err)
+            }
+          })
     })
 
     // Apply the visitor's color scheme before React renders. Must stay ahead of

@@ -48,7 +48,7 @@ import React from 'react'
 import { deriveCacheKey, resolveDefaultLocale } from '@uniweb/core'
 // Leaf subpaths, not the package root: this file is pulled into the SSR/Worker
 // bundle, and `@uniweb/core` proper drags semantic-parser and theming with it.
-import { resolveService, readServiceOptions, resolveServiceUrl } from '@uniweb/core/services'
+import { resolveService, readServiceOptions } from '@uniweb/core/services'
 import Tracker from '@uniweb/core/tracker'
 import { buildTheme } from '@uniweb/theming'
 
@@ -285,11 +285,16 @@ export function wireTracker(uniweb, { basePath = '', loadTags = null } = {}) {
 
   const { url } = resolveService(target, 'tracking')
   const options = readServiceOptions(target, 'tracking')
-  const tags = resolveTagUrls(options.tags, basePath)
+
+  // Only whether any were declared — normalizing them is the loader's job, and
+  // lives behind the loader's dynamic boundary so a site with none never
+  // downloads that code either.
+  const declaredTags = options.tags
+  const hasTags = Array.isArray(declaredTags) ? declaredTags.length > 0 : !!declaredTags
 
   // Nothing declared on either count — keep the disabled default, nothing
   // armed, nothing queued. This is the state of the large majority of sites.
-  if (!url && tags.length === 0) return
+  if (!url && !hasTags) return
 
   const tracker = new Tracker({
     endpoint: url,
@@ -302,50 +307,14 @@ export function wireTracker(uniweb, { basePath = '', loadTags = null } = {}) {
   })
   uniweb.tracking = tracker
 
-  if (!loadTags || tags.length === 0) return
+  if (!loadTags || !hasTags) return
 
   // The same suppression the tracker applies to its own events: a server render
   // or a framed authoring preview is not a visit, and a vendor's tag must not
   // fire there either. One predicate in core, so the two cannot drift.
   if (!tracker.isLiveDocument()) return
 
-  const load = () => loadTags(tags, { debug: !!options.debug })
+  const load = () => loadTags(declaredTags, { basePath, debug: !!options.debug })
   if (tracker.consentStatus() === 'granted') load()
   else tracker.onGranted = load
-}
-
-/**
- * Normalize `tracking.tags` into resolved script URLs.
- *
- * Accepts a bare string or `{ src }` **from the start**, and deliberately: the
- * open question of whether some vendor needs more than a URL is unresolved
- * (`tracking-vendor-tags.md` §14.2), and tolerating both now means a later
- * per-tag field costs nobody a migration. Same tolerance `readEndpoint` already
- * shows for `submit:` and `tracking:` themselves.
- *
- * ⛔ **There is no field for inline code, and that is the whole shape.** A tag
- * is a URL we fetch. Anything else and this becomes `head.html` with extra
- * steps, which is what it exists to replace.
- *
- * Each entry goes through `resolveServiceUrl`, so an absolute URL passes
- * through untouched and a site-relative one is joined to the deployment base —
- * the same rule the endpoint follows, from the same function.
- *
- * @param {*} declared
- * @param {string} basePath
- * @returns {string[]}
- */
-function resolveTagUrls(declared, basePath) {
-  if (!declared) return []
-  const list = Array.isArray(declared) ? declared : [declared]
-
-  return list
-    .map((entry) => {
-      if (typeof entry === 'string') return entry.trim()
-      if (typeof entry?.src === 'string') return entry.src.trim()
-      return ''
-    })
-    .filter(Boolean)
-    .map((src) => resolveServiceUrl(src, basePath))
-    .filter(Boolean)
 }

@@ -152,6 +152,24 @@ describe('tags arrive from either tier', () => {
     expect(loadTags.mock.calls[0][0]).toEqual([TAG])
   })
 
+  it('a site that declares only tags keeps the host collector AND its gate', async () => {
+    // The primary workflow: an operator turns on a third-party tag while the
+    // host supplies the collector. Their tag must not silently switch off the
+    // host's tracking, nor discard the host's consent requirement — which is
+    // what an all-or-nothing options read used to do.
+    const { uniweb, loadTags } = await wire({
+      tracking: { tags: [TAG] },
+      services: { tracking: { endpoint: '/host-collect', consent: 'required' } }
+    })
+
+    expect(uniweb.tracking.isEnabled()).toBe(true) // the host's endpoint survived
+    expect(uniweb.tracking.consentStatus()).toBe('pending') // and so did its gate
+    expect(loadTags).not.toHaveBeenCalled() // so the tag waits, correctly
+
+    uniweb.tracking.setConsent(true)
+    expect(loadTags).toHaveBeenCalledTimes(1)
+  })
+
   it('wires a tag-only site with no endpoint at all', async () => {
     const { uniweb, loadTags } = await wire({ tracking: { tags: [TAG] } })
 

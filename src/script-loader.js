@@ -59,11 +59,11 @@
 import { resolveServiceUrl } from '@uniweb/core/services'
 
 /**
- * Only a fetched script qualifies. `data:` executes inline code and would turn a
- * URL field into a code field — which is the thing this capability exists to
- * avoid being. `javascript:` does not execute in `src` at all. Relative stays
- * allowed on purpose: a host may serve a vendor's script from the site's own
- * origin, and that is its business.
+ * Only a **fetched** script qualifies. `data:` executes inline code and would
+ * turn a URL field into a code field — the thing this capability exists to avoid
+ * being. `javascript:` does not execute in `src` at all. Relative stays allowed
+ * on purpose: a host may serve a vendor's script from the site's own origin, and
+ * that is its business.
  */
 const LOADABLE_SCHEME = /^https?:$/
 
@@ -71,14 +71,30 @@ const LOADABLE_SCHEME = /^https?:$/
 const loaded = new Set()
 
 /**
- * @param {string} url - already resolved against the site's base
+ * ⛔ **Resolve against the document before testing the scheme — do not
+ * special-case a leading slash.** An earlier version short-circuited
+ * `url.startsWith('/')` as *"site-relative, same origin by construction"*, which
+ * is **false for a protocol-relative URL**: `//other.example.com/x.js` starts
+ * with a slash, is cross-origin, and skipped the scheme test entirely on the
+ * strength of a comment that was not true of it.
+ *
+ * The security property survived by luck — a protocol-relative URL inherits the
+ * page's scheme, so it can still never be `data:` — but the check was not doing
+ * what it claimed, which is worse than a check that visibly does less.
+ *
+ * Resolving first makes the test mean what it says and removes the special case:
+ * `//host` inherits the page scheme and passes, `/js/x.js` and a bare relative
+ * path resolve to this origin and pass, `data:` and `javascript:` keep their own
+ * protocol and are refused.
+ *
+ * @param {string} url - already joined to the site's base by `resolveScriptUrls`
  * @returns {boolean}
  */
 function isLoadable(url) {
   if (!url) return false
-  if (url.startsWith('/')) return true // site-relative — same origin by construction
   try {
-    return LOADABLE_SCHEME.test(new URL(url).protocol)
+    const base = typeof location !== 'undefined' ? location.href : undefined
+    return LOADABLE_SCHEME.test(new URL(url, base).protocol)
   } catch {
     return false
   }

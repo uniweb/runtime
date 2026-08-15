@@ -41,6 +41,7 @@ beforeEach(() => {
 afterEach(() => {
   delete globalThis.window
   delete globalThis.document
+  delete globalThis.location
 })
 
 /** Re-import so the module-scope browser detection sees the current globals. */
@@ -195,13 +196,22 @@ describe('scripts arrive from either tier', () => {
 })
 
 describe('the DOM half', () => {
-  /** jsdom is not this suite's environment, so install the minimum surface. */
+  /**
+   * jsdom is not this suite's environment, so install the minimum surface.
+   *
+   * ⛔ `location` is part of that minimum, not a nicety: `isLoadable` resolves
+   * a URL against the document before testing its scheme, and a protocol-relative
+   * URL has no scheme to test without one. A harness with a `document` and no
+   * `location` models a state no browser is ever in, and it made a passing check
+   * look like a refusal.
+   */
   function installHead() {
     const appended = []
     globalThis.document = {
       head: { appendChild: (el) => appended.push(el) },
       createElement: () => ({ addEventListener() {} })
     }
+    globalThis.location = new URL('https://site.test/page')
     return appended
   }
 
@@ -224,10 +234,27 @@ describe('the DOM half', () => {
     loadScripts(['data:text/javascript,alert(1)', 'javascript:alert(1)'])
 
     expect(appended).toHaveLength(0)
+
     // Control: the same call shape does append a real URL, so the assertion
     // above is about the scheme and not about a broken loader.
     loadScripts(['https://vendor.example.com/ok.js'])
-    expect(appended).toHaveLength(1)
+    expect(appended.map((s) => s.src)).toEqual(['https://vendor.example.com/ok.js'])
+  })
+
+  it('admits a protocol-relative URL by TESTING it, not by bypassing the test', async () => {
+    // `//other.example.com/x.js` is cross-origin and starts with a slash. An
+    // earlier check short-circuited anything slash-leading as "site-relative,
+    // same origin by construction" — true of `/x.js`, false of `//host/x.js`,
+    // which skipped the scheme test entirely on the strength of a comment that
+    // was not true of it. It must still LOAD, since it inherits the page's
+    // scheme and is a fetched script; the fix is that it now passes the check
+    // rather than going around it.
+    const appended = installHead()
+    const { loadScripts } = await import('../src/script-loader.js')
+
+    loadScripts(['//other.example.com/x.js'])
+
+    expect(appended.map((s) => s.src)).toEqual(['//other.example.com/x.js'])
   })
 
   it('does nothing at all with no document', async () => {

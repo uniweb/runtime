@@ -10,6 +10,7 @@ import { createRoot } from 'react-dom/client'
 
 import { initUniweb, decodeData } from './setup.js'
 import { wireTracker } from './wire-foundation.js'
+import { loadTagScripts } from './tag-loader.js'
 import { loadFoundation, loadExtensions } from './foundation-loader.js'
 import { initAppearance } from './appearance.js'
 import RuntimeProvider from './RuntimeProvider.jsx'
@@ -96,7 +97,14 @@ async function initRuntime(foundationSource, options = {}) {
     // is joined to it, and `website.basePath` is not filled until
     // RuntimeProvider renders. No destination declared (the default) leaves the
     // disabled tracker in place and costs nothing.
-    wireTracker(uniwebInstance, { basePath: routerBasename || '' })
+    //
+    // `loadTags` is passed in rather than imported by `wire-foundation.js`,
+    // which is bundled for SSR/Workers where there is no DOM. This is the
+    // browser entry, so this is where the DOM half belongs.
+    wireTracker(uniwebInstance, {
+      basePath: routerBasename || '',
+      loadTags: loadTagScripts
+    })
 
     // Apply the visitor's color scheme before React renders. Must stay ahead of
     // createRoot().render() below — see appearance.js for why this is the only

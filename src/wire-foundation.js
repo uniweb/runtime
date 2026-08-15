@@ -48,7 +48,7 @@ import React from 'react'
 import { deriveCacheKey, resolveDefaultLocale } from '@uniweb/core'
 // Leaf subpaths, not the package root: this file is pulled into the SSR/Worker
 // bundle, and `@uniweb/core` proper drags semantic-parser and theming with it.
-import { resolveService, readServiceOptions } from '@uniweb/core/services'
+import { resolveService, readServiceOptions, resolveServiceUrl } from '@uniweb/core/services'
 import Tracker from '@uniweb/core/tracker'
 import { buildTheme } from '@uniweb/theming'
 
@@ -260,11 +260,22 @@ export function ensureThemeCss(uniweb, foundation) {
  * can never emit — a slot that looks live and is not. The SSR twin has no
  * page-view effect either; suppression is structural rather than a flag.
  *
+ * ## `tags` — a vendor's own script, when the site declares one
+ *
+ * A second, independent path (`kb/framework/plans/tracking-vendor-tags.md`):
+ * nothing is translated between our stream and theirs, and the framework never
+ * learns which vendor it is. ⛔ **The loader is INJECTED rather than imported**,
+ * because this file is pulled into the SSR/Worker bundle and a script loader is
+ * DOM code. The browser entry passes one; the SSR path passes none, so there is
+ * no branch to remember.
+ *
  * @param {object} uniweb - the singleton
  * @param {object} [options]
  * @param {string} [options.basePath] - the deployment base (router basename)
+ * @param {(urls: string[], opts: object) => void} [options.loadTags] - DOM
+ *        loader for declared vendor tags; omitted outside a browser entry
  */
-export function wireTracker(uniweb, { basePath = '' } = {}) {
+export function wireTracker(uniweb, { basePath = '', loadTags = null } = {}) {
   const website = uniweb?.activeWebsite
   if (!website) return
 
@@ -273,11 +284,14 @@ export function wireTracker(uniweb, { basePath = '' } = {}) {
   const target = { config: website.config, basePath }
 
   const { url } = resolveService(target, 'tracking')
-  if (!url) return // keep the disabled default — nothing armed, nothing queued
-
   const options = readServiceOptions(target, 'tracking')
+  const tags = resolveTagUrls(options.tags, basePath)
 
-  uniweb.tracking = new Tracker({
+  // Nothing declared on either count — keep the disabled default, nothing
+  // armed, nothing queued. This is the state of the large majority of sites.
+  if (!url && tags.length === 0) return
+
+  const tracker = new Tracker({
     endpoint: url,
     // Opt-in, not the default. Declaring a destination is itself the operator's
     // decision to track; requiring a second affirmative step would be the
@@ -286,4 +300,52 @@ export function wireTracker(uniweb, { basePath = '' } = {}) {
     consentRequired: options.consent === 'required',
     debug: !!options.debug
   })
+  uniweb.tracking = tracker
+
+  if (!loadTags || tags.length === 0) return
+
+  // The same suppression the tracker applies to its own events: a server render
+  // or a framed authoring preview is not a visit, and a vendor's tag must not
+  // fire there either. One predicate in core, so the two cannot drift.
+  if (!tracker.isLiveDocument()) return
+
+  const load = () => loadTags(tags, { debug: !!options.debug })
+  if (tracker.consentStatus() === 'granted') load()
+  else tracker.onGranted = load
+}
+
+/**
+ * Normalize `tracking.tags` into resolved script URLs.
+ *
+ * Accepts a bare string or `{ src }` **from the start**, and deliberately: the
+ * open question of whether some vendor needs more than a URL is unresolved
+ * (`tracking-vendor-tags.md` §14.2), and tolerating both now means a later
+ * per-tag field costs nobody a migration. Same tolerance `readEndpoint` already
+ * shows for `submit:` and `tracking:` themselves.
+ *
+ * ⛔ **There is no field for inline code, and that is the whole shape.** A tag
+ * is a URL we fetch. Anything else and this becomes `head.html` with extra
+ * steps, which is what it exists to replace.
+ *
+ * Each entry goes through `resolveServiceUrl`, so an absolute URL passes
+ * through untouched and a site-relative one is joined to the deployment base —
+ * the same rule the endpoint follows, from the same function.
+ *
+ * @param {*} declared
+ * @param {string} basePath
+ * @returns {string[]}
+ */
+function resolveTagUrls(declared, basePath) {
+  if (!declared) return []
+  const list = Array.isArray(declared) ? declared : [declared]
+
+  return list
+    .map((entry) => {
+      if (typeof entry === 'string') return entry.trim()
+      if (typeof entry?.src === 'string') return entry.src.trim()
+      return ''
+    })
+    .filter(Boolean)
+    .map((src) => resolveServiceUrl(src, basePath))
+    .filter(Boolean)
 }

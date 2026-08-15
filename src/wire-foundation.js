@@ -260,7 +260,7 @@ export function ensureThemeCss(uniweb, foundation) {
  * can never emit — a slot that looks live and is not. The SSR twin has no
  * page-view effect either; suppression is structural rather than a flag.
  *
- * ## `tags` — a vendor's own script, when the site declares one
+ * ## `scripts` — a vendor's own script, when the site declares one
  *
  * A second, independent path (`kb/framework/plans/tracking-vendor-tags.md`):
  * nothing is translated between our stream and theirs, and the framework never
@@ -272,10 +272,10 @@ export function ensureThemeCss(uniweb, foundation) {
  * @param {object} uniweb - the singleton
  * @param {object} [options]
  * @param {string} [options.basePath] - the deployment base (router basename)
- * @param {(urls: string[], opts: object) => void} [options.loadTags] - DOM
- *        loader for declared vendor tags; omitted outside a browser entry
+ * @param {(urls: string[], opts: object) => void} [options.loadScripts] - DOM
+ *        loader for declared vendor scripts; omitted outside a browser entry
  */
-export function wireTracker(uniweb, { basePath = '', loadTags = null } = {}) {
+export function wireTracker(uniweb, { basePath = '', loadScripts = null } = {}) {
   const website = uniweb?.activeWebsite
   if (!website) return
 
@@ -289,12 +289,12 @@ export function wireTracker(uniweb, { basePath = '', loadTags = null } = {}) {
   // Only whether any were declared — normalizing them is the loader's job, and
   // lives behind the loader's dynamic boundary so a site with none never
   // downloads that code either.
-  const declaredTags = options.tags
-  const hasTags = Array.isArray(declaredTags) ? declaredTags.length > 0 : !!declaredTags
+  const declaredScripts = options.scripts
+  const hasScripts = Array.isArray(declaredScripts) ? declaredScripts.length > 0 : !!declaredScripts
 
   // Nothing declared on either count — keep the disabled default, nothing
   // armed, nothing queued. This is the state of the large majority of sites.
-  if (!url && !hasTags) return
+  if (!url && !hasScripts) return
 
   const tracker = new Tracker({
     endpoint: url,
@@ -307,14 +307,14 @@ export function wireTracker(uniweb, { basePath = '', loadTags = null } = {}) {
   })
   uniweb.tracking = tracker
 
-  if (!loadTags || !hasTags) return
+  if (!loadScripts || !hasScripts) return
 
   // The same suppression the tracker applies to its own events: a server render
-  // or a framed authoring preview is not a visit, and a vendor's tag must not
+  // or a framed authoring preview is not a visit, and a vendor's script must not
   // fire there either. One predicate in core, so the two cannot drift.
   if (!tracker.isLiveDocument()) return
 
-  const load = () => loadTags(declaredTags, { basePath, debug: !!options.debug })
+  const load = () => loadScripts(declaredScripts, { basePath, debug: !!options.debug })
   if (tracker.consentStatus() === 'granted') load()
   else tracker.onGranted = load
 }

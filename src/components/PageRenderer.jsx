@@ -11,6 +11,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import BlockRenderer from './BlockRenderer.jsx'
 import Layout from './Layout.jsx'
 import { useHeadMeta } from '../hooks/useHeadMeta.js'
+import { useSectionViews } from '../hooks/useSectionViews.js'
 import { buildSectionOverrides } from '@uniweb/theming'
 import { Default404 } from '../default-404.js'
 
@@ -136,6 +137,19 @@ export default function PageRenderer() {
     if (contentReady) return
     page.loadContent().then(() => forceUpdate())
   }, [page, contentReady])
+
+  // Report which sections a visitor reached, on pages that opted in with
+  // `trackSections`. Safe to call unconditionally: with no opted-in page the
+  // observer module is never even downloaded.
+  //
+  // ⛔ It lives HERE rather than in WebsiteRenderer because it must wait for
+  // `contentReady`. In split mode a page's sections arrive after the first
+  // render, and an observer armed before them finds no elements and reports
+  // nothing — a silent undercount, since a section that reported zero looks
+  // exactly like one nobody scrolled to. WebsiteRenderer does not re-render
+  // when content lands; this component does, which is what makes the effect
+  // able to key on it.
+  useSectionViews(contentReady)
 
   // ─── Compute navigation targets (before hooks, no early returns) ───
 

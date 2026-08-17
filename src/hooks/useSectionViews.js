@@ -33,11 +33,24 @@ import { useLocation } from 'react-router-dom'
  * `usePageView` emits — a `section_view` therefore always pairs with the
  * `page_view` it belongs to. A query or hash change does not re-arm, which is
  * correct: the sections on screen have not changed.
+ *
+ * ⛔ **`ready` is not a convenience — without it split-content pages
+ * under-report silently.** A page's sections can arrive *after* the first
+ * render (`page.loadContent()`), and an observer armed before them finds no
+ * elements and reports nothing. The failure has no symptom: the section simply
+ * shows zero, which is indistinguishable from nobody scrolling to it.
+ *
+ * ⭐ This is why the hook lives in `PageRenderer` rather than `WebsiteRenderer`
+ * — `PageRenderer` is the component that re-renders when content lands, so it
+ * is the only place the effect can key on it.
+ *
+ * @param {boolean} [ready=true] - whether this page's sections are in the DOM
  */
-export function useSectionViews() {
+export function useSectionViews(ready = true) {
   const location = useLocation()
 
   useEffect(() => {
+    if (!ready) return
     const uniweb = globalThis.uniweb
     const page = uniweb?.activeWebsite?.activePage
     if (!page?.trackSections) return
@@ -63,7 +76,7 @@ export function useSectionViews() {
       cancelled = true
       if (stop) stop()
     }
-  }, [location.pathname])
+  }, [location.pathname, ready])
 }
 
 export default useSectionViews

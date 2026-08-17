@@ -11,6 +11,7 @@ import ThemeProvider from './ThemeProvider.jsx'
 import { useRememberScroll } from '../hooks/useRememberScroll.js'
 import { useLinkInterceptor } from '../hooks/useLinkInterceptor.js'
 import { usePageView } from '../hooks/usePageView.js'
+import { useSectionViews } from '../hooks/useSectionViews.js'
 
 /**
  * WebsiteRenderer component
@@ -34,6 +35,11 @@ export default function WebsiteRenderer() {
   // unconditionally — with no destination configured (the default) the tracker
   // is disabled and this does nothing at all.
   usePageView()
+
+  // Report which sections were reached, on pages that opted in with
+  // `trackSections`. Also safe unconditionally: with no opted-in page the
+  // observer module is never even downloaded.
+  useSectionViews()
 
   if (!website) {
     return (

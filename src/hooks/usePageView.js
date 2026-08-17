@@ -26,7 +26,7 @@
  * and renders one page per call, so there is no route *change* to observe; and
  * a Worker isolate has no `window`. Nothing to remember to switch off.
  *
- * Design: `kb/framework/plans/tracking.md`.
+ * Part of the site-tracking design.
  */
 
 import { useEffect } from 'react'

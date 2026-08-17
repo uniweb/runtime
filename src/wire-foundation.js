@@ -262,7 +262,7 @@ export function ensureThemeCss(uniweb, foundation) {
  *
  * ## `scripts` — a vendor's own script, when the site declares one
  *
- * A second, independent path (`kb/framework/plans/tracking-vendor-tags.md`):
+ * A second, independent path — vendor tags:
  * nothing is translated between our stream and theirs, and the framework never
  * learns which vendor it is. ⛔ **The loader is INJECTED rather than imported**,
  * because this file is pulled into the SSR/Worker bundle and a script loader is

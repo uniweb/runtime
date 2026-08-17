@@ -53,7 +53,7 @@
  * fetch of a few hundred bytes, after hydration and off the critical path,
  * against a cross-origin script an order of magnitude larger.
  *
- * Design: `kb/framework/plans/tracking-vendor-tags.md`.
+ * Part of the vendor-tag design.
  */
 
 import { resolveServiceUrl } from '@uniweb/core/services'

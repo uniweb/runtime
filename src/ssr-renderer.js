@@ -19,6 +19,7 @@ import { renderToString } from 'react-dom/server'
 import { createUniweb, resolveDefaultLocale } from '@uniweb/core'
 import { sectionDomId } from '@uniweb/core/section-id'
 import { routePatternToRegex } from '@uniweb/core/route-match'
+import { DEFAULT_ICON_BASE, iconUrl } from '@uniweb/core/icon-corpus'
 import { buildSectionOverrides, FONT_LINKS_MARKER } from '@uniweb/theming'
 import { prepareProps, getComponentMeta } from './prepare-props.js'
 import { default404Html } from './default-404.js'
@@ -514,14 +515,14 @@ export async function prefetchIcons(siteContent, uniweb, onProgress = () => {}) 
   const icons = siteContent.icons?.used || []
   if (icons.length === 0) return
 
-  const cdnBase = siteContent.config?.icons?.cdnUrl || 'https://uniweb.github.io/icons'
+  const cdnBase = siteContent.config?.icons?.cdnUrl || DEFAULT_ICON_BASE
 
   onProgress(`Fetching ${icons.length} icons for SSR...`)
 
   const results = await Promise.allSettled(
     icons.map(async (iconRef) => {
       const [family, name] = iconRef.split(':')
-      const url = `${cdnBase}/${family}/${family}-${name}.svg`
+      const url = iconUrl(family, name, cdnBase)
       const response = await fetch(url)
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const svg = await response.text()

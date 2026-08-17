@@ -19,6 +19,7 @@
 
 import React from 'react'
 import { createUniweb } from '@uniweb/core'
+import { DEFAULT_ICON_BASE, iconUrl } from '@uniweb/core/icon-corpus'
 import { createDefaultFetcher } from './default-fetcher.js'
 import {
   Link as RouterLink,
@@ -174,12 +175,23 @@ const ICON_FAMILY_MAP = {
 }
 
 /**
- * Create CDN-based icon resolver
- * @param {Object} iconConfig - From site.yml icons:
+ * Create CDN-based icon resolver.
+ *
+ * ⚠️ Takes the site's `icons` CONFIG — `content.config.icons` — not the
+ * build's icon MANIFEST, which sits at `content.icons`. A payload carries both
+ * under that name and they are unrelated shapes:
+ *
+ *   content.config.icons  { cdnUrl, cdn }                    ← this
+ *   content.icons         { used, families, bySource, count } ← the manifest
+ *
+ * Exported for tests only; `index.jsx` names its imports, so this is not part
+ * of the package's public surface.
+ *
+ * @param {Object} iconConfig - From site.yml `icons:`, spread into config
  * @returns {Function} Resolver: (library, name) => Promise<string|null>
  */
-function createIconResolver(iconConfig = {}) {
-  const CDN_BASE = iconConfig.cdnUrl || 'https://uniweb.github.io/icons'
+export function createIconResolver(iconConfig = {}) {
+  const CDN_BASE = iconConfig.cdnUrl || DEFAULT_ICON_BASE
   const useCdn = iconConfig.cdn !== false
   const cache = new Map()
 
@@ -199,8 +211,7 @@ function createIconResolver(iconConfig = {}) {
     }
 
     try {
-      const iconFileName = `${familyCode}-${name}`
-      const url = `${CDN_BASE}/${familyCode}/${iconFileName}.svg`
+      const url = iconUrl(familyCode, name, CDN_BASE)
       const response = await fetch(url)
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const svg = await response.text()
@@ -292,7 +303,22 @@ export function initUniweb({ content, foundation, extensions = [], routingCompon
   }
 
   uniweb.routingComponents = routingComponents
-  uniweb.iconResolver = createIconResolver(content?.icons)
+  // `config.icons`, NOT `content.icons` — the latter is the build's manifest
+  // (`{used, families, …}`), which carries no `cdnUrl`, so passing it here
+  // pinned every browser fetch to the built-in default and made `icons.cdnUrl`
+  // / `icons.cdn: false` inert. ssr-renderer.js reads both keys correctly
+  // (manifest for prefetch, config for the base), so the two lanes disagreed:
+  // honored at prerender, ignored in the browser.
+  //
+  // The browser path is not a fallback. A prerendered page only has icons its
+  // build found in markdown; anything else — reached through fetched data, or
+  // authored after the build — resolves here. And a site whose payload comes
+  // from a host takes its base from that payload, which is the only place the
+  // host can state it.
+  //
+  // No `?? content?.icons` fallback: that is the manifest, and reintroducing
+  // it would restore the bug in a shape that looks defensive.
+  uniweb.iconResolver = createIconResolver(content?.config?.icons)
 
   // Populate icon cache from prerendered <script id="__ICON_CACHE__">.
   if (typeof document !== 'undefined') {

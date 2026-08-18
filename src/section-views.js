@@ -32,8 +32,6 @@
  * namespace and carry no prefix, so a selector-based lookup would also have to
  * exclude them; deriving from the graph cannot pick them up at all.
  *
- * Design: `kb/framework/plans/tracking.md`.
- *
  * @module @uniweb/runtime/section-views
  */
 

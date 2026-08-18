@@ -19,8 +19,6 @@
  * `usePageView`. Effects do not run under `renderToString`, a Worker isolate has
  * no `IntersectionObserver`, and the SSR path renders one page per call with
  * stub routing. Nothing to remember to switch off.
- *
- * Design: `kb/framework/plans/tracking.md`.
  */
 
 import { useEffect } from 'react'

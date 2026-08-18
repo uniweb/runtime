@@ -5,8 +5,6 @@
  * decides *whether and when* (no DOM, so it is bundled for SSR safely), and
  * `loadScripts` does the DOM half (browser entry only). The injection seam
  * between them is what keeps `document` out of the Worker bundle.
- *
- * Design: `kb/framework/plans/tracking-vendor-tags.md`.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'

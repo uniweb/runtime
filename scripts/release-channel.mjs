@@ -62,6 +62,47 @@ const pkgDir = join(dirname(fileURLToPath(import.meta.url)), '..')
 const BRANCH = 'gh-pages'
 const dryRun = process.argv.includes('--dry-run')
 
+/**
+ * ⛔ A network step must be able to FAIL. Left unbounded it HANGS instead, and
+ * a hang here is worse than an error by a wide margin.
+ *
+ * Measured 2026-08-18: `git fetch origin gh-pages` — the first line of
+ * `publish()`, and the first thing this script does after printing its header —
+ * stalled indefinitely mid-release. Nothing rescued it, at any layer:
+ *
+ *   - `ssh` sends no keepalives by default (`ServerAliveInterval 0`), so it
+ *     never notices a half-open connection and never gives up
+ *   - `git` has no transport timeout for SSH at all
+ *   - `spawnSync` had no `timeout` here
+ *   - and `git` prints nothing until the remote answers, so a stall is
+ *     indistinguishable from progress — there was no output to read
+ *
+ * The release ran it between `pnpm publish` and the tag push, so ^C left npm
+ * holding a version whose artifacts were not in the channel and whose tag was
+ * never pushed. **A failure at this point is already handled** — the caller
+ * warns and carries on to push the tag, and this script is idempotent, so the
+ * whole recovery is re-running it. Converting the hang into a failure is
+ * therefore the entire fix.
+ *
+ * Two bounds, because they catch different things and neither covers the other:
+ * `ssh` keepalives end a connection whose peer went away (~60s), while the
+ * `spawnSync` timeout is the outer backstop for a `git` that is stuck for some
+ * other reason, or a remote that answers just often enough to look alive.
+ */
+const NET_TIMEOUT_MS = Number(process.env.CHANNEL_NET_TIMEOUT_MS || 180_000)
+
+/**
+ * Appended, never assigned over: `ssh` takes the FIRST occurrence of a
+ * duplicated `-o`, so anything already in `GIT_SSH_COMMAND` still wins.
+ * (Verified against OpenSSH 10.2 with `ssh -G -o X=11 -o X=99`.) Inert for an
+ * HTTPS remote, which never runs `ssh` — NET_TIMEOUT_MS covers that case.
+ */
+const SSH_KEEPALIVE = '-o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o ConnectTimeout=20'
+const netEnv = () => ({
+  ...process.env,
+  GIT_SSH_COMMAND: `${process.env.GIT_SSH_COMMAND || 'ssh'} ${SSH_KEEPALIVE}`,
+})
+
 const { name, version } = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'))
 
 /**
@@ -85,12 +126,22 @@ function fail(message, hint) {
   throw new ChannelError(message, hint)
 }
 
-function run(cmd, args, { cwd = pkgDir, capture = false } = {}) {
+/** `net: true` for anything that talks to origin — see NET_TIMEOUT_MS. */
+function run(cmd, args, { cwd = pkgDir, capture = false, net = false } = {}) {
   const r = spawnSync(cmd, args, {
     cwd,
     encoding: 'utf8',
     stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+    ...(net ? { timeout: NET_TIMEOUT_MS, killSignal: 'SIGKILL', env: netEnv() } : {}),
   })
+  // ETIMEDOUT is the bound above firing, not a broken command — say which,
+  // because the generic branch below reads as "git is not installed".
+  if (r.error?.code === 'ETIMEDOUT') {
+    fail(
+      `\`${cmd} ${args.join(' ')}\` got no answer in ${NET_TIMEOUT_MS / 1000}s`,
+      'the network stalled — re-run `pnpm channel:publish`, it is idempotent (raise CHANNEL_NET_TIMEOUT_MS on a slow link)'
+    )
+  }
   if (r.error) fail(`could not run ${cmd} (${r.error.code})`)
   return r
 }
@@ -105,7 +156,7 @@ console.log(`\n── ${name}@${version} → ${BRANCH}${dryRun ? ' (dry run)' : 
 
 /** Everything that can fail. Returns; never exits — see ChannelError. */
 function publish(work) {
-  mustRun('git', ['fetch', 'origin', BRANCH], {}, `is there a ${BRANCH} branch on origin?`)
+  mustRun('git', ['fetch', 'origin', BRANCH], { net: true }, `is there a ${BRANCH} branch on origin?`)
   // FETCH_HEAD, not origin/gh-pages — see the header.
   mustRun('git', ['worktree', 'add', '--detach', work, 'FETCH_HEAD'])
 
@@ -143,7 +194,7 @@ function publish(work) {
   mustRun(
     'git',
     ['push', 'origin', `HEAD:${BRANCH}`],
-    { cwd: work },
+    { cwd: work, net: true },
     `someone else pushed ${BRANCH} first — re-run \`pnpm channel:publish\`, it is idempotent`
   )
 

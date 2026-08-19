@@ -20,6 +20,7 @@ import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 import { readFileSync, writeFileSync } from 'fs'
 import { importMapPlugin, DEFAULT_EXTERNALS, bridgeFileName } from '@uniweb/build/import-map-plugin'
+import { entryPreloads } from './scripts/entry-preloads.js'
 
 /**
  * Bridges this build adds ON TOP of the foundation-facing default set.
@@ -117,12 +118,11 @@ function manifestPlugin() {
       const entryChunk = Object.values(bundle)
         .find(c => c.type === 'chunk' && c.isEntry && c.fileName.startsWith('assets/'))
 
-      // Preloadable chunks: non-entry JS in assets/ (Vite already adds these
-      // as <link rel="modulepreload"> in index.html — the manifest lists them
-      // so programmatic HTML generation can do the same)
-      const preloads = Object.values(bundle)
-        .filter(c => c.type === 'chunk' && !c.isEntry && c.fileName.startsWith('assets/'))
-        .map(c => c.fileName)
+      // Preloadable chunks: the entry's transitive STATIC import closure —
+      // exactly the set Vite writes as <link rel="modulepreload"> into
+      // index.html. The derivation, the incident behind it, and the guard that
+      // pins it live in scripts/entry-preloads.js.
+      const preloads = entryPreloads(bundle, entryChunk.fileName)
 
       // Import map: bare specifier → relative path to bridge module
       // Same list and same naming helper the plugin emits with — a manifest

@@ -11,6 +11,7 @@ import ThemeProvider from './ThemeProvider.jsx'
 import { useRememberScroll } from '../hooks/useRememberScroll.js'
 import { useLinkInterceptor } from '../hooks/useLinkInterceptor.js'
 import { usePageView } from '../hooks/usePageView.js'
+import { useOutboundClicks } from '../hooks/useOutboundClicks.js'
 
 /**
  * WebsiteRenderer component
@@ -34,6 +35,11 @@ export default function WebsiteRenderer() {
   // unconditionally — with no destination configured (the default) the tracker
   // is disabled and this does nothing at all.
   usePageView()
+
+  // Report where visitors go when they leave. Same unconditional-call contract
+  // as usePageView, and armed once for the document rather than per route — the
+  // listener is delegated on `document` and outlives SPA navigation.
+  useOutboundClicks()
 
   if (!website) {
     return (

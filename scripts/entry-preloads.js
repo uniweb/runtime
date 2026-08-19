@@ -2,20 +2,37 @@
  * The chunks a host should `<link rel="modulepreload">` — derived, not guessed.
  *
  * `vite.config.app.js` writes this into `dist/app/manifest.json` so a host that
- * generates HTML programmatically emits the same preloads Vite writes into
- * `index.html`. Two producers of one list, so the list must come from the same
- * graph rather than from a shape test that approximates it.
+ * generates HTML programmatically has an answer without parsing `index.html`.
  *
  * ⛔ **The approximation this replaces:** "every non-entry chunk in `assets/`".
  * It cannot tell a chunk the entry always needs from one reached only through a
  * dynamic `import()`, so it over-declared by exactly the modules whose whole
  * design is *a site that does not use this never downloads it* — measured
- * 2026-08-19 on `@uniweb/runtime@0.12.3`, those were `outbound-clicks`,
- * `section-views` and `script-loader`. `index.html` was right the entire time.
+ * 2026-08-19 on `@uniweb/runtime@0.12.3`, those were `document-tracking`,
+ * `section-views` and `script-loader`. Neither side had a symptom: the site
+ * worked, the chunks still appeared split, and the only evidence was a byte
+ * count nobody was watching.
  *
- * ⚠️ **Neither side had a symptom.** The site worked, the chunks still appeared
- * split in the bundle listing, and the only evidence was a byte count nobody
- * was watching — which is why the guard is a test rather than a comment.
+ * ## ⛔ `index.html` IS NOT THE TARGET — do not "fix" this to match it
+ *
+ * The first version of this file said the goal was to emit the same preloads
+ * Vite writes into `index.html`. **That is wrong, and acting on it would
+ * pessimise every host-generated shell.** Measured the same day, `index.html`
+ * preloads all 13 `_importmap/` bridge modules — **73 KB gzipped**, of which
+ * `react-dom/server` alone is **57.8 KB**. A browser SPA never executes React's
+ * server renderer; that bridge exists because foundations using `@uniweb/press`
+ * import it, which is a property of a foundation and unknowable from here.
+ *
+ * ⭐ **So the manifest and `index.html` legitimately differ, and the manifest is
+ * the more correct of the two.** Vite preloads emitted entry files because that
+ * is what Vite does with them, not because a shell needs them before first
+ * paint.
+ *
+ * ⇒ **The rule is "what must be loaded before anything can run" — the entry's
+ * transitive STATIC closure — not "what some other producer happens to emit".**
+ * A bridge is fetched when the foundation resolves its bare specifiers, which
+ * is after the entry has run; whether that is worth a preload hint is a
+ * separate question with a separate answer, and it is not this field.
  *
  * @module @uniweb/runtime/scripts/entry-preloads
  */

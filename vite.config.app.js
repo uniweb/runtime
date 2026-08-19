@@ -119,9 +119,9 @@ function manifestPlugin() {
         .find(c => c.type === 'chunk' && c.isEntry && c.fileName.startsWith('assets/'))
 
       // Preloadable chunks: the entry's transitive STATIC import closure —
-      // exactly the set Vite writes as <link rel="modulepreload"> into
-      // index.html. The derivation, the incident behind it, and the guard that
-      // pins it live in scripts/entry-preloads.js.
+      // what must load before anything can run. ⛔ NOT "what index.html
+      // preloads", which is a larger and worse set: see scripts/entry-preloads.js
+      // for why matching it would cost every host-generated shell 73 KB gzip.
       const preloads = entryPreloads(bundle, entryChunk.fileName)
 
       // Import map: bare specifier → relative path to bridge module

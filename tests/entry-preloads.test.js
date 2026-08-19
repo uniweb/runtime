@@ -1,6 +1,11 @@
 /**
  * The manifest's `preloads` must name the entry's static closure and nothing
- * else. See scripts/entry-preloads.js for the incident this pins.
+ * else — what has to load before anything can run.
+ *
+ * ⛔ Deliberately NOT "whatever index.html preloads". That set is larger and
+ * worse: Vite preloads all 13 `_importmap/` bridges, 73 KB gzip, including
+ * React's 57.8 KB server renderer that a browser never executes. See
+ * scripts/entry-preloads.js.
  */
 
 import { describe, it, expect } from 'vitest'

@@ -27,10 +27,26 @@ function resolveAgainstDocument(url) {
 }
 
 /**
- * Load foundation CSS from URL
+ * Load foundation CSS from URL.
+ *
+ * ⭐ **Exported for the test, and the test exists because a HOST builds on this.**
+ * The skip below is what lets a shell put the stylesheet in the head itself —
+ * so the sheet applies during HTML parse instead of waiting for the runtime to
+ * boot, parse `__DATA__` and inject it. Hosting shipped that on the strength of
+ * this guard (channel `framework-hosting-ea29`, 2026-08-19); until then nothing
+ * asserted it, so a refactor would have produced two `<link>` tags and two
+ * fetches on their lane with every test here still green.
+ *
+ * ⛔ **The guard is an ATTRIBUTE-VALUE match, so the href must be byte-identical
+ * to what the caller passes** — and the caller passes the URL *after*
+ * `resolveAgainstDocument`. An absolute `https://…` is a pass-through and
+ * matches; a root-relative `/foo.css` is rewritten to `origin + /foo.css` and
+ * would NOT match a literal `href="/foo.css"` in the head. If a host ever emits
+ * a root-relative one, this comparison has to become resolved-to-resolved.
+ *
  * @param {string} url - URL to foundation's CSS file
  */
-async function loadFoundationCSS(url) {
+export async function loadFoundationCSS(url) {
   if (!url) return
 
   // Skip if already present (e.g., injected by SSR into the static HTML)

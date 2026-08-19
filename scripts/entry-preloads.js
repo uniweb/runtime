@@ -34,6 +34,10 @@
  * is after the entry has run; whether that is worth a preload hint is a
  * separate question with a separate answer, and it is not this field.
  *
+ * ⭐ **Whether a bridge deserves its own hint is a live proposal, not a gap** —
+ * the measurement, the trap, and two ways to close it are in
+ * `kb/framework/build/shell-preload-hints.md`.
+ *
  * @module @uniweb/runtime/scripts/entry-preloads
  */
 

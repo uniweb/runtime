@@ -42,6 +42,34 @@ const site = (config) => ({
   tracking: DISABLED_DEFAULT
 })
 
+/**
+ * The delay `armFlushInterval` actually armed, or null if it never armed.
+ *
+ * ⭐ **Asserting the DELAY, not the field.** The reason this half sat unbuilt
+ * while looking finished is that `readServiceOptions` has always returned the
+ * key — so a test reading the option back would pass against a `Tracker` that
+ * ignored it. The only question worth asking is whether the number reaches the
+ * timer.
+ *
+ * The suite runs on fake timers, so `setInterval` is already a mock; this wraps
+ * whatever is installed and puts it back, rather than assuming a real one.
+ */
+function armedDelay(config) {
+  const calls = []
+  const original = globalThis.setInterval
+  globalThis.setInterval = (fn, ms) => {
+    calls.push(ms)
+    return 0
+  }
+  try {
+    const uniweb = site(config)
+    wireTracker(uniweb)
+    return calls.length ? calls[0] : null
+  } finally {
+    globalThis.setInterval = original
+  }
+}
+
 const wire = (config) => {
   const uniweb = site(config)
   wireTracker(uniweb)
@@ -194,5 +222,45 @@ describe('hosted — the host supplies the endpoint, the site supplies the selec
       tracking: { endpoint: 'https://plausible.io/api/event' }
     })
     expect(t.endpoint).toBe('https://plausible.io/api/event')
+  })
+})
+
+describe('flushIntervalMs — the host names the batch window', () => {
+  it("arms the interval with the host's value", () => {
+    expect(armedDelay({ services: { tracking: { endpoint: '/_a/e', flushIntervalMs: 30000 } } }))
+      .toBe(30000)
+  })
+
+  it('lets a site override the host', () => {
+    expect(
+      armedDelay({
+        services: { tracking: { endpoint: '/_a/e', flushIntervalMs: 30000 } },
+        tracking: { flushIntervalMs: 2000 }
+      })
+    ).toBe(2000)
+  })
+
+  it('falls back to the default when neither tier names one', () => {
+    expect(armedDelay({ tracking: 'https://collect.example/e' })).toBe(5000)
+  })
+
+  // ⛔ Each of these would arm a spinning or never-firing timer. Rejected as
+  // INVALID input — not as "too small", which would be a policy floor the host
+  // already owns and this one could only disagree with.
+  it.each([
+    ['zero', 0],
+    ['negative', -1000],
+    ['a string', '30000'],
+    ['NaN', NaN],
+    ['Infinity', Infinity]
+  ])('ignores %s and keeps the default', (_label, value) => {
+    expect(armedDelay({ services: { tracking: { endpoint: '/_a/e', flushIntervalMs: value } } }))
+      .toBe(5000)
+  })
+
+  // The control: with no destination nothing is armed at all, so "arms with the
+  // right delay" cannot be confused with "arms when it should not".
+  it('arms no interval at all when no destination resolves', () => {
+    expect(armedDelay({ tracking: { flushIntervalMs: 30000 } })).toBeNull()
   })
 })

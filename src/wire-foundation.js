@@ -362,6 +362,21 @@ export function wireTracker(uniweb, { basePath = '', loadScripts = null } = {}) 
     endpoint: url,
     hostEvents,
     siteEmit: resolveEmit(siteTracking && siteTracking.emit),
+    // ⭐ Read off the MERGED view, unlike the two above — and the difference is
+    // the point. `events`/`emit` answer different questions per tier, so each is
+    // read from its own key; this is one question with two possible answerers,
+    // so the ordinary precedence applies: the host declares a batch window that
+    // suits its collector, and a site's own `tracking:` overrides it. Absent on
+    // both, `Tracker` keeps its default.
+    //
+    // ⛔ **A field being READABLE is not the same as it being AVAILABLE**, and
+    // that is what made this line worth a test rather than a shrug.
+    // `readServiceOptions` has always returned this key, so the plan read as
+    // finished while nothing wrote the object being read — it would have shipped
+    // as *"we set the interval and it did nothing"*, with all three lanes' suites
+    // green. The value now has to reach `setInterval`, and a test asserts the
+    // delay rather than the field.
+    flushIntervalMs: options.flushIntervalMs,
     // Opt-in, not the default. Declaring a destination is itself the operator's
     // decision to track; requiring a second affirmative step would be the
     // framework presuming a jurisdiction on their behalf, which is exactly what

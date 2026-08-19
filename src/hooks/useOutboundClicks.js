@@ -5,11 +5,11 @@
  * dynamic import, so a site with no tracking destination downloads none of it —
  * the same arrangement as `useSectionViews`.
  *
- * ⛔ **One gate, not two.** `tracking.isEnabled()` is the whole condition: it
- * says there is somewhere to send *and* that this is a live document, so a
- * framed authoring preview arms nothing (`Tracker.isLiveDocument`). Unlike
- * `useSectionViews` there is no per-page flag to check — see the module header
- * of `outbound-clicks.js` for why a page-level opt-in would cost a delivery
+ * ⛔ **One call, three questions.** `tracking.arms('outbound_click')` asks all of
+ * them: is there somewhere to send in a live document (so a framed authoring
+ * preview arms nothing), will the host consume this row, and did the site
+ * select it. Unlike `useSectionViews` there is no per-page override to pass — see the section header
+ * in `document-tracking.js` for why a page-level opt-in would cost a delivery
  * projection and buy nothing.
  *
  * ## Armed ONCE for the document, not per page
@@ -37,14 +37,14 @@ import { useEffect } from 'react'
 export function useOutboundClicks() {
   useEffect(() => {
     const tracking = globalThis.uniweb?.tracking
-    if (!tracking?.isEnabled?.()) return
+    if (!tracking?.arms?.('outbound_click')) return
 
     // `cancelled` guards the gap between asking for the module and getting it —
     // a fast unmount would otherwise install a listener nothing ever removes.
     let cancelled = false
     let stop = null
 
-    import('../outbound-clicks.js')
+    import('../document-tracking.js')
       .then((m) => {
         if (cancelled) return
         stop = m.observeOutboundClicks(tracking)

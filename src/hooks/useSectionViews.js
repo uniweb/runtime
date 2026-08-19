@@ -6,12 +6,12 @@
  * same arrangement `script-loader.js` has, and the reason the opt-in is a
  * declaration rather than a call a foundation makes.
  *
- * ⛔ **Two gates, and both are needed.** `page.trackSections` says the author
- * asked; `tracking.isEnabled()` says there is somewhere to send and this is a
- * live document — which also means a framed authoring preview arms nothing (see
- * `Tracker.isLiveDocument`). Neither implies the other: a site can declare a
- * destination and instrument no page, or instrument a page and have no
- * destination.
+ * ⛔ **One gate that resolves three tiers.** `arms('section_view',
+ * page.trackSections)` asks whether there is somewhere to send in a live
+ * document, whether the host will store the row, and then whose answer wins:
+ * the page's if it stated one, otherwise the site's `tracking.emit`. A page may
+ * widen what its own site configured and may not conjure a row the host
+ * declined — see `Tracker.arms`.
  *
  * ## SSR
  *
@@ -51,8 +51,11 @@ export function useSectionViews(ready = true) {
     if (!ready) return
     const uniweb = globalThis.uniweb
     const page = uniweb?.activeWebsite?.activePage
-    if (!page?.trackSections) return
-    if (!uniweb.tracking?.isEnabled?.()) return
+    if (!page) return
+    // One call, and the page's answer rides in as the override: `undefined`
+    // defers to the site's `tracking.emit`, `true`/`false` overrule it, and
+    // neither can escape the host's own list. See `Tracker.arms`.
+    if (!uniweb.tracking?.arms?.('section_view', page.trackSections)) return
 
     // `cancelled` guards the gap between asking for the module and getting it:
     // a fast navigation can unmount this effect first, and observing then would

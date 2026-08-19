@@ -275,6 +275,46 @@ export function ensureThemeCss(uniweb, foundation) {
  * @param {(urls: string[], opts: object) => void} [options.loadScripts] - DOM
  *        loader for declared vendor scripts; omitted outside a browser entry
  */
+/**
+ * What `tracking.emit` names, when a site names a preset rather than a list.
+ *
+ * ⭐ **`all` is deliberately ABSENT from this table.** It resolves to `null` —
+ * *no narrowing* — so an event added in a later release is included without the
+ * site republishing. A literal list would freeze `all` at the moment the site
+ * was built and quietly stop meaning "all".
+ *
+ * ⚖️ **`standard` and `all` select the same events today, and that is not a
+ * reason to drop one.** They diverge the moment a new automatic event ships:
+ * `standard` is a curated set that a release cannot grow behind an operator's
+ * back, `all` is the standing yes. The volume surprise is the thing being
+ * avoided — a site that never changed should not start sending more.
+ */
+const EMIT_PRESETS = {
+  minimal: ['page_view'],
+  standard: ['page_view', 'outbound_click', 'section_view']
+}
+
+/** The preset a site gets by declaring a destination and nothing else. */
+const DEFAULT_EMIT = 'standard'
+
+/**
+ * The site's own selection, as a list of event names or `null` for no narrowing.
+ *
+ * ⛔ **An unknown preset name resolves to the DEFAULT, not to nothing.** A typo
+ * (`emit: sandard`) must not silently take a site dark: the failure mode of a
+ * misread selection has to be "you got the usual set", never "you got none and
+ * nothing said so".
+ *
+ * @param {string|string[]|undefined} emit
+ * @returns {string[]|null}
+ */
+function resolveEmit(emit) {
+  if (emit == null) return EMIT_PRESETS[DEFAULT_EMIT]
+  if (Array.isArray(emit)) return emit
+  if (emit === 'all') return null
+  return EMIT_PRESETS[emit] || EMIT_PRESETS[DEFAULT_EMIT]
+}
+
 export function wireTracker(uniweb, { basePath = '', loadScripts = null } = {}) {
   const website = uniweb?.activeWebsite
   if (!website) return
@@ -296,8 +336,32 @@ export function wireTracker(uniweb, { basePath = '', loadScripts = null } = {}) 
   // armed, nothing queued. This is the state of the large majority of sites.
   if (!url && !hasScripts) return
 
+  // The two narrowings, resolved here rather than in core: this is per-request
+  // config reshaping, which is L2's job (see this file's header).
+  //
+  // ⛔ **`hostEvents` is read from the HOST tier only** — `config.services
+  // .tracking.events`, never the merged view. A site cannot widen what a host
+  // declined to store, and reading the merge would let it, silently, by writing
+  // its own `events:` key.
+  //
+  // ⛔ **Absent stays absent.** No `events` from the host means NO NARROWING,
+  // never an empty set: a host that sends no list is an older or simpler one,
+  // and the other reading takes every site on it dark with every gate saying
+  // yes. `?? null` rather than `?? []` is the whole of that guard.
+  // ⛔ Each tier is read from ITS OWN key, not from the merged `options`. The
+  // merge exists so a site can override a host's `consent` or `endpoint`; these
+  // two are not overrides of each other but answers to different questions, and
+  // reading either off the merge would let one tier answer the other's — a site
+  // writing `events:` would widen past what the host stores, silently.
+  const hostTracking = website.config?.services?.tracking
+  const siteTracking = website.config?.tracking
+  const hostEvents =
+    hostTracking && Array.isArray(hostTracking.events) ? hostTracking.events : null
+
   const tracker = new Tracker({
     endpoint: url,
+    hostEvents,
+    siteEmit: resolveEmit(siteTracking && siteTracking.emit),
     // Opt-in, not the default. Declaring a destination is itself the operator's
     // decision to track; requiring a second affirmative step would be the
     // framework presuming a jurisdiction on their behalf, which is exactly what

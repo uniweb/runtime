@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { outboundHostname, observeOutboundClicks } from '../src/outbound-clicks.js'
+import { outboundHostname, observeOutboundClicks } from '../src/document-tracking.js'
 
 /**
  * `outbound_click` — the listener half.
@@ -155,3 +155,31 @@ describe('observeOutboundClicks', () => {
     expect(observeOutboundClicks(tracking)).toBeNull()
   })
 })
+
+/**
+ * A minimal window + document for the scroll half — same reasoning as
+ * `fakeDocument` above: this suite runs on `environment: 'node'`, and adding a
+ * DOM dependency for one file would change how every test in the package runs.
+ */
+function fakeScrollEnv({ scrollHeight, innerHeight }) {
+  const listeners = []
+  globalThis.document = { documentElement: { scrollHeight } }
+  globalThis.window = {
+    innerHeight,
+    scrollY: 0,
+    addEventListener: (type, fn) => listeners.push({ type, fn }),
+    removeEventListener: (type, fn) => {
+      const i = listeners.findIndex((l) => l.type === type && l.fn === fn)
+      if (i >= 0) listeners.splice(i, 1)
+    }
+  }
+  return {
+    scrollTo: (y) => {
+      globalThis.window.scrollY = y
+      // Past the throttle window, so each scripted scroll is actually measured.
+      vi.setSystemTime(Date.now() + 1000)
+      for (const l of [...listeners]) if (l.type === 'scroll') l.fn()
+    },
+    listeners
+  }
+}

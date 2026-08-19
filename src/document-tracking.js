@@ -1,9 +1,36 @@
 /**
- * outbound_click — where a visitor goes when they leave.
+ * The listeners a TRACKED document arms — grouped by WHEN THEY ARM.
  *
- * ⭐ **Reached behind a dynamic import** (`hooks/useOutboundClicks.js`), so a
- * site with no tracking destination never downloads this file. Same arrangement
- * as `section-views.js` and `script-loader.js`.
+ * ⭐ **The grouping rule, which is what this file is really for.** Everything
+ * here needs exactly `tracking.arms(<event>)` with no further condition: a
+ * destination exists, this is a live document, and neither the host nor the site
+ * narrowed the event away. Today that is `outbound_click` alone; the next
+ * emitter meeting the same condition belongs in this chunk, and one meeting a
+ * different condition does not.
+ *
+ * ⛔ **`section-views.js` stays separate** — its condition is narrower (a page
+ * may override, so it is armed per page rather than per document). ⛔ **And
+ * `script-loader.js` stays separate on a different axis entirely** — a site can
+ * declare vendor scripts with **no endpoint at all**, and it is fetched only
+ * *after consent is granted*, so folding it in would pull a vendor loader down
+ * for a visitor who then declines.
+ *
+ * ⚖️ **Measured 2026-08-19, so the rule is not an aesthetic.** Merging all three
+ * gzips to 1255 B against 621 / 446 / 599 apart. That saves 411 B for a site
+ * using every one of them and costs ~640 B for the two commonest shapes —
+ * endpoint-only, and vendor-scripts-only. **The merge optimises the rarest site
+ * and penalises the usual ones**, which is the general reason to group by
+ * condition rather than by topic.
+ *
+ * ⚖️ Everything here runs from a `useEffect`, after paint. None of it is on the
+ * critical path, so request count is a minor term and correctness of the
+ * condition is the major one.
+ *
+ * @module @uniweb/runtime/document-tracking
+ */
+
+/* ------------------------------------------------------------------ *
+ * outbound_click — where a visitor goes when they leave.
  *
  * ## ⛔ The HOSTNAME is the event. The URL never leaves the page.
  *
@@ -22,20 +49,16 @@
  * ## No page-level opt-in, deliberately
  *
  * `section_view` needs one (`trackSections`) because its dimension is unbounded
- * — a site's section types run to the hundreds and hosting capped the cardinality.
- * **An outbound hostname is bounded by how many external sites a page links to**,
- * which is small and does not grow with the site. So the only gate is
- * `tracking.isEnabled()`: declaring a destination is already the operator's
- * decision to measure.
+ * — a site's section types run to the hundreds and hosting capped the
+ * cardinality. **An outbound hostname is bounded by how many external sites a
+ * page links to**, which is small and does not grow with the site.
  *
  * ⛔ **And a page flag would not be free — it would need a DELIVERY PROJECTION**
- * (the stored flag → the runtime payload), which is a distinct item owned by a
- * different lane and invisible from this one. That gap shipped once already and
- * cost a day of a working emitter reporting nothing. **Not worth paying for a
- * dimension that was never at risk.**
- *
- * @module @uniweb/runtime/outbound-clicks
- */
+ * (the stored flag → the runtime payload), a distinct item owned by a different
+ * lane and invisible from this one. That gap shipped once already and cost a day
+ * of a working emitter reporting nothing. **Not worth paying for a dimension
+ * that was never at risk.**
+ * ------------------------------------------------------------------ */
 
 /**
  * Protocols worth reporting as *traffic leaving the site*.
@@ -50,7 +73,7 @@ const REPORTED_PROTOCOLS = new Set(['http:', 'https:'])
 /**
  * The hostname this click leaves for, or `null` if it does not leave.
  *
- * Exported for the tests: the whole privacy claim of this module is that only a
+ * Exported for the tests: the whole privacy claim of this half is that only a
  * hostname is ever produced, and that is worth asserting directly rather than
  * through a listener.
  *
@@ -73,7 +96,7 @@ export function outboundHostname(href, here) {
   if (url.hostname === here.hostname) return null
   // `url.hostname` — never `url.host` (which appends a port), never `url.href`,
   // and nothing derived from `search` or `pathname`. This return is the
-  // enforcement point named in the module header.
+  // enforcement point named in the section header above.
   return url.hostname || null
 }
 
@@ -113,5 +136,3 @@ export function observeOutboundClicks(tracking) {
     document.removeEventListener('auxclick', onClick, true)
   }
 }
-
-export default observeOutboundClicks

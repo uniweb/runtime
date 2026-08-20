@@ -1,0 +1,86 @@
+# Does any tracked file cite a document tree that is not published with it?
+#
+# This package is public and standalone. A comment pointing at a path that only
+# exists in the maintainer's private working tree is dead weight to every reader
+# who clones this repo, and it leaks the shape of something they cannot see.
+#
+# ── Why a job and not a convention ──
+#
+# It has been swept by hand twice, and it came back both times through ordinary
+# work: one round removed sixteen references across nine packages, and a later
+# commit re-added one to `scripts/entry-preloads.js` while adding a genuinely
+# useful paragraph around it. Three days passed with nothing reporting it. The
+# author is never wrong about the content — only about which repo it lands in,
+# which is exactly the kind of mistake a person cannot self-check and a grep can.
+#
+# ── ⛔ IT INSTALLS NOTHING, AND THAT IS A REQUIREMENT, NOT AN OPTIMISATION ──
+#
+# This package declares sibling `@uniweb/*` packages with `workspace:` specs.
+# Those resolve only inside the maintainer's workspace; a standalone clone — which
+# is what a runner gets — has no workspace, so `pnpm install` fails outright with
+# ERR_PNPM_WORKSPACE_PKG_NOT_FOUND before a single step runs. A sibling repo had
+# a deploy job broken that way for two releases and nothing said so, because the
+# job that failed was not one anybody watched. Checkout and grep need neither a
+# toolchain nor a lockfile, so this job cannot acquire that failure mode.
+#
+# ── ⚠️ What this does NOT do ──
+#
+# The pattern is a list of forms ALREADY SEEN. It cannot report a private path
+# spelled a way nobody has spelled one yet, and every widening of it so far has
+# found more than the last — four in the round that prompted this file. So a
+# green run means "none of the known forms", never "clean". It converts a known
+# class into a hard failure; it does not close the class.
+
+name: No private-tree references
+
+on:
+  push:
+    # ⛔ `main` explicitly. Unscoped, this also fires on `gh-pages`, which every
+    # release pushes to — running the sweep over ~650 minified delivery
+    # artifacts, where a chance hit inside a hashed chunk name would fail a
+    # release-time job for a source-tree rule that does not apply to it.
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tracked files must not cite a private document tree
+        run: |
+          # `Proximify/` with the slash, deliberately: a bare match would hit
+          # package.json's `"author": "Proximify"`, which is correct and ships
+          # in every tarball. The org PATH is the thing that has no business here.
+          PAT='CLAUDE|kb/[a-z]+/|gotcha #|\(private\)|Proximify/'
+
+          # ⛔ The control runs FIRST. An empty grep result is identical whether
+          # the tree is clean or the instrument is broken, and the sweep this
+          # file replaces did break — a stray `sort -u -t: -k3` over lines with
+          # no third colon-field collapsed every hit into one, and printed
+          # something that read exactly like success.
+          # `${RUNNER_TEMP:-/tmp}` so the step body can be pasted into a shell
+          # and run against a working tree — a check nobody can run locally is
+          # one that only ever reports after a push.
+          PROBE="${RUNNER_TEMP:-/tmp}/probe"
+          printf 'see CLAUDE.md gotcha #9 in kb/framework/x.md\n' > "$PROBE"
+          if ! grep -qE "$PAT" "$PROBE"; then
+            echo "::error::the sweep pattern matches nothing it must match — the check is broken, not the tree"
+            exit 1
+          fi
+
+          # Scope the search to the REPO, not to where a problem is suspected.
+          # A grep scoped to what you already know about cannot report what sits
+          # beside it. The one exclusion is this file, which necessarily contains
+          # the pattern and the probe.
+          if git ls-files -z ':!.github/workflows/no-private-refs.yml' \
+               | xargs -0 grep -InE "$PAT"; then
+            echo "::error::a tracked file cites a private document tree — state the fact instead of citing where it is written"
+            exit 1
+          fi
+
+          echo "No private-tree references in $(git ls-files | wc -l) tracked files."

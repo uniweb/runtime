@@ -186,10 +186,12 @@ function publish(work) {
     return
   }
 
-  // `runtime/` is everything publish-channel.mjs writes. Named rather than
-  // `-A` so this can never carry something else that happens to be in the
-  // worktree.
-  mustRun('git', ['add', 'runtime'], { cwd: work })
+  // `index.json` + `<version>/` is everything publish-channel.mjs writes — it
+  // publishes to the branch ROOT (no package-name prefix; see that file's
+  // header). Named rather than `-A` so this can never carry something else that
+  // happens to be in the worktree, which is why the move to the root did not
+  // cost this property: the script already knows the version.
+  mustRun('git', ['add', '--', 'index.json', version], { cwd: work })
   mustRun('git', ['commit', '-m', `runtime v${version}`], { cwd: work })
   mustRun(
     'git',

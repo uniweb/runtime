@@ -1,7 +1,11 @@
 # Does the distribution channel carry every version npm does?
 #
-#   https://<owner>.github.io/<repo>/runtime/index.json      what exists · latest · deprecated
-#   https://<owner>.github.io/<repo>/runtime/<version>/…     the artifacts
+#   https://<owner>.github.io/<repo>/index.json      what exists · latest · deprecated
+#   https://<owner>.github.io/<repo>/<version>/…     the artifacts
+#
+# (Served from the branch ROOT since 2026-08-20 — the tree used to carry a
+# redundant `runtime/` prefix on top of the repo segment. publish-channel.mjs's
+# header says why it went.)
 #
 # ── This job used to BUILD the channel. It no longer does, and that is the point ──
 #
@@ -22,7 +26,7 @@
 # core 0.8.5's route-decoding guard. v0.11.6, published by the release machine,
 # carries 2. Re-check either version with:
 #
-#     git archive origin/gh-pages runtime/<version> | tar -xO | grep -c 'includes("%")'
+#     git archive origin/gh-pages <version> | tar -xO | grep -c 'includes("%")'
 #
 # `prepublishOnly` already builds those bytes at publish time, against siblings
 # the workspace SYMLINKS — their code is final regardless of which version
@@ -67,7 +71,7 @@ jobs:
       - name: Read the channel index
         run: |
           git fetch origin gh-pages
-          git show FETCH_HEAD:runtime/index.json > /tmp/channel-index.json
+          git show FETCH_HEAD:index.json > /tmp/channel-index.json
 
       - name: Every npm version since the channel began must be in it
         run: node scripts/audit-channel.mjs /tmp/channel-index.json

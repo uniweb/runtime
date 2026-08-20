@@ -5,10 +5,24 @@
  *   node scripts/publish-channel.mjs --channel <dir> [--dry-run]
  *
  * `--channel` is a checkout of the branch the static host serves (e.g.
- * `gh-pages`). The script writes:
+ * `gh-pages`). The script writes, AT THE ROOT of that checkout:
  *
- *   <channel>/runtime/index.json     ← what exists, what is latest, what is poison
- *   <channel>/runtime/<version>/…    ← this build's delivery artifacts
+ *   <channel>/index.json     ← what exists, what is latest, what is poison
+ *   <channel>/<version>/…    ← this build's delivery artifacts
+ *
+ * ⛔ **No package-name prefix, and do not reintroduce one.** Until 2026-08-20
+ * these sat under `<channel>/runtime/`, which Pages served as
+ * `uniweb.github.io/runtime/runtime/…` — the repo segment and the tree prefix
+ * both spelling the same package. Nothing in the format wanted it: `index.json`
+ * carries `name`, so package identity lives in the DOCUMENT, not the path (see
+ * also invariant 6 in channel-index.js — a path prefix carries no meaning).
+ *
+ * The one argument for keeping it was that it lined this layout up with a
+ * downstream mirror's. That is a coupling to refuse on principle: two constants
+ * that must stay equal is a standing liability, and this one would have had the
+ * producer holding still for a consumer. It was also untrue — a mirror is free
+ * to relocate and to re-root what it copies, and one already had. A channel
+ * publishes at its own address; what anyone mirrors it to is theirs.
  *
  * ── What gets published, and why not all of `dist/` ──
  *
@@ -242,8 +256,34 @@ if (!files.browser.length || !files.isolate.length) {
   process.exit(1)
 }
 
-const indexPath = join(channelDir, 'runtime', 'index.json')
-const versionDir = join(channelDir, 'runtime', version)
+const indexPath = join(channelDir, 'index.json')
+const versionDir = join(channelDir, version)
+
+/**
+ * ⛔ Versions on disk but no index is a THIRD record-vs-reality disagreement,
+ * and it fails in the direction the other two do not: `parseIndex(null)` starts
+ * a fresh index, so publishing over it would announce a channel of one version
+ * and step `latest` back years, silently. The other two refuse a version that
+ * exists on one side; this refuses a CHANNEL that does.
+ *
+ * It is also the migration guard. The 2026-08-20 move to the branch root can be
+ * half-applied — new script against an unmigrated checkout — and that is
+ * exactly the shape it catches.
+ */
+if (!existsSync(indexPath)) {
+  const strays = existsSync(channelDir)
+    ? readdirSync(channelDir).filter((e) => /^\d+\.\d+\.\d+/.test(e))
+    : []
+  if (strays.length) {
+    console.error(
+      `Refusing to publish: ${channelDir} holds ${strays.length} version director${strays.length === 1 ? 'y' : 'ies'} but no index.json.\n` +
+        `Publishing would start a NEW index and announce a channel of one version.\n` +
+        `If this checkout predates the 2026-08-20 move to the branch root, migrate it:\n` +
+        `  git mv runtime/index.json index.json && for d in runtime/*/; do git mv "$d" "$(basename $d)"; done`
+    )
+    process.exit(1)
+  }
+}
 
 const index = parseIndex(
   existsSync(indexPath) ? readFileSync(indexPath, 'utf8') : null,
@@ -325,7 +365,7 @@ if (dryRun) {
 //   2. the index is the LAST write, so "the index names it" implies "the bytes
 //      are there" — the commit-marker pattern, one layer up from the way
 //      `manifest.json` is written last within a version.
-const staging = join(channelDir, 'runtime', `.staging-${version}`)
+const staging = join(channelDir, `.staging-${version}`)
 try {
   rmSync(staging, { recursive: true, force: true })
   for (const [group, list] of Object.entries(files)) {
@@ -347,4 +387,4 @@ try {
 mkdirSync(dirname(indexPath), { recursive: true })
 writeFileSync(indexPath, serializeIndex(next))
 
-console.log(`\nWrote ${allFiles.length} file(s) to runtime/${version}/ and updated index.json`)
+console.log(`\nWrote ${allFiles.length} file(s) to ${version}/ and updated index.json`)

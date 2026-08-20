@@ -34,12 +34,33 @@
  * is after the entry has run; whether that is worth a preload hint is a
  * separate question with a separate answer, and it is not this field.
  *
- * ⭐ **Whether a bridge deserves its own hint is a live proposal, not a gap.**
- * Measured across three built foundations: each emitted exactly three bridges
- * (`@uniweb/core`, `react`, `react/jsx-runtime`, ~2.3 KB gzip) where the shell's
- * `index.html` preloads all thirteen at ~73 KB — of which `react-dom/server`
- * alone is 57.8 KB the browser never executes. So copying the shell's preload
- * list into this field would be a pessimisation, not a fix.
+ * ## ⛔ Bridges do not belong in this field — ASKED AND ANSWERED, 2026-08-19
+ *
+ * The answer is not "not yet"; it is **no, and there is a better mechanism**.
+ * Do not add a `bridgePreloads` key here, and do not widen `prefix` to sweep
+ * `_importmap/` in.
+ *
+ * `modulepreload` fetches a module **and its dependency graph**. A foundation's
+ * bare imports resolve through the import map, so one `modulepreload` on the
+ * foundation entry pulls exactly the bridges *that foundation* uses and nothing
+ * else — the real graph, per site, walked by the browser. Anything this build
+ * could publish is a static guess: one global list answering a per-site
+ * question, plus a second key to keep in step with `importMap`.
+ *
+ * The measurement that makes the difference concrete: all 13 bridges are
+ * 73,329 B gzip, of which `react-dom/server` is 57,782 B; the three a real
+ * foundation actually imports (`@uniweb/core`, `react`, `react/jsx-runtime`)
+ * are 2,329 B. Three built foundations — a starter, an extensions project's
+ * primary foundation, and an extension — each emitted exactly those three. That
+ * is a mechanism rather than three lucky samples: `@uniweb/kit` is bundled into
+ * every foundation and imports the first two, and the automatic JSX transform
+ * injects the third.
+ *
+ * ⚠️ **Getting this wrong is not repairable in place.** This manifest ships
+ * inside a version's directory in the distribution channel, and a published
+ * version is immutable — so whatever `preloads` says when a version is stocked
+ * is what that version says forever. A host on that version cannot be sent a
+ * correction; only a new version can.
  *
  * @module @uniweb/runtime/scripts/entry-preloads
  */

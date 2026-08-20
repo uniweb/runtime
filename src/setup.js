@@ -285,9 +285,8 @@ export function initUniweb({ content, foundation, extensions = [], routingCompon
   // L2 (singleton wiring): defaultInsets, xref.build(), and any future
   // framework-level capability bridge — shared with ssr-renderer.js so
   // both boot paths apply the same foundation contract. See
-  // wire-foundation.js for the contract and CLAUDE.md "Three-Layer
-  // Runtime Model" for the rule about what belongs in this helper vs.
-  // here vs. ssr-renderer.js.
+  // wire-foundation.js — its header states the rule for what belongs in
+  // that helper vs. here vs. ssr-renderer.js.
   wireFoundationCapabilities(uniweb, foundation)
 
   // Site-wide theme CSS, for lanes that arrive without it (a backend-hosted

@@ -10,7 +10,7 @@
 # ── This job used to BUILD the channel. It no longer does, and that is the point ──
 #
 # The release publishes the channel itself now, from the machine that built it
-# (`scripts/release-channel.mjs`, run by the monorepo publisher between
+# (`scripts/release-channel.mjs`, run by the release script between
 # `pnpm publish` and the tag push). A runner cannot do it correctly:
 #
 # This package's `@uniweb/*` dependencies are `workspace:*`, which no registry

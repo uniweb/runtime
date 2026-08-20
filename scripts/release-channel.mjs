@@ -23,14 +23,19 @@
  * `^0.8.5`, and the CI log confirms `+ @uniweb/core 0.8.4`. The channel got a
  * runtime fix without the core fix it was released alongside.
  *
- * ⚠️ **The argument this replaces, so it is not re-derived from a stale
- * comment.** `publish-channel.mjs`'s `--from` still explains that CI passes an
- * extracted npm tarball so the channel carries "exactly the bytes npm shipped",
- * because "a local build can differ from a published one at the same version".
- * That was true of a design where npm shipped these artifacts. It no longer
- * does — `files` is `src` + `dist/ssr.js`, and `dist/ssr.js` is deliberately
- * NOT in the channel. The two sets no longer intersect, so there is nothing
- * left for a local build to disagree with.
+ * ⚠️ **The argument this replaces, recorded so it is not re-derived.** The old
+ * design had a runner publish from an extracted npm tarball, so the channel
+ * carried "exactly the bytes npm shipped" rather than relying on two builds
+ * agreeing at the same version. That held while npm shipped these artifacts.
+ * It no longer does — `files` is `src` + `dist/ssr.js`, and `dist/ssr.js` is
+ * deliberately NOT in the channel, so the two sets do not intersect and there
+ * is nothing left for a local build to disagree with.
+ *
+ * ⛔ This paragraph used to say `publish-channel.mjs`'s `--from` block "still
+ * explains" the retired argument — i.e. it described a stale comment instead of
+ * fixing it, and the stale comment then survived two more rounds of work in this
+ * file. Both are corrected now. **If you catch a comment describing another
+ * comment as out of date, fix the other comment.**
  *
  * ## The split with publish-channel.mjs
  *
@@ -45,11 +50,11 @@
  *
  * ⚠️ And it checks out `FETCH_HEAD`, not `origin/gh-pages`. The CI job could
  * name the remote-tracking ref because `actions/checkout` configures a
- * catch-all refspec; a working clone need not. The Uniweb workspace clones
- * `--single-branch` (scripts/init.js), so this repo's refspec is literally
- * `+refs/heads/main:refs/remotes/origin/main` and `origin/gh-pages` will never
- * exist no matter how often you fetch it — the first version of this script
- * died exactly there.
+ * catch-all refspec; a working clone need not. A clone made with
+ * `--single-branch` has a refspec of literally
+ * `+refs/heads/main:refs/remotes/origin/main`, so `origin/gh-pages` will never
+ * exist there no matter how often you fetch it — the first version of this
+ * script died exactly that way. `FETCH_HEAD` works under either refspec.
  */
 
 import { spawnSync } from 'node:child_process'

@@ -77,17 +77,27 @@ const channelDir = flag('channel')
 /**
  * The package to publish FROM — a directory holding `package.json` + `dist/`.
  *
- * Defaults to this repo, which is right for a local run. CI passes an extracted
- * **npm tarball** instead, and that is the important case: this repo declares
- * `@uniweb/core: workspace:*`, so a standalone clone cannot install or build at
- * all — the package is a workspace member, and only the (private) monorepo can
- * build it.
+ * Defaults to this repo, which is what every current caller wants — nothing
+ * passes `--from`. It stays for publishing from an unpacked tarball or any
+ * other prepared directory.
  *
- * Publishing from the tarball is better than a workaround for that. The channel
- * then carries **exactly the bytes npm shipped**, so "the runtime a site gets"
- * and "the runtime in the channel" are the same artifact by construction rather
- * than by two builds agreeing. A local build can differ from a published one at
- * the same version number; this removes that gap instead of documenting it.
+ * ⛔ **The argument this block used to make is RETIRED — do not restore it.**
+ * It said the flag existed so a runner could publish from an extracted npm
+ * tarball, giving the channel "exactly the bytes npm shipped" rather than
+ * relying on two builds agreeing at the same version.
+ *
+ * Both halves fell:
+ *   - No runner builds this. `release-channel.mjs` publishes what
+ *     `prepublishOnly` just built, from the machine that built it, and passes
+ *     no `--from`. (Its header carries the measurement that forced the change.)
+ *   - There is nothing left for two builds to disagree ABOUT. The package's
+ *     `files` is `src` + `dist/ssr.js`; `dist/ssr.js` is deliberately not in
+ *     the channel. The npm set and the channel set no longer intersect, so
+ *     "the same bytes as npm" describes an overlap that does not exist.
+ *
+ * ⚠️ It survived here because a sibling file warned about it instead of fixing
+ * it — the warning was easy to write and easy to not act on. If you find a
+ * comment describing another comment as stale, fix the comment.
  */
 const fromDir = resolve(flag('from') || resolve(here, '..'))
 const dryRun = has('dry-run')

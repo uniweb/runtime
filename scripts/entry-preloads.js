@@ -34,9 +34,12 @@
  * is after the entry has run; whether that is worth a preload hint is a
  * separate question with a separate answer, and it is not this field.
  *
- * ⭐ **Whether a bridge deserves its own hint is a live proposal, not a gap** —
- * the measurement, the trap, and two ways to close it are in
- * `kb/framework/build/shell-preload-hints.md`.
+ * ⭐ **Whether a bridge deserves its own hint is a live proposal, not a gap.**
+ * Measured across three built foundations: each emitted exactly three bridges
+ * (`@uniweb/core`, `react`, `react/jsx-runtime`, ~2.3 KB gzip) where the shell's
+ * `index.html` preloads all thirteen at ~73 KB — of which `react-dom/server`
+ * alone is 57.8 KB the browser never executes. So copying the shell's preload
+ * list into this field would be a pessimisation, not a fix.
  *
  * @module @uniweb/runtime/scripts/entry-preloads
  */

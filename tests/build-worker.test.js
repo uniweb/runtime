@@ -10,10 +10,10 @@
  * edit and the release that reached for it.
  *
  * The first response was to write a warning comment telling future editors not
- * to do it again. That is the response this repo has already learned does not
- * work — see framework gotcha #1, where two prose warnings in one file failed
- * to prevent the same bug twice and the guard had to become mechanical
- * (`build/tests/head-seam-parity.test.js`). This file is that guard.
+ * to do it again. That response has already been shown not to work here: the
+ * head-injection seam carried two prose warnings in one file and still shipped
+ * the same class of bug twice, and only a mechanical parity test stopped it.
+ * This file is the equivalent guard for the worker build.
  *
  * The `import` below is most of the value: it is what a syntax error fails.
  */

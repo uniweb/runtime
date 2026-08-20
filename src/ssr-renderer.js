@@ -453,7 +453,7 @@ export function initPrerender(content, foundation, extensionsOrOptions, maybeOpt
 
   onProgress('Initializing runtime...')
   // Uniweb constructor wires foundation, capabilities, layoutMeta, handlers,
-  // and extensions at construction time — see framework/core/src/uniweb.js.
+  // and extensions at construction time — see `@uniweb/core`'s src/uniweb.js.
   const uniweb = createUniweb(content, foundation, extensions)
 
   // Set base path from site config for subdirectory deployments
@@ -477,9 +477,8 @@ export function initPrerender(content, foundation, extensionsOrOptions, maybeOpt
   // L2 (singleton wiring): defaultInsets, xref.build(), and any future
   // framework-level capability bridge — shared with setup.js so both
   // boot paths apply the same foundation contract. See
-  // wire-foundation.js for the contract and CLAUDE.md "Three-Layer
-  // Runtime Model" for the rule about what belongs in this helper vs.
-  // here vs. setup.js.
+  // wire-foundation.js — its header states the rule for what belongs in
+  // that helper vs. here vs. setup.js.
   wireFoundationCapabilities(uniweb, foundation)
 
   // Site-wide theme CSS. Unconditional here: at this point there is no
@@ -724,7 +723,7 @@ export function injectPageContent(html, renderedContent, page, options = {}) {
   // the framework's build rendered with every semantic token unset: no
   // colours, no backgrounds, no failure anywhere. That is the same mistake
   // the appearance script above was moved out of, four lines below the
-  // comment warning about it — see the note in build/src/prerender.js.
+  // comment warning about it — see the note in `@uniweb/build`'s src/prerender.js.
   // Idempotent, so a shell that already carries the tag is left alone.
   const themeData = page?.website?.themeData
   const themeCss = themeData?.css

@@ -34,11 +34,10 @@
  * **built** foundation artifact (`dist/entry.js`) via
  * `loadFoundation()` in `foundation-loader.js`, which does `import(url)`
  * and returns a module namespace. The build pipeline
- * (`framework/build/src/generate-entry.js`) wraps the foundation's
+ * (`@uniweb/build`'s `src/generate-entry.js`) wraps the foundation's
  * source default export under `default.capabilities.*`, so the runtime
- * sees a single canonical shape with no need for fallback chains. See
- * `framework/CLAUDE.md` "Three-Layer Runtime Model" for the rationale
- * and for how this differs from `@uniweb/press` / `@uniweb/unipress`,
+ * sees a single canonical shape with no need for fallback chains. This
+ * differs from `@uniweb/press` / `@uniweb/unipress`,
  * which DO need to handle a second shape because they're sometimes
  * called from inside a foundation bundle (where the foundation imports
  * its own source as a bare default object).
@@ -93,7 +92,7 @@ export function wireFoundationCapabilities(uniweb, foundation) {
   // xref: foundations supporting cross-references export
   // `xref.build(website, { foundationKinds })`. The runtime can't
   // import kit directly (kit is bundled into each foundation, not into
-  // runtime — see CLAUDE.md gotcha #9 on tree-shaking), so it
+  // runtime, so only the foundations that use it pay for it), so it
   // dispatches through the foundation's reference. Foundations without
   // xref skip this entirely; kit's xref module never enters their
   // bundle thanks to tree-shaking at foundation-build time.

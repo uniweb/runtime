@@ -177,8 +177,8 @@ export default defineConfig({
     // 'hidden' emits the maps but omits the `//# sourceMappingURL=` comment.
     //
     // These maps are dev-only and every delivery path drops them — the npm
-    // tarball (`files: !dist/app/**/*.map`), `uniweb runtime register`, the
-    // seed, and the distribution channel. With `sourcemap: true` the shipped
+    // tarball (`files: !dist/app/**/*.map`), the seed, and the distribution
+    // channel. With `sourcemap: true` the shipped
     // JS still POINTS at maps that are not there, so every one of those paths
     // ships a dangling reference; the one path that happened to carry the maps
     // was also publishing 7 files of embedded original source into a public

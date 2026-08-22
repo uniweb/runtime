@@ -27,9 +27,11 @@
  * ── What gets published, and why not all of `dist/` ──
  *
  * The DELIVERY set: `worker-runtime.js`, `shims/*`, and `app/**` minus
- * sourcemaps. That is the same set `uniweb runtime register` uploads and the
- * same set the npm tarball ships (`files: !dist/app/**\/*.map`). Three
- * producers, one set — a sourcemap is dev-only, and this bucket is public.
+ * sourcemaps. That is the same set the npm tarball ships
+ * (`files: !dist/app/**\/*.map`). Two producers, one set — a sourcemap is
+ * dev-only, and this bucket is public. (A third, `uniweb runtime register`,
+ * pushed the same set to a backend until it was removed on 2026-08-22: a
+ * backend does not hold runtimes.)
  *
  * ── Two halves, two sinks, and the index says which is which ──
  *
@@ -162,9 +164,8 @@ function walk(dir, base = dir) {
 }
 
 /**
- * The delivery set. Kept as one list so the three producers cannot drift: if
- * this changes, `runtime register`'s filter and the package's `files` change
- * with it.
+ * The delivery set. Kept as one list so the two producers cannot drift: if this
+ * changes, the package's `files` changes with it.
  */
 function deliveryFiles() {
   const isolate = []
@@ -187,7 +188,8 @@ const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')
  * Object metadata is invisible to every check a stocker runs — it shows in no
  * listing and survives no byte comparison, so an integrity match says nothing
  * about it. This lane has already paid for that once: `uniweb runtime register`
- * stores no `Cache-Control` on any object it uploads, and nothing noticed.
+ * stored no `Cache-Control` on any object it uploaded, and nothing noticed for
+ * the life of the verb (removed 2026-08-22).
  *
  * An unknown extension THROWS rather than falling back to
  * `application/octet-stream`. A wrong content-type on a JS module is a page

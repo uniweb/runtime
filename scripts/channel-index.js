@@ -435,8 +435,9 @@ export function addVersion(index, { version, published, files, integrity }) {
     for (const f of files[group]) {
       // Every entry states its own metadata. A consumer re-serving these objects
       // has to set content-type somewhere, and DERIVING it from a file extension
-      // is the shape that already bit this lane: `runtime register` stores no
-      // Cache-Control on any of its objects, and object metadata shows in no
+      // is the shape that already bit this lane: `runtime register` (removed
+      // 2026-08-22) stored no Cache-Control on any object it uploaded, and
+      // nothing noticed for the life of the verb — object metadata shows in no
       // listing and survives no byte-level check — an integrity match says
       // nothing about it. Stated once by the producer, it cannot be derived
       // differently by two stockers.

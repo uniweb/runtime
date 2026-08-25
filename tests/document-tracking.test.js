@@ -183,3 +183,165 @@ function fakeScrollEnv({ scrollHeight, innerHeight }) {
     listeners
   }
 }
+
+/**
+ * `section_click` — the listener half.
+ *
+ * ⭐ **The failure this file exists to prevent is a SILENT ZERO.** A lookup that
+ * resolves nothing throws nothing and logs nothing: it reports no clicks on
+ * every section of every site while the payload stays internally consistent.
+ * Two wrong versions were proposed before this shipped — `[data-section-id]`
+ * (an attribute this renderer does not emit) and `[id^="section-"]` (a second
+ * copy of the id rule, which has drifted before) — so the positive case is
+ * asserted against an id built by `sectionDomId` itself, never by a literal.
+ */
+
+import { observeSectionClicks } from '../src/document-tracking.js'
+import { sectionDomId } from '@uniweb/core/section-id'
+
+/** A block as the graph holds it, with the `track` the runtime calls. */
+const fakeBlock = (stableId) => ({ stableId, track: vi.fn() })
+
+/** A page whose sections resolve to elements, as `bodyBlocks` does. */
+const fakePage = (blocks) => ({ bodyBlocks: blocks })
+
+/**
+ * An element chain: `child` nested inside a section wrapper carrying the id.
+ * `parentElement` is what the walk climbs — the click lands on a child far more
+ * often than on the wrapper.
+ */
+function elementIn(domId, { depth = 2 } = {}) {
+  const wrapper = { nodeType: 1, id: domId, parentElement: null }
+  let el = wrapper
+  for (let i = 0; i < depth; i++) el = { nodeType: 1, id: '', parentElement: el }
+  return el
+}
+
+describe('observeSectionClicks', () => {
+  let doc, stop, present
+
+  beforeEach(() => {
+    present = new Set()
+    doc = fakeDocument()
+    // `getElementById` is what decides a section is RENDERED, matching the
+    // graph-derived lookup in `sectionsById`.
+    doc.getElementById = (id) => (present.has(id) ? { id } : null)
+    globalThis.document = doc
+  })
+
+  afterEach(() => {
+    if (stop) stop()
+    stop = null
+    delete globalThis.document
+  })
+
+  it('reports the click through the BLOCK, so the envelope carries path/section/section_id', () => {
+    const hero = fakeBlock('hero')
+    present.add(sectionDomId(hero))
+    stop = observeSectionClicks(() => fakePage([hero]))
+
+    doc.dispatch('click', elementIn(sectionDomId(hero)))
+    expect(hero.track).toHaveBeenCalledWith('section_click')
+  })
+
+  // ⭐ The regression that motivated the whole lookup design. `SplitContent` in
+  // `split.md` has stableId `split`, so the id is `section-split` — NOT derived
+  // from the type. A selector written against the type, or against a
+  // `data-section-id` attribute, matches nothing and counts zero forever.
+  it('resolves by the GRAPH id, which is not derived from the section type', () => {
+    const block = { stableId: 'split', type: 'SplitContent', track: vi.fn() }
+    expect(sectionDomId(block)).toBe('section-split')
+    present.add('section-split')
+    stop = observeSectionClicks(() => fakePage([block]))
+
+    doc.dispatch('click', elementIn('section-split'))
+    expect(block.track).toHaveBeenCalledWith('section_click')
+  })
+
+  it('attributes to the INNERMOST section when one is nested inside another', () => {
+    const outer = fakeBlock('outer')
+    const inner = fakeBlock('inner')
+    present.add(sectionDomId(outer)).add(sectionDomId(inner))
+    stop = observeSectionClicks(() => fakePage([outer, inner]))
+
+    // inner wrapper nested inside the outer wrapper
+    const outerEl = { nodeType: 1, id: sectionDomId(outer), parentElement: null }
+    const innerEl = { nodeType: 1, id: sectionDomId(inner), parentElement: outerEl }
+    const child = { nodeType: 1, id: '', parentElement: innerEl }
+
+    doc.dispatch('click', child)
+    expect(inner.track).toHaveBeenCalledWith('section_click')
+    expect(outer.track).not.toHaveBeenCalled()
+  })
+
+  it('says nothing for a click outside every section', () => {
+    const hero = fakeBlock('hero')
+    present.add(sectionDomId(hero))
+    stop = observeSectionClicks(() => fakePage([hero]))
+
+    doc.dispatch('click', elementIn('site-footer'))
+    expect(hero.track).not.toHaveBeenCalled()
+  })
+
+  it('skips a block whose element is not rendered', () => {
+    const hero = fakeBlock('hero')
+    // deliberately NOT added to `present`
+    stop = observeSectionClicks(() => fakePage([hero]))
+
+    doc.dispatch('click', elementIn(sectionDomId(hero)))
+    expect(hero.track).not.toHaveBeenCalled()
+  })
+
+  // ⭐ One listener spans every SPA navigation, so the page is read at CLICK
+  // time. Capturing it at arm time would attribute every later click to
+  // whichever page the visitor first landed on — silently, and only after a
+  // navigation, which is exactly when nobody is looking.
+  it('follows the ACTIVE page across a navigation', () => {
+    const first = fakeBlock('hero')
+    const second = fakeBlock('pricing')
+    present.add(sectionDomId(first)).add(sectionDomId(second))
+
+    let active = fakePage([first])
+    stop = observeSectionClicks(() => active)
+
+    doc.dispatch('click', elementIn(sectionDomId(first)))
+    expect(first.track).toHaveBeenCalledTimes(1)
+
+    active = fakePage([second])
+    doc.dispatch('click', elementIn(sectionDomId(second)))
+    expect(second.track).toHaveBeenCalledTimes(1)
+    expect(first.track).toHaveBeenCalledTimes(1)
+  })
+
+  it('counts a middle click, which fires auxclick rather than click', () => {
+    const hero = fakeBlock('hero')
+    present.add(sectionDomId(hero))
+    stop = observeSectionClicks(() => fakePage([hero]))
+
+    doc.dispatch('auxclick', elementIn(sectionDomId(hero)))
+    expect(hero.track).toHaveBeenCalledWith('section_click')
+  })
+
+  it('registers on the CAPTURE phase, so stopPropagation cannot zero the count', () => {
+    stop = observeSectionClicks(() => fakePage([]))
+    expect(doc.listeners.every((l) => l.capture === true)).toBe(true)
+    expect(doc.listeners.map((l) => l.type).sort()).toEqual(['auxclick', 'click'])
+  })
+
+  it('removes both listeners on teardown', () => {
+    const teardown = observeSectionClicks(() => fakePage([]))
+    expect(doc.listeners).toHaveLength(2)
+    teardown()
+    expect(doc.listeners).toHaveLength(0)
+  })
+
+  it('survives a page with no active page yet', () => {
+    stop = observeSectionClicks(() => null)
+    expect(() => doc.dispatch('click', elementIn('section-hero'))).not.toThrow()
+  })
+
+  it('returns null when there is no DOM at all (the SSR path)', () => {
+    delete globalThis.document
+    expect(observeSectionClicks(() => fakePage([]))).toBeNull()
+  })
+})

@@ -12,6 +12,7 @@ import { useRememberScroll } from '../hooks/useRememberScroll.js'
 import { useLinkInterceptor } from '../hooks/useLinkInterceptor.js'
 import { usePageView } from '../hooks/usePageView.js'
 import { useOutboundClicks } from '../hooks/useOutboundClicks.js'
+import { useSectionClicks } from '../hooks/useSectionClicks.js'
 
 /**
  * WebsiteRenderer component
@@ -40,6 +41,11 @@ export default function WebsiteRenderer() {
   // as usePageView, and armed once for the document rather than per route — the
   // listener is delegated on `document` and outlives SPA navigation.
   useOutboundClicks()
+
+  // Which sections visitors interact with. Same contract and the same arming
+  // condition, so it shares the chunk — but a separate `arms()` call, because a
+  // host may consume one of the two and not the other.
+  useSectionClicks()
 
   if (!website) {
     return (

@@ -4,9 +4,14 @@
  * ⭐ **The grouping rule, which is what this file is really for.** Everything
  * here needs exactly `tracking.arms(<event>)` with no further condition: a
  * destination exists, this is a live document, and neither the host nor the site
- * narrowed the event away. Today that is `outbound_click` alone; the next
- * emitter meeting the same condition belongs in this chunk, and one meeting a
+ * narrowed the event away. Today that is `outbound_click` and `section_click`;
+ * an emitter meeting the same condition belongs in this chunk, and one meeting a
  * different condition does not.
+ *
+ * ⛔ **Two events, two independent arming calls, two listeners — deliberately.**
+ * A host may name one and not the other, so they cannot share a registration:
+ * folding them into one listener would arm both whenever either was selected.
+ * The grouping is about WHEN THE CHUNK LOADS, never about sharing a callback.
  *
  * ⛔ **`section-views.js` stays separate** — its condition is narrower (a page
  * may override, so it is armed per page rather than per document). ⛔ **And
@@ -129,6 +134,118 @@ export function observeOutboundClicks(tracking) {
   // A middle click fires `auxclick`, not `click`. Opening a link in a new tab
   // is a real outbound visit, and omitting it would undercount silently and
   // unevenly — power users do it far more than average visitors.
+  document.addEventListener('auxclick', onClick, true)
+
+  return () => {
+    document.removeEventListener('click', onClick, true)
+    document.removeEventListener('auxclick', onClick, true)
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * section_click — which sections a visitor actually interacts with.
+ *
+ * ⭐ **Armed per DOCUMENT, not per page — unlike `section_view`.** That event
+ * needs `trackSections` because it emits **once per section per page view**, so
+ * a long page costs many times what a short one does and the cardinality had to
+ * be capped at the granularity the cost varies at. **A click is bounded by what
+ * a visitor does**, exactly like `outbound_click`, so the cost shape that forced
+ * the page flag does not arise here.
+ *
+ * ⇒ **And therefore no delivery projection.** A page-level flag would need the
+ * stored flag carried onto the runtime payload — a distinct item owned by
+ * another lane and invisible from this one. That gap shipped once already and
+ * cost a day of a working emitter reporting nothing.
+ *
+ * ⛔ **THE ELEMENT LOOKUP GOES THROUGH THE GRAPH, never through a selector.**
+ * There is no `data-section-id` attribute in this renderer — a section wrapper
+ * carries `id="section-<stableId>"`, written by `sectionDomId()`. And the
+ * obvious repair, `closest('[id^="section-"]')`, is also wrong: a hardcoded
+ * prefix is a second copy of a rule that already drifted once — the search
+ * extractor kept emitting `Section1` while the DOM said
+ * `section-what-is-uniweb`, every section-level result on every site pointed at
+ * a fragment that did not exist, and no test failed.
+ *
+ * ⚖️ **Both wrong versions fail the same way and it is the worst way**: a
+ * selector that matches nothing throws nothing and logs nothing. It reports
+ * zero clicks on every section of every site, with the payload internally
+ * consistent and every check green.
+ *
+ * ⭐ **Double-counting with `outbound_click` is DELIBERATE.** A link inside a
+ * section is both a section interaction and a departure; both answers are true,
+ * and deduping would under-count whichever lost the tie-break. ⛔ The constraint
+ * is a *reporting* one — the two must never be summed into a "clicks" total.
+ * ------------------------------------------------------------------ */
+
+import { sectionDomId } from '@uniweb/core/section-id'
+
+/**
+ * The rendered sections of one page, as a DOM-id → Block lookup.
+ *
+ * Derived from the graph and keyed by the same helper the renderers write the
+ * id with, so this cannot drift from what is in the document. A block whose
+ * element is absent is skipped — in split-content mode a page's sections can
+ * arrive later, and a click before then simply does not resolve.
+ *
+ * @param {object} page - the active `Page`
+ * @returns {Map<string, object>}
+ */
+function sectionsById(page) {
+  const map = new Map()
+  for (const block of page?.bodyBlocks || []) {
+    const id = sectionDomId(block)
+    if (document.getElementById(id)) map.set(id, block)
+  }
+  return map
+}
+
+/**
+ * Report clicks landing inside a section, attributed to that section.
+ *
+ * @param {() => object} getPage - reads the CURRENTLY active page. A function
+ *        rather than a value because one listener outlives every SPA
+ *        navigation; capturing a page would attribute every later click to the
+ *        page the visitor first landed on.
+ * @returns {(() => void) | null} teardown, or null when there is no DOM
+ */
+export function observeSectionClicks(getPage) {
+  if (typeof document === 'undefined' || typeof getPage !== 'function') return null
+
+  // Rebuilt when the page identity changes, not on every click. Navigation is
+  // the only thing that invalidates it, and it is the cheap moment to notice.
+  let cachedPage = null
+  let cachedMap = null
+
+  const onClick = (event) => {
+    const page = getPage()
+    if (!page) return
+    if (page !== cachedPage) {
+      cachedPage = page
+      cachedMap = sectionsById(page)
+    }
+    if (!cachedMap.size) return
+
+    // Walk up rather than `closest(selector)`: the ids come from the graph, so
+    // there is no selector to write that is not a second copy of the id rule.
+    // `id` values can also contain characters a selector would have to escape.
+    let el = event.target
+    while (el && el.nodeType === 1) {
+      const block = el.id ? cachedMap.get(el.id) : undefined
+      if (block) {
+        // Through the BLOCK, so `path`, `section` (the type) and `section_id`
+        // (this instance) are attached by the one envelope every section-scoped
+        // event shares. The consumer joins clicks to views on those fields.
+        block.track('section_click')
+        return
+      }
+      el = el.parentElement
+    }
+  }
+
+  // ⛔ CAPTURE, and `auxclick` alongside `click` — same two reasons as
+  // `outbound_click` above: a foundation may `stopPropagation()` on its own
+  // handlers, and a middle click fires only `auxclick`.
+  document.addEventListener('click', onClick, true)
   document.addEventListener('auxclick', onClick, true)
 
   return () => {

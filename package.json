@@ -62,5 +62,11 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^6.0.0 || ^7.0.0"
+  },
+  "uniweb": {
+    "bundledDeps": [
+      "@uniweb/core",
+      "@uniweb/theming"
+    ]
   }
 }

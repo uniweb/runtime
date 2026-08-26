@@ -264,3 +264,91 @@ describe('flushIntervalMs — the host names the batch window', () => {
     expect(armedDelay({ tracking: { flushIntervalMs: 30000 } })).toBeNull()
   })
 })
+
+/**
+ * ⭐ ABSENT `emit` — two different questions, and this is where they part.
+ *
+ * A site that configured its own `endpoint` chose it, so absence means *the
+ * curated default*. A site whose HOST supplies the collector has no endpoint of
+ * its own, so absence means *whatever my host offers* — not a list frozen at
+ * the framework version the site was built against.
+ *
+ * ⛔ **This was a BREAKING change and NOT ONE EXISTING TEST FAILED**, because
+ * the only case it moves — a host declaring `events` while the site declares no
+ * `emit` — had never been pinned. That is why each assertion below carries the
+ * control that discriminates it.
+ */
+describe('absent emit — deferring to the host, and the standalone floor', () => {
+  const HOST_LIST = ['page_view', 'section_view', 'section_click', 'time_on_page']
+
+  // ⭐ THE CHANGE. An owner paying a host for analytics used to receive a
+  // framework-frozen SUBSET of what that host stores and bills them for, and
+  // the only way to close the gap was to hand-edit YAML and republish.
+  it('defers to the host list when the site declares no emit', () => {
+    const t = wire({ services: { tracking: { endpoint: '/_a/e', events: HOST_LIST } } })
+    expect(t.arms('section_click')).toBe(true)
+    expect(t.arms('time_on_page')).toBe(true)
+    // CONTROL: it is the HOST's list that decides, not "everything" —
+    // outbound_click is absent from HOST_LIST and must stay off.
+    expect(t.arms('outbound_click')).toBe(false)
+  })
+
+  // ⛔ A default, never an override. An author who names anything still wins,
+  // including narrower than what the host offers.
+  it('lets an author who names a preset beat the host list', () => {
+    const t = wire({
+      services: { tracking: { endpoint: '/_a/e', events: HOST_LIST } },
+      tracking: { emit: 'minimal' }
+    })
+    expect(t.arms('page_view')).toBe(true)
+    expect(t.arms('section_click')).toBe(false)
+    expect(t.arms('time_on_page')).toBe(false)
+  })
+
+  it('lets an author who names a list beat the host list', () => {
+    const t = wire({
+      services: { tracking: { endpoint: '/_a/e', events: HOST_LIST } },
+      tracking: { emit: ['section_view'] }
+    })
+    expect(t.arms('section_view')).toBe(true)
+    expect(t.arms('section_click')).toBe(false)
+  })
+
+  // ⛔⛔ THE STANDALONE-FIRST FLOOR. A static host, a foreign backend, and every
+  // Uniweb backend predating the `events` key all declare no list. Deferring
+  // unconditionally would arm EVERY event forever on exactly the sites the
+  // framework exists to serve without a backend.
+  it('falls back to standard when the site owns its endpoint and no host speaks', () => {
+    const t = wire({ tracking: { endpoint: 'https://collect.example/e' } })
+    expect(t.arms('page_view')).toBe(true)
+    expect(t.arms('section_view')).toBe(true)
+    // The floor: a curated set, NOT everything.
+    expect(t.arms('section_click')).toBe(false)
+    expect(t.arms('time_on_page')).toBe(false)
+    expect(t.arms('an_event_shipped_next_year')).toBe(false)
+  })
+
+  // The older-backend shape: a host supplying an address and saying nothing
+  // about events is not declining anything, so the curated default still holds.
+  it('falls back to standard when the host declares an endpoint but no events', () => {
+    const t = wire({ services: { tracking: { endpoint: '/_a/e' } } })
+    expect(t.arms('section_view')).toBe(true)
+    expect(t.arms('section_click')).toBe(false)
+  })
+
+  // ⚠️ `[]` is a statement, not an absence — a host saying "I store nothing"
+  // arms nothing. Unchanged behaviour, pinned because the new branch reads
+  // `hostEvents` and an empty array is truthy.
+  it('arms nothing when the host declares an EMPTY events list', () => {
+    const t = wire({ services: { tracking: { endpoint: '/_a/e', events: [] } } })
+    expect(t.arms('page_view')).toBe(false)
+    expect(t.arms('section_click')).toBe(false)
+  })
+
+  // ⭐ The two tiers still answer their own questions: a host list does not
+  // become an author's `emit`, and the page override still cannot escape it.
+  it('still cannot conjure an event the host declined, via the page override', () => {
+    const t = wire({ services: { tracking: { endpoint: '/_a/e', events: ['page_view'] } } })
+    expect(t.arms('section_view', true)).toBe(false)
+  })
+})

@@ -287,6 +287,10 @@ export function ensureThemeCss(uniweb, foundation) {
  * `standard` is a curated set that a release cannot grow behind an operator's
  * back, `all` is the standing yes. The volume surprise is the thing being
  * avoided — a site that never changed should not start sending more.
+ *
+ * ⛔ **The curated set is the answer for a site that CONFIGURED ITS OWN
+ * DESTINATION. It is NOT the answer for a site whose host supplies one** — see
+ * `resolveEmit`, which is where absence stopped meaning one thing.
  */
 const EMIT_PRESETS = {
   minimal: ['page_view'],
@@ -304,11 +308,51 @@ const DEFAULT_EMIT = 'standard'
  * misread selection has to be "you got the usual set", never "you got none and
  * nothing said so".
  *
- * @param {string|string[]|undefined} emit
+ * ## ⭐ ABSENCE MEANS TWO DIFFERENT THINGS, and this is where they part
+ *
+ * **A site that configured its own `endpoint` chose it.** Writing no `emit`
+ * there means *"the curated default"*, and `standard` is exactly right — a
+ * later framework release must not grow it behind that operator's back.
+ *
+ * **A site whose HOST supplies the collector has no endpoint of its own.** The
+ * operator's whole relationship is *"my host does analytics for me"*, so
+ * writing no `emit` there means **"whatever my host offers"** — not a list
+ * frozen at the framework version the site was built against.
+ *
+ * ⇒ **Absent `emit` defers to the host's declared list when there is one, and
+ * falls back to `standard` when there is not.** Returning `null` is how the
+ * deferral is expressed: it is *no site-tier narrowing*, so `Tracker.arms()` is
+ * left with the host's list as the only gate.
+ *
+ * ⭐ **Why this is a fix and not a relaxation.** §4 of the tracking design says
+ * *"the runtime emits what the SITE OWNER buys"* — and before this, an owner
+ * paying a host for analytics received a **framework-frozen subset** of what
+ * that host stores and bills them for. The only way to close the gap was to
+ * hand-edit YAML and republish, **a dependency with no symptom when forgotten**,
+ * which is the precise failure that rule was written to reject.
+ *
+ * ⛔ **The fallback is NOT decoration — it is the standalone-first guarantee.**
+ * A static host, a foreign backend, and any Uniweb backend predating the
+ * `events` key all declare no list. Deferring unconditionally would arm *every*
+ * event, forever, on exactly the sites the framework exists to serve without a
+ * backend.
+ *
+ * ⚠️ **A host that declares an EMPTY list still means it** — `[]` is a
+ * statement, not an absence, and it arms nothing. That is unchanged: `arms()`
+ * has always read an empty host list that way. Only `undefined` means "nothing
+ * declared".
+ *
+ * @param {string|string[]|undefined} emit - the site's own `tracking.emit`
+ * @param {string[]|null} [hostEvents] - the host's declared list, or `null`
+ *        when the host declared none. **Only consulted when `emit` is absent**;
+ *        an author who names anything still wins.
  * @returns {string[]|null}
  */
-function resolveEmit(emit) {
-  if (emit == null) return EMIT_PRESETS[DEFAULT_EMIT]
+function resolveEmit(emit, hostEvents = null) {
+  // ⛔ Absent is the ONLY branch that consults the host — this is a default,
+  // never an override. `emit: minimal` on a host offering everything still
+  // sends one event.
+  if (emit == null) return hostEvents ? null : EMIT_PRESETS[DEFAULT_EMIT]
   if (Array.isArray(emit)) return emit
   if (emit === 'all') return null
   return EMIT_PRESETS[emit] || EMIT_PRESETS[DEFAULT_EMIT]
@@ -360,7 +404,7 @@ export function wireTracker(uniweb, { basePath = '', loadScripts = null } = {}) 
   const tracker = new Tracker({
     endpoint: url,
     hostEvents,
-    siteEmit: resolveEmit(siteTracking && siteTracking.emit),
+    siteEmit: resolveEmit(siteTracking && siteTracking.emit, hostEvents),
     // ⭐ Read off the MERGED view, unlike the two above — and the difference is
     // the point. `events`/`emit` answer different questions per tier, so each is
     // read from its own key; this is one question with two possible answerers,

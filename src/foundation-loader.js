@@ -33,7 +33,7 @@ function resolveAgainstDocument(url) {
  * The skip below is what lets a shell put the stylesheet in the head itself —
  * so the sheet applies during HTML parse instead of waiting for the runtime to
  * boot, parse `__DATA__` and inject it. Hosting shipped that on the strength of
- * this guard (channel `framework-hosting-ea29`, 2026-08-19); until then nothing
+ * this guard (the hosting lane, 2026-08-19); until then nothing
  * asserted it, so a refactor would have produced two `<link>` tags and two
  * fetches on their lane with every test here still green.
  *

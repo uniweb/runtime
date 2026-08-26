@@ -61,6 +61,7 @@ import {
   matchWhere,
   deriveCacheKey,
   resolveRequestStyle,
+  resolveServiceUrl,
 } from '@uniweb/core'
 
 // Phase 2 of the request-styles landing will read `config.request.style`
@@ -172,7 +173,7 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false }
 
     async resolve(request, ctx = {}) {
       if (!request) return { data: null }
-      const { path, url, transform, body: rawBody } = request
+      const { path, url, endpoint, transform, body: rawBody } = request
 
       // Normalize method. Only GET and POST are supported by the default
       // fetcher — mutations (PUT/PATCH/DELETE) are a different feature
@@ -185,7 +186,23 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false }
 
       let target
       let isRemote
-      if (path) {
+      if (endpoint) {
+        // A host-declared collection lane, resolved upstream from the pattern
+        // it published (`@uniweb/core/collection-address`). FINAL ON ARRIVAL:
+        //
+        //   - `baseUrl` is NOT joined. That knob points a site at ITS OWN
+        //     backend; prepending it to an address a host composed would
+        //     corrupt exactly the layout the pattern exists to let them own.
+        //   - the site `base` IS applied to a rooted address, the same rule
+        //     every other site-relative address follows — shared with
+        //     `resolveServiceUrl` rather than spelled a second time here.
+        //
+        // Remote semantics otherwise: this answers a QUERY, so operator
+        // pushdown and static headers both apply, which is what separates it
+        // from `path` (a static file that can neither filter nor sort).
+        target = resolveServiceUrl(endpoint, pathPrefix)
+        isRemote = true
+      } else if (path) {
         // Local file under public/ — basePath applies for subpath deploys.
         target = pathPrefix && path.startsWith('/') && !path.startsWith('//')
           ? pathPrefix + path
@@ -197,7 +214,7 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false }
         target = isAbsoluteUrl(url) ? url : joinUrl(baseUrl, url)
         isRemote = true
       } else {
-        return { data: [], error: 'No path or url specified' }
+        return { data: [], error: 'No path, url or endpoint specified' }
       }
 
       const init = { signal: ctx.signal, method }

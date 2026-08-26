@@ -82,7 +82,7 @@ describe('createDefaultFetcher — baseline (no config)', () => {
   it('returns { data: [], error } on empty request', async () => {
     const f = createDefaultFetcher()
     const result = await f.resolve({})
-    expect(result).toEqual({ data: [], error: 'No path or url specified' })
+    expect(result).toEqual({ data: [], error: 'No path, url or endpoint specified' })
   })
 
   it('returns { data: null } on null request', async () => {
@@ -861,5 +861,88 @@ describe('createDefaultFetcher — cacheKey varies by style', () => {
       where: { id: 1 },
     })
     expect(key).not.toContain('style=')
+  })
+})
+
+describe('endpoint — a host-declared collection lane', () => {
+  let calls
+  let originalFetch
+
+  const respond = () => ({
+    ok: true,
+    headers: { get: () => 'application/json' },
+    json: async () => [{ slug: 'a' }],
+  })
+
+  beforeEach(() => {
+    calls = []
+    originalFetch = globalThis.fetch
+    globalThis.fetch = vi.fn(async (url, init) => {
+      calls.push({ url, init })
+      return respond()
+    })
+  })
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  const lastUrl = () => calls[calls.length - 1].url
+
+  it('applies the site base to a rooted endpoint', () => {
+    const f = createDefaultFetcher({ basePath: '/docs/' })
+    return f.resolve({ endpoint: '/_data/articles', schema: 'articles' }).then(() => {
+      expect(lastUrl()).toBe('/docs/_data/articles')
+    })
+  })
+
+  it('leaves an absolute endpoint exactly as the host wrote it', async () => {
+    // A pattern may carry a site id, its own root, any layout at all. The
+    // whole point of a pattern over a base is that none of it is ours.
+    const f = createDefaultFetcher({ basePath: '/docs/' })
+    await f.resolve({ endpoint: 'https://h.example/s/abc/c/news.json', schema: 'news' })
+    expect(lastUrl()).toBe('https://h.example/s/abc/c/news.json')
+  })
+
+  it('does NOT join the site\'s own baseUrl onto it', async () => {
+    // `fetcher.baseUrl` points a site at ITS OWN backend. Prepending it to an
+    // address a host composed corrupts exactly the layout the pattern exists
+    // to let them own — and only for sites that happen to use both.
+    const f = createDefaultFetcher({ config: { baseUrl: 'https://my-own-api.example' } })
+    await f.resolve({ endpoint: '/_data/articles', schema: 'articles' })
+    expect(lastUrl()).toBe('/_data/articles')
+  })
+
+  it('still joins baseUrl onto a relative url: — the control', async () => {
+    // Without this, a bug that disabled baseUrl entirely would pass the
+    // assertion above while breaking every site that declares one.
+    const f = createDefaultFetcher({ config: { baseUrl: 'https://my-own-api.example' } })
+    await f.resolve({ url: '/things', schema: 'things' })
+    expect(lastUrl()).toBe('https://my-own-api.example/things')
+  })
+
+  it('pushes operators down — an endpoint answers a query, unlike a file', async () => {
+    const f = createDefaultFetcher({ config: { supports: ['where', 'limit'] } })
+    await f.resolve({ endpoint: '/_data/articles', schema: 'articles', where: { a: 1 }, limit: 3 })
+    expect(lastUrl()).toContain('_where=')
+    expect(lastUrl()).toContain('_limit=3')
+  })
+
+  it('does not push operators onto a path: — the control', async () => {
+    // A compiled file can neither filter nor sort, so the runtime does it.
+    const f = createDefaultFetcher({ config: { supports: ['where', 'limit'] } })
+    await f.resolve({ path: '/data/articles.json', schema: 'articles', where: { a: 1 }, limit: 3 })
+    expect(lastUrl()).toBe('/data/articles.json')
+  })
+
+  it('sends the site\'s static headers, as it does for any remote source', async () => {
+    const f = createDefaultFetcher({ config: { headers: { 'X-Tenant': 'acme' } } })
+    await f.resolve({ endpoint: '/_data/articles', schema: 'articles' })
+    expect(calls[calls.length - 1].init.headers['X-Tenant']).toBe('acme')
+  })
+
+  it('reports when a request names no source at all', async () => {
+    const f = createDefaultFetcher({})
+    const out = await f.resolve({ schema: 'articles' })
+    expect(out.error).toContain('endpoint')
   })
 })

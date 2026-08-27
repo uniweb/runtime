@@ -1,0 +1,33 @@
+{
+  "version": "0.13.1",
+  "entry": "assets/index-Ui9-_1J5.js",
+  "preloads": [
+    "assets/setup-BqoME8Sy.js",
+    "assets/_importmap_react-CrAkajDz.js",
+    "assets/_commonjsHelpers-CqkleIqs.js",
+    "assets/index-CxUeIbEw.js",
+    "assets/index-Dci88nki.js",
+    "assets/index-fMIgSTK9.js",
+    "assets/shade-generator-BBzWo1IN.js",
+    "assets/normalize-DbApPPeG.js",
+    "assets/jsx-runtime-0PlsXv6K.js",
+    "assets/_importmap_react-router-dom-CLbp1nUY.js",
+    "assets/client-CQjOKqaN.js",
+    "assets/index-VvOM7xKK.js"
+  ],
+  "importMap": {
+    "react": "_importmap/react.js",
+    "react-dom": "_importmap/react-dom.js",
+    "react-dom/server": "_importmap/react-dom-server.js",
+    "react/jsx-runtime": "_importmap/react-jsx-runtime.js",
+    "react/jsx-dev-runtime": "_importmap/react-jsx-dev-runtime.js",
+    "@uniweb/core": "_importmap/@uniweb-core.js",
+    "@uniweb/runtime/provider": "_importmap/@uniweb-runtime-provider.js",
+    "@uniweb/runtime/setup": "_importmap/@uniweb-runtime-setup.js",
+    "@uniweb/runtime/foundation-loader": "_importmap/@uniweb-runtime-foundation-loader.js",
+    "@uniweb/runtime/default-fetcher": "_importmap/@uniweb-runtime-default-fetcher.js",
+    "react-router-dom": "_importmap/react-router-dom.js",
+    "@uniweb/theming": "_importmap/@uniweb-theming.js",
+    "react-dom/client": "_importmap/react-dom-client.js"
+  }
+}

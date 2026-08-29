@@ -122,7 +122,7 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false }
 
   // `envelope:` extends today's `transform:` to cover detail responses and
   // errors. Three dot-paths, all optional:
-  //   - envelope.collection — applied on collection responses. Per-fetch
+  //   - envelope.list — applied on list responses. Per-fetch
   //     `transform:` on the request wins (per-fetch overrides site-level).
   //   - envelope.item       — applied when request.dynamicContext is set
   //     (the request is for a template-page item).
@@ -335,12 +335,12 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false }
 
         // Unwrap response envelope. Priority order, highest wins:
         //   1. Per-fetch `transform:` (existing, documented knob).
-        //   2. Per-request `envelope.item` (detail) or `envelope.collection`.
-        //   3. Site-level `envelope.item` (detail) or `envelope.collection`.
+        //   2. Per-request `envelope.item` (detail) or `envelope.list`.
+        //   3. Site-level `envelope.item` (detail) or `envelope.list`.
         const isDetailRequest = !!request.dynamicContext
         const effectiveTransform =
           transform
-          || (isDetailRequest ? effectiveEnvelope.item : effectiveEnvelope.collection)
+          || (isDetailRequest ? effectiveEnvelope.item : effectiveEnvelope.list)
         if (effectiveTransform && data !== null && data !== undefined) {
           data = getNestedValue(data, effectiveTransform)
         }

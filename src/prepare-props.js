@@ -207,7 +207,7 @@ function applyRichFieldDefaults(obj, fields) {
  *
  * Shape rules:
  *   - composite (isComposite=true) → value is array of childSchema rows
- *     - when `childCollection` is set, value may be `{ [childCollection]: [...] }`
+ *     - when `childRecords` is set, value may be `{ [childRecords]: [...] }`
  *   - non-composite → value is a single object keyed by field id
  */
 function applyRichSchemaToValue(value, schema) {
@@ -215,13 +215,13 @@ function applyRichSchemaToValue(value, schema) {
 
   if (schema.isComposite && schema.childSchema) {
     const childFields = schema.childSchema.fields
-    const collectionKey = schema.childCollection
+    const queryKey = schema.childRecords
 
-    if (collectionKey && value && typeof value === 'object' && !Array.isArray(value)) {
-      const arr = Array.isArray(value[collectionKey]) ? value[collectionKey] : []
+    if (queryKey && value && typeof value === 'object' && !Array.isArray(value)) {
+      const arr = Array.isArray(value[queryKey]) ? value[queryKey] : []
       return {
         ...value,
-        [collectionKey]: arr.map(row => applyRichFieldDefaults(row, childFields)),
+        [queryKey]: arr.map(row => applyRichFieldDefaults(row, childFields)),
       }
     }
 

@@ -282,10 +282,10 @@ describe('createDefaultFetcher — config.envelope', () => {
   beforeEach(() => { fetchStub = stubFetch({ body: {} }) })
   afterEach(() => fetchStub.restore())
 
-  it('envelope.collection unwraps collection responses', async () => {
+  it('envelope.list unwraps list responses', async () => {
     fetchStub.setResponse({ body: { data: { items: [{ id: 1 }, { id: 2 }] } } })
     const f = createDefaultFetcher({
-      config: { envelope: { collection: 'data.items' } },
+      config: { envelope: { list: 'data.items' } },
     })
     const result = await f.resolve({ url: 'https://api.example.com/articles' })
     expect(result.data).toEqual([{ id: 1 }, { id: 2 }])
@@ -294,7 +294,7 @@ describe('createDefaultFetcher — config.envelope', () => {
   it('envelope.item unwraps detail responses', async () => {
     fetchStub.setResponse({ body: { data: { article: { id: 42 } } } })
     const f = createDefaultFetcher({
-      config: { envelope: { collection: 'data.items', item: 'data.article' } },
+      config: { envelope: { list: 'data.items', item: 'data.article' } },
     })
     const result = await f.resolve({
       url: 'https://api.example.com/articles/42',
@@ -306,7 +306,7 @@ describe('createDefaultFetcher — config.envelope', () => {
   it('per-fetch transform wins over envelope.collection', async () => {
     fetchStub.setResponse({ body: { a: { b: [1, 2] }, data: { items: [3, 4] } } })
     const f = createDefaultFetcher({
-      config: { envelope: { collection: 'data.items' } },
+      config: { envelope: { list: 'data.items' } },
     })
     const result = await f.resolve({ url: 'https://api.example.com/x', transform: 'a.b' })
     expect(result.data).toEqual([1, 2])
@@ -427,7 +427,7 @@ describe('createDefaultFetcher — method + body (POST)', () => {
   it('per-request envelope overrides site-level envelope', async () => {
     fetchStub.setResponse({ body: { data: { article: { id: 7 } }, other: [] } })
     const f = createDefaultFetcher({
-      config: { envelope: { collection: 'data.x' } }, // site-level
+      config: { envelope: { list: 'data.x' } }, // site-level
     })
     const result = await f.resolve({
       url: 'https://api.example.com/x',
@@ -823,7 +823,7 @@ describe('createDefaultFetcher — strapi style integration', () => {
     const f = createDefaultFetcher({
       config: {
         request: { style: 'strapi' },
-        envelope: { collection: 'data.records' },
+        envelope: { list: 'data.records' },
       },
     })
     const result = await f.resolve({ url: 'https://cms.example.com/api/records' })

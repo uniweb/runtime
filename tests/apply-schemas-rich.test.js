@@ -87,11 +87,11 @@ describe('applySchemas — rich form schemas', () => {
     })
   })
 
-  it('honors childCollection: unwraps the array, applies defaults, re-wraps', () => {
+  it('honors childRecords: unwraps the array, applies defaults, re-wraps', () => {
     const schemas = {
       group: {
         isComposite: true,
-        childCollection: 'items',
+        childRecords: 'items',
         childSchema: {
           fields: [{ id: 'label', type: 'text', default: 'Untitled' }],
         },

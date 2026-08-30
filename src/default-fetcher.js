@@ -188,7 +188,7 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false }
       let isRemote
       if (endpoint) {
         // A host-declared collection lane, resolved upstream from the pattern
-        // it published (`@uniweb/core/collection-address`). FINAL ON ARRIVAL:
+        // it published (`@uniweb/core/query-address`). FINAL ON ARRIVAL:
         //
         //   - `baseUrl` is NOT joined. That knob points a site at ITS OWN
         //     backend; prepending it to an address a host composed would

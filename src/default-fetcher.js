@@ -16,7 +16,7 @@
  *       X-Tenant: acme
  *       Accept: application/vnd.example+json
  *     envelope:
- *       collection: data.items
+ *       list: data.items
  *       item: data.article
  *       error: errors.0.message
  *
@@ -64,10 +64,11 @@ import {
   resolveServiceUrl,
 } from '@uniweb/core'
 
-// Phase 2 of the request-styles landing will read `config.request.style`
-// and dispatch through the registry; in Phase 1 we hard-wire the ambient
-// default (json-body) via the same resolver. No behavior change — the
-// resolved style is json-body, which encodes today's conventions.
+// The request style is the wire dialect operators are encoded in. One
+// ships — json-body, the framework's own — and `resolveRequestStyle` is
+// loud on any other name: it throws in dev and logs once in production.
+// Another dialect is a named transport, from the foundation or from an
+// extension the site selects; it is never a second built-in style.
 
 // Operators the default fetcher knows how to handle. When listed in
 // `config.supports`, they're shipped to the source as part of the
@@ -86,8 +87,9 @@ const KNOWN_OPERATORS = new Set(['where', 'limit', 'sort'])
  *   `request.rename`. Unknown keys are ignored (foundations may use the
  *   same block for their own keys). Default behavior (empty config)
  *   matches today's plain GET + JSON.
- * @param {boolean} [options.dev=false] - Enable dev-mode warnings (unknown
- *   style name, unknown rename operator).
+ * @param {boolean} [options.dev=false] - Enable dev-mode diagnostics: an
+ *   unknown request style throws; a rename entry for an operator the wire
+ *   does not carry warns.
  * @returns {{ resolve: (req: Object, ctx: Object) => Promise<{ data, error? }> }}
  */
 export function createDefaultFetcher({ basePath = '', config = {}, dev = false } = {}) {
@@ -108,9 +110,10 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false }
   // default fetcher serving static files supports nothing natively.
   const supports = normalizeSupports(config?.supports)
 
-  // Request style — how operators get reshaped for the wire. Selected
-  // by name via `site.yml fetcher.request.style`; `null`/absent resolves
-  // to the ambient default (json-body).
+  // Request style — the wire dialect operators are encoded in. Read from
+  // `site.yml fetcher.request.style`; `null`/absent and `json-body` both
+  // resolve to the one shipped style, and any other name is loud (see
+  // `resolveRequestStyle`).
   const requestConfig = (config?.request && typeof config.request === 'object') ? config.request : {}
   const styleName = typeof requestConfig.style === 'string' ? requestConfig.style : null
   const style = resolveRequestStyle(styleName, { dev })
@@ -129,9 +132,9 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false }
   //   - envelope.error      — extract error text from non-2xx response body.
   //
   // Priority (highest wins): per-fetch request.envelope > site-level
-  // config.envelope > style.defaultEnvelope. A style that defaults an
-  // envelope (e.g. Strapi's `{ data }` wrapper) still defers to any
-  // explicit site-level override.
+  // config.envelope > style.defaultEnvelope. json-body declares no
+  // envelope; the slot is the encoder's to fill, and a site-level value
+  // always wins over it.
   const siteEnvelope = (config?.envelope && typeof config.envelope === 'object')
     ? config.envelope
     : null
@@ -155,9 +158,8 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false }
       // style will actually push for this request. deriveCacheKey already
       // covers the always-keyed fields.
       //
-      // The key also includes the style name — two sites with different
-      // styles against the same URL produce different wire requests, so
-      // their responses must not alias.
+      // The key also carries the style name. With one shipped style it is
+      // a constant segment, kept so that key shapes do not move.
       const base = deriveCacheKey(request)
       const projected = {}
       for (const op of supports) {
@@ -230,10 +232,10 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false }
       // style didn't push get applied as a JS fallback after the response
       // (see the post-fetch block below).
       //
-      // The style owns the wire format. Today's json-body style encodes
-      // GET pushdown as `?_where=<JSON>&_limit=&_sort=` and POST pushdown
-      // as top-level keys merged into an object body. Other styles
-      // (flat-query, strapi) will ship in Phase 3.
+      // The style owns the wire format: json-body encodes GET pushdown as
+      // `?_where=<JSON>&_limit=&_sort=` and POST pushdown as top-level keys
+      // merged into an object body. It is the only shipped wire — another
+      // dialect is a named transport.
       const pushCandidates = new Set()
       if (isRemote) {
         for (const op of KNOWN_OPERATORS) {

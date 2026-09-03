@@ -85,9 +85,15 @@ export function createPageRenderer({ website, shell }) {
 
     if (result.error) return { outcome: 'failed', html: null, page, error: result.error }
 
+    // ⛔ `sectionOverrideCSS` LAST, so a caller's `inject` cannot displace it. It is
+    // computed by `renderPage` for this page — theme pinning and component vars —
+    // and a caller passing a same-named key would silently drop it, rendering a page
+    // that looks fine and is unstyled in exactly the places the author pinned. That
+    // is the empty-success shape this module keeps refusing elsewhere; the spread was
+    // the other way round for one commit.
     const html = injectPageContent(shell, result.renderedContent, page, {
-      sectionOverrideCSS: result.sectionOverrideCSS,
       ...inject,
+      sectionOverrideCSS: result.sectionOverrideCSS,
     })
     return { outcome: 'rendered', html, page, error: null }
   }
@@ -111,6 +117,13 @@ export function createPageRenderer({ website, shell }) {
  * @returns {Promise<Array<{config: Object, outcome: string, data: any, error?: string}>>}
  */
 export async function prefetchAndHydrate({ website, content, route, locale = null, fetch = null, dev = false, prerender = 'always' }) {
+  // ⛔ Guarded for the same reason `createPageRenderer` is, and it was not for one
+  // commit. `hydrateDataStore` no-ops on a graph with no `dataStore`, so a caller
+  // passing the wrong object gets a successful-looking prefetch, an unhydrated graph
+  // and a page that renders empty — no error anywhere. Fail where the mistake is.
+  if (!website?.dataStore) {
+    throw new Error('prefetchAndHydrate: `website` must be an initialized Website with a dataStore')
+  }
   const fetched = await prefetchPageData({ content, route, locale, fetch, dev, prerender })
   hydrateDataStore(website, fetched)
   return fetched

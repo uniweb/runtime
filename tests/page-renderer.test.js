@@ -75,6 +75,16 @@ describe('createPageRenderer — the outcome triple', () => {
     expect(r.html).toContain('X')
   })
 
+  it('CONTROL — a caller cannot displace the per-page override CSS', () => {
+    // The computed value must win. A caller passing the same key would otherwise
+    // silently drop theme pinning: the page renders, reports success, and is
+    // unstyled exactly where the author pinned it.
+    const r = createPageRenderer({ website: websiteStub(['/a']), shell: SHELL })
+      .render('/a', { inject: { sectionOverrideCSS: 'HIJACKED' } })
+    expect(r.html).toContain('.s{}')
+    expect(r.html).not.toContain('HIJACKED')
+  })
+
   it('an unmatched route is `notFound`, NOT `failed`', () => {
     // The distinction a caller keys a status code on. `notFound` means nothing
     // matched — a 404 the host serves its own page for; `failed` means a page
@@ -155,6 +165,14 @@ describe('prefetchAndHydrate', () => {
 
     expect(out[0].outcome).toBe('failed')
     expect(set).not.toHaveBeenCalled()
+  })
+
+  it('CONTROL — a graph with no dataStore throws instead of silently not hydrating', async () => {
+    // hydrateDataStore no-ops on one, so without this the caller gets a clean
+    // prefetch, an unhydrated graph, and a page that renders empty with no error.
+    await expect(
+      prefetchAndHydrate({ website: {}, content: CONTENT, route: '/team', fetch: okFetch({ entries: [] }) })
+    ).rejects.toThrow(/dataStore/)
   })
 
   it('CONTROL — an unknown route fetches nothing at all', async () => {

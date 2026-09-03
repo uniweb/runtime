@@ -175,6 +175,40 @@ describe('prefetchAndHydrate', () => {
     ).rejects.toThrow(/dataStore/)
   })
 
+  it('a transport that did not survive the boundary is REFUSED, not silently replaced', async () => {
+    // ⛔ The failure this prevents is not "no transport". `createDefaultFetcher`
+    // resolves `fetchImpl || globalThis.fetch`, so a transport that arrived
+    // undefined becomes the ISOLATE'S OWN network — outside the host's timeout and
+    // byte budget — and with an absolute address it SUCCEEDS and reports `fetched`.
+    // A wiring mistake wearing a success.
+    //
+    // Reachable, not hypothetical: hosting measured (wrangler dev, real Worker
+    // Loader, 2026-09-03) that a function passed through an entrypoint's
+    // fetch(Request) with a JSON body arrives `undefined`, and survives only as an
+    // RPC method argument.
+    for (const bad of [undefined, null, {}, 'fetch']) {
+      await expect(
+        prefetchAndHydrate({ website: { dataStore: { set: vi.fn() } }, content: CONTENT, route: '/team', fetch: bad })
+      ).rejects.toThrow(/must be a function/)
+    }
+  })
+
+  it('CONTROL — the ambient fetch is still reachable, but only by saying so', async () => {
+    // The guard must not make the global unusable, only unreachable BY ACCIDENT.
+    const globalFetch = okFetch({ entries: [{ id: 1 }] })
+    const prev = globalThis.fetch
+    globalThis.fetch = globalFetch
+    try {
+      const set = vi.fn()
+      const out = await prefetchAndHydrate({
+        website: { dataStore: { set } }, content: CONTENT, route: '/team', fetch: globalThis.fetch,
+      })
+      expect(out[0].outcome).toBe('fetched')
+    } finally {
+      globalThis.fetch = prev
+    }
+  })
+
   it('CONTROL — an unknown route fetches nothing at all', async () => {
     const fetch = okFetch({ entries: [] })
     const out = await prefetchAndHydrate({

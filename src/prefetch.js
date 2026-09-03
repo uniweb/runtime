@@ -20,6 +20,14 @@
  *                matcher the SPA uses, so `/blog/post-1` finds `/blog/:slug`.
  *   - `fetch`    how to dispatch a request. The runtime composes the address; the host
  *                decides how a site-relative one is reached (its origin, a binding).
+ *                ⛔ **Crossing an isolate boundary, this survives only as an RPC method
+ *                argument.** Through an entrypoint's `fetch(Request)` with a serialized
+ *                body it arrives `undefined` (hosting, measured under `wrangler dev`
+ *                against a real Worker Loader, 2026-09-03) — and the fetcher then falls
+ *                back to `globalThis.fetch`, so the request leaves from the isolate,
+ *                outside whatever budget the host wrapped around it. `prefetchAndHydrate`
+ *                refuses a non-function for exactly this reason; this entry keeps the
+ *                permissive default because the build and browser lanes call it in-process.
  *   - `prerender`  whether a fetch is tried — `'always'` (default) tries every config; `'author'`
  *                honours the author's `prerender: false`. ⛔ The default is `'always'` because this
  *                entry has exactly one kind of caller: an isolate rendering per request, where the

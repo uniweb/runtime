@@ -124,6 +124,34 @@ export async function prefetchAndHydrate({ website, content, route, locale = nul
   if (!website?.dataStore) {
     throw new Error('prefetchAndHydrate: `website` must be an initialized Website with a dataStore')
   }
+
+  // ⛔ THE TRANSPORT IS REQUIRED HERE, unlike on `prefetchPageData`, and this is the
+  // one place the difference matters.
+  //
+  // A function does NOT survive every isolate boundary. Measured by hosting under
+  // `wrangler dev` against a real Worker Loader, 2026-09-03: passed through an
+  // entrypoint's `fetch(Request)` with a JSON body the transport arrives
+  // **`undefined`**; passed as an argument to an RPC method it arrives as a callable
+  // function and the isolate invokes it. Only the RPC shape carries it.
+  //
+  // ⚠️ And `undefined` is not where it stops, which is the part their measurement
+  // could not see from outside our code. `createDefaultFetcher` resolves the
+  // transport as `fetchImpl || globalThis.fetch`, so a transport that failed to cross
+  // silently becomes THE ISOLATE'S OWN NETWORK — outside the host's timeout, byte
+  // budget and site-relative address resolution. With an absolute address it does not
+  // even fail: the request goes out from the wrong place and comes back
+  // `outcome: 'fetched'`. A wiring mistake wearing a success.
+  //
+  // ⇒ So the entry whose only caller crosses that boundary demands a real function
+  // rather than defaulting. A Node or browser caller that genuinely wants the global
+  // passes `fetch: globalThis.fetch` — one word, and it says so.
+  if (typeof fetch !== 'function') {
+    throw new Error(
+      'prefetchAndHydrate: `fetch` must be a function. A transport does not survive a ' +
+      'JSON-serialized isolate boundary — pass it as an RPC method argument. ' +
+      'To use the ambient fetch deliberately, pass `fetch: globalThis.fetch`.'
+    )
+  }
   const fetched = await prefetchPageData({ content, route, locale, fetch, dev, prerender })
   hydrateDataStore(website, fetched)
   return fetched

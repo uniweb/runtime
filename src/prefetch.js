@@ -20,6 +20,12 @@
  *                matcher the SPA uses, so `/blog/post-1` finds `/blog/:slug`.
  *   - `fetch`    how to dispatch a request. The runtime composes the address; the host
  *                decides how a site-relative one is reached (its origin, a binding).
+ *   - `prerender`  WHOSE call it is whether a fetch is tried — `'author'` (default) honours the
+ *                author's `prerender: false`, which is what the build lane does when it bakes a
+ *                static artifact; `'always'` tries every config, for a host whose renders are
+ *                per-request and revalidated, where that flag means nothing and always
+ *                prerendering is the product ([Diego, 2026-07-28], hosting's ruling). The
+ *                runtime executes; whether to fetch at all is the caller's policy, in one word.
  *   - returns    one entry per DECLARED config, `{ config, outcome, data, error? }`, keyed
  *                downstream by `deriveCacheKey(config)`. `outcome` is `fetched`, `failed`
  *                (transport or HTTP error, `error` says which) or `skipped` (the author
@@ -102,7 +108,10 @@ export function resolvePageFetchConfigs(content, route, { locale = null } = {}) 
  * @param {boolean} [opts.dev]
  * @returns {Promise<Array<{ config: Object, outcome: 'fetched'|'failed'|'skipped', data: any, error?: string }>>}
  */
-export async function executeFetchConfigs(configs, { content, fetch = null, dev = false } = {}) {
+export async function executeFetchConfigs(configs, { content, fetch = null, dev = false, prerender = 'author' } = {}) {
+  if (prerender !== 'author' && prerender !== 'always') {
+    throw new Error(`executeFetchConfigs: prerender must be 'author' or 'always', got ${JSON.stringify(prerender)}`)
+  }
   const fetcher = createDefaultFetcher({
     basePath: content?.config?.base || '',
     config: content?.config?.fetcher ?? {},
@@ -114,9 +123,9 @@ export async function executeFetchConfigs(configs, { content, fetch = null, dev 
   const out = []
   for (const config of configs || []) {
     if (!config) continue
-    if (config.prerender === false) {
-      // The author deferred this one to the browser. Present, so a host can count what was
-      // declared against what was tried; not hydrated.
+    if (prerender === 'author' && config.prerender === false) {
+      // The author deferred this one to the browser and the caller honours that. Present, so a
+      // host can count what was declared against what was tried; not hydrated.
       out.push({ config, outcome: 'skipped', data: null })
       continue
     }
@@ -128,7 +137,7 @@ export async function executeFetchConfigs(configs, { content, fetch = null, dev 
 }
 
 /** Resolve and execute in one call: what a host passes the isolate as `fetchedData`. */
-export async function prefetchPageData({ content, route, locale = null, fetch = null, dev = false }) {
+export async function prefetchPageData({ content, route, locale = null, fetch = null, dev = false, prerender = 'author' }) {
   const configs = resolvePageFetchConfigs(content, route, { locale })
-  return executeFetchConfigs(configs, { content, fetch, dev })
+  return executeFetchConfigs(configs, { content, fetch, dev, prerender })
 }

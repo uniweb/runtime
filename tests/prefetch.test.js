@@ -84,6 +84,20 @@ describe('executeFetchConfigs', () => {
     expect(out.every((e) => ['fetched', 'failed', 'skipped'].includes(e.outcome))).toBe(true)
   })
 
+  it("prerender: 'always' tries a config the author deferred — the WHETHER is the caller's", async () => {
+    const { fetch, calls } = stubFetch({ 'api.example.com/news': [{ id: 'n1' }] })
+    const configs = resolvePageFetchConfigs(CONTENT, '/team')
+    const out = await executeFetchConfigs(configs, { content: CONTENT, fetch, prerender: 'always' })
+    expect(calls.some((u) => u.includes('api.example.com/news'))).toBe(true)
+    const news = out.find((e) => e.config.as === 'news')
+    expect(news.outcome).toBe('fetched')
+    expect(out.some((e) => e.outcome === 'skipped')).toBe(false)
+  })
+
+  it('CONTROL — an unknown prerender policy is refused, not defaulted', async () => {
+    await expect(executeFetchConfigs([], { content: CONTENT, prerender: 'sometimes' })).rejects.toThrow(/prerender must be/)
+  })
+
   it('hydrateDataStore takes only fetched entries — a skipped or failed one never enters the store', async () => {
     const fetch = vi.fn(async () => { throw new Error('binding down') })
     const fetched = await prefetchPageData({ content: CONTENT, route: '/team', fetch })

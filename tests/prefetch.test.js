@@ -74,20 +74,20 @@ describe('executeFetchConfigs', () => {
     expect(people.data).toEqual([{ slug: 'ada' }, { slug: 'lin' }])
   })
 
-  it('a fetch the author deferred to the browser is present as `skipped`, never requested', async () => {
+  it("prerender: 'author' — a fetch the author deferred is present as `skipped`, never requested", async () => {
     const { fetch, calls } = stubFetch({})
     const configs = resolvePageFetchConfigs(CONTENT, '/team')
-    const out = await executeFetchConfigs(configs, { content: CONTENT, fetch })
+    const out = await executeFetchConfigs(configs, { content: CONTENT, fetch, prerender: 'author' })
     expect(calls.some((u) => u.includes('api.example.com/news'))).toBe(false)
     const news = out.find((e) => e.config.as === 'news')
     expect(news.outcome).toBe('skipped')
     expect(out.every((e) => ['fetched', 'failed', 'skipped'].includes(e.outcome))).toBe(true)
   })
 
-  it("prerender: 'always' tries a config the author deferred — the WHETHER is the caller's", async () => {
+  it("the DEFAULT is 'always': a config the author deferred is tried — this entry's only caller is an isolate", async () => {
     const { fetch, calls } = stubFetch({ 'api.example.com/news': [{ id: 'n1' }] })
     const configs = resolvePageFetchConfigs(CONTENT, '/team')
-    const out = await executeFetchConfigs(configs, { content: CONTENT, fetch, prerender: 'always' })
+    const out = await executeFetchConfigs(configs, { content: CONTENT, fetch })
     expect(calls.some((u) => u.includes('api.example.com/news'))).toBe(true)
     const news = out.find((e) => e.config.as === 'news')
     expect(news.outcome).toBe('fetched')
@@ -100,7 +100,7 @@ describe('executeFetchConfigs', () => {
 
   it('hydrateDataStore takes only fetched entries — a skipped or failed one never enters the store', async () => {
     const fetch = vi.fn(async () => { throw new Error('binding down') })
-    const fetched = await prefetchPageData({ content: CONTENT, route: '/team', fetch })
+    const fetched = await prefetchPageData({ content: CONTENT, route: '/team', fetch, prerender: 'author' })
     const dataStore = new DataStore()
     hydrateDataStore({ dataStore }, fetched)
     for (const e of fetched) expect(dataStore.has(deriveCacheKey(e.config))).toBe(false)

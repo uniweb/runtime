@@ -20,12 +20,15 @@
  *                matcher the SPA uses, so `/blog/post-1` finds `/blog/:slug`.
  *   - `fetch`    how to dispatch a request. The runtime composes the address; the host
  *                decides how a site-relative one is reached (its origin, a binding).
- *   - `prerender`  WHOSE call it is whether a fetch is tried — `'author'` (default) honours the
- *                author's `prerender: false`, which is what the build lane does when it bakes a
- *                static artifact; `'always'` tries every config, for a host whose renders are
- *                per-request and revalidated, where that flag means nothing and always
- *                prerendering is the product ([Diego, 2026-07-28], hosting's ruling). The
- *                runtime executes; whether to fetch at all is the caller's policy, in one word.
+ *   - `prerender`  whether a fetch is tried — `'always'` (default) tries every config; `'author'`
+ *                honours the author's `prerender: false`. ⛔ The default is `'always'` because this
+ *                entry has exactly one kind of caller: an isolate rendering per request, where the
+ *                flag means nothing and always prerendering is the product ([Diego, 2026-07-28 and
+ *                2026-09-03]: "`prerender: false` is not for the isolate"). The build lane, which
+ *                bakes static artifacts and does honour the flag, uses its own executor
+ *                (`build/src/prerender.js`) and never calls this. `'author'` is the explicit opt-in
+ *                for a caller that bakes; omitting the option must not silently reproduce the
+ *                2026-07-28 outcome — prefetch a no-op on a live-data template, page still 200.
  *   - returns    one entry per DECLARED config, `{ config, outcome, data, error? }`, keyed
  *                downstream by `deriveCacheKey(config)`. `outcome` is `fetched`, `failed`
  *                (transport or HTTP error, `error` says which) or `skipped` (the author
@@ -108,7 +111,7 @@ export function resolvePageFetchConfigs(content, route, { locale = null } = {}) 
  * @param {boolean} [opts.dev]
  * @returns {Promise<Array<{ config: Object, outcome: 'fetched'|'failed'|'skipped', data: any, error?: string }>>}
  */
-export async function executeFetchConfigs(configs, { content, fetch = null, dev = false, prerender = 'author' } = {}) {
+export async function executeFetchConfigs(configs, { content, fetch = null, dev = false, prerender = 'always' } = {}) {
   if (prerender !== 'author' && prerender !== 'always') {
     throw new Error(`executeFetchConfigs: prerender must be 'author' or 'always', got ${JSON.stringify(prerender)}`)
   }
@@ -137,7 +140,7 @@ export async function executeFetchConfigs(configs, { content, fetch = null, dev 
 }
 
 /** Resolve and execute in one call: what a host passes the isolate as `fetchedData`. */
-export async function prefetchPageData({ content, route, locale = null, fetch = null, dev = false, prerender = 'author' }) {
+export async function prefetchPageData({ content, route, locale = null, fetch = null, dev = false, prerender = 'always' }) {
   const configs = resolvePageFetchConfigs(content, route, { locale })
   return executeFetchConfigs(configs, { content, fetch, dev, prerender })
 }

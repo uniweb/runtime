@@ -74,11 +74,23 @@ describe('executeFetchConfigs', () => {
     expect(people.data).toEqual([{ slug: 'ada' }, { slug: 'lin' }])
   })
 
-  it('skips a fetch the author deferred to the browser (prerender: false)', async () => {
+  it('a fetch the author deferred to the browser is present as `skipped`, never requested', async () => {
     const { fetch, calls } = stubFetch({})
     const configs = resolvePageFetchConfigs(CONTENT, '/team')
-    await executeFetchConfigs(configs, { content: CONTENT, fetch })
+    const out = await executeFetchConfigs(configs, { content: CONTENT, fetch })
     expect(calls.some((u) => u.includes('api.example.com/news'))).toBe(false)
+    const news = out.find((e) => e.config.as === 'news')
+    expect(news.outcome).toBe('skipped')
+    expect(out.every((e) => ['fetched', 'failed', 'skipped'].includes(e.outcome))).toBe(true)
+  })
+
+  it('hydrateDataStore takes only fetched entries — a skipped or failed one never enters the store', async () => {
+    const fetch = vi.fn(async () => { throw new Error('binding down') })
+    const fetched = await prefetchPageData({ content: CONTENT, route: '/team', fetch })
+    const dataStore = new DataStore()
+    hydrateDataStore({ dataStore }, fetched)
+    for (const e of fetched) expect(dataStore.has(deriveCacheKey(e.config))).toBe(false)
+    expect(fetched.map((e) => e.outcome).sort()).toEqual(['failed', 'skipped'])
   })
 
   it('returns the shape hydrateDataStore consumes — round trip into a DataStore', async () => {
@@ -95,7 +107,8 @@ describe('executeFetchConfigs', () => {
     const configs = resolvePageFetchConfigs(CONTENT, '/team')
     const out = await executeFetchConfigs(configs, { content: CONTENT, fetch })
     const people = out.find((e) => e.config.as === 'people')
+    expect(people.outcome).toBe('failed')
     expect(people.error).toBe('binding down')
-    expect(people.data).toEqual([])
+    expect(people.data).toBeNull()
   })
 })

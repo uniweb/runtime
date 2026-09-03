@@ -20,7 +20,13 @@
  *                matcher the SPA uses, so `/blog/post-1` finds `/blog/:slug`.
  *   - `fetch`    how to dispatch a request. The runtime composes the address; the host
  *                decides how a site-relative one is reached (its origin, a binding).
- *   - returns    `[{ config, data, error? }]`, keyed downstream by `deriveCacheKey(config)`.
+ *   - returns    one entry per DECLARED config, `{ config, outcome, data, error? }`, keyed
+ *                downstream by `deriveCacheKey(config)`. `outcome` is `fetched`, `failed`
+ *                (transport or HTTP error, `error` says which) or `skipped` (the author
+ *                deferred it to the browser with `prerender: false`). `hydrateDataStore`
+ *                takes the list as-is and hydrates only `fetched` entries — a host reads the
+ *                outcomes to tell "nothing was tried" from "everything tried failed", which
+ *                is a different cache decision (hosting, 2026-09-03).
  *
  * It resolves nothing the host owns and models no host route layout: every address is
  * `{base}/…` from the payload, or an endpoint the host itself published in `config.records`.
@@ -94,7 +100,7 @@ export function resolvePageFetchConfigs(content, route, { locale = null } = {}) 
  * @param {Object} opts.content  the payload — `config.base`, `config.fetcher`, `config.records`
  * @param {Function} [opts.fetch]  the transport; defaults to the global `fetch`
  * @param {boolean} [opts.dev]
- * @returns {Promise<Array<{ config: Object, data: any, error?: string }>>}
+ * @returns {Promise<Array<{ config: Object, outcome: 'fetched'|'failed'|'skipped', data: any, error?: string }>>}
  */
 export async function executeFetchConfigs(configs, { content, fetch = null, dev = false } = {}) {
   const fetcher = createDefaultFetcher({
@@ -108,11 +114,15 @@ export async function executeFetchConfigs(configs, { content, fetch = null, dev 
   const out = []
   for (const config of configs || []) {
     if (!config) continue
-    if (config.prerender === false) continue   // the author deferred this one to the browser
+    if (config.prerender === false) {
+      // The author deferred this one to the browser. Present, so a host can count what was
+      // declared against what was tried; not hydrated.
+      out.push({ config, outcome: 'skipped', data: null })
+      continue
+    }
     const result = await fetcher.resolve(config, ctx)
-    const entry = { config, data: result?.data ?? null }
-    if (result?.error) entry.error = result.error
-    out.push(entry)
+    if (result?.error) out.push({ config, outcome: 'failed', data: null, error: result.error })
+    else out.push({ config, outcome: 'fetched', data: result?.data ?? null })
   }
   return out
 }

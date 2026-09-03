@@ -163,6 +163,9 @@ export function sliceContentForLocale(content, locale) {
 export function hydrateDataStore(website, fetchedData) {
   if (!website?.dataStore || !fetchedData?.length) return
   for (const entry of fetchedData) {
+    // A `prefetchPageData` list carries every declared config with an `outcome`; only what was
+    // actually fetched enters the store. A list without outcomes (the SSG lane's) is all fetched.
+    if (entry.outcome && entry.outcome !== 'fetched') continue
     website.dataStore.set(deriveCacheKey(entry.config), { data: entry.data })
   }
 }

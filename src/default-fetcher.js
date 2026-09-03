@@ -140,18 +140,21 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false, 
     : null
   const envelope = { ...(style.defaultEnvelope || {}), ...(siteEnvelope || {}) }
 
-  // ⭐ The LIVE LANE's envelope is the host's. `config.records` is stamped by the backend
-  // that answers a records request, so how ITS responses are packaged — where the array
-  // lives, where one record lives, where an error message lives — is its to declare, and
-  // the runtime reads it here (`records.envelope.{list,item,error}`). It applies only to a
-  // request that resolved to that lane (`endpoint` set) and wins over the site's own
-  // `fetcher.envelope`, which describes the author's backend, not the host's.
+  // ⭐ The LIVE LANE's envelope is the backend's. `config.records` is stamped by the backend
+  // that answers a records request, so where the array sits in ITS response is its to
+  // declare: `records.envelope.records` — the KEY says what it holds, the VALUE is the JSON
+  // key the array sits under (`{ records: "entries" }` ⇒ body.entries). That spelling is the
+  // agreed one (2026-08-30: `collection` retired; ⛔ not `list`, which is a URL pattern on the
+  // same stamp). It applies only to a request that resolved to that lane (`endpoint` set)
+  // and wins over the site's own `fetcher.envelope`, which describes the author's backend.
   // Ruled 2026-09-03 [Diego]: the backend sets `config.records`; the fetch comes from the
   // runtime. Until this line the runtime resolved `list`/`record` off the stamp and ignored
-  // its envelope, so a host had to unwrap for itself.
-  const laneEnvelope = (records?.envelope && typeof records.envelope === 'object')
-    ? records.envelope
+  // its envelope.
+  const stampedArrayKey = (records?.envelope && typeof records.envelope === 'object'
+    && typeof records.envelope.records === 'string' && records.envelope.records.length)
+    ? records.envelope.records
     : null
+  const laneEnvelope = stampedArrayKey ? { list: stampedArrayKey } : null
 
   return {
     /**

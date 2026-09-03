@@ -12,15 +12,23 @@
  * tarball carries `src` plus `dist/ssr.js` and its map, and nothing else.
  *
  * **A consumer reaches this flavor through the distribution channel, not
- * through npm** — the channel workflow builds it from the tag. Nothing removed
- * from the tarball was ever importable: no `exports` entry reaches this bundle
- * or the browser shell, and they sat there only because the channel job used to
- * read them from a packed tarball. It builds the tag now, so they left —
+ * through npm.** Nothing removed from the tarball was ever importable: no
+ * `exports` entry reaches this bundle or the browser shell, and they sat there
+ * only because the channel job used to read them from a packed tarball —
  * 2.35 MB unpacked became 347 KB, measured on `0.11.1`.
  *
- * So why still build it at publish? As a pre-flight. A tag whose isolate build
- * is broken would publish cleanly and then fail in the channel job, at a
- * distance. Three seconds here turns that into a blocked release instead.
+ * ⛔ **`prepublishOnly` is not a pre-flight — it is the PRODUCER.** This block
+ * said "the channel workflow builds it from the tag" until 2026-09-03, and was
+ * already four days stale when it was written: `ad9f91e` (2026-08-12, "CI no
+ * longer builds the tag") deleted that job, and `.github/workflows/audit-channel.yml`
+ * now installs nothing and builds nothing. `scripts/release-channel.mjs` publishes
+ * the channel from the machine that built it and READS `dist/` — it never rebuilds
+ * (`publish-channel.mjs` refuses with "run `pnpm build && pnpm build:worker`" when
+ * the bytes are absent). ⇒ **The bytes this script writes ARE the published
+ * isolate.** Skipping it does not forfeit a pre-flight; it forfeits the artifact.
+ *
+ * Falsification, one command — CI builds this, or it does not:
+ *   command grep -c 'build:worker' .github/workflows/audit-channel.yml   # 0
  *
  * ⚠️ **Both directions of this claim have been wrong within one week.** Until
  * 2026-08-08 this header said the flavor was not in the tarball while

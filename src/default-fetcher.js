@@ -92,7 +92,12 @@ const KNOWN_OPERATORS = new Set(['where', 'limit', 'sort'])
  *   does not carry warns.
  * @returns {{ resolve: (req: Object, ctx: Object) => Promise<{ data, error? }> }}
  */
-export function createDefaultFetcher({ basePath = '', config = {}, dev = false, records = null } = {}) {
+export function createDefaultFetcher({ basePath = '', config = {}, dev = false, records = null, fetch: fetchImpl = null } = {}) {
+  // The transport is injectable: a host executing fetches outside a browser (an SSR isolate)
+  // decides how a site-relative address such as `/_records/members` is dispatched — through its
+  // own origin or a service binding — and hands that in. Defaults to the global `fetch`, resolved
+  // at call time so a test stub installed later is honoured.
+  const doFetch = (input, init) => (fetchImpl || globalThis.fetch)(input, init)
   const pathPrefix = basePath && basePath !== '/' ? basePath.replace(/\/$/, '') : ''
 
   const baseUrl = typeof config?.baseUrl === 'string'
@@ -303,7 +308,7 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false, 
       if (Object.keys(headers).length) init.headers = headers
 
       try {
-        const response = await fetch(target, init)
+        const response = await doFetch(target, init)
 
         // Per-request envelope (set by object-form `detail:`) wins over
         // site-level envelope. This lets a detail query declare its own

@@ -66,6 +66,12 @@ export {
   prefetchPageData,
 } from './prefetch.js'
 
+// The composed render entry — resolve, render, inject, as one call. Built because
+// framework itself had two callers of this unshared sequence (the build's prerender
+// loop and an SSR isolate), not because a consumer asked; see page-renderer.js for
+// what it deliberately leaves to the host.
+export { createPageRenderer, prefetchAndHydrate } from './page-renderer.js'
+
 // Appearance. injectPageContent() already emits this for every prerendered
 // page; exported for lanes that assemble a shell without a per-page render.
 export { renderAppearanceBootScript } from './appearance.js'

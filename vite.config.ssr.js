@@ -9,6 +9,49 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 
+/**
+ * Every package this bundle must NOT inline, as REGEXES matching the package
+ * AND all of its subpaths.
+ *
+ * ⛔ Strings are wrong here, and were wrong twice. Rollup's string matcher is
+ * EXACT, so `'@uniweb/core'` does not cover `@uniweb/core/datastore`: the leaf
+ * is bundled in silently, and the bundle then runs a FROZEN copy of core beside
+ * the live one it imports by bare specifier. Nothing fails — there is no build
+ * error, and no import left in the output to grep for. The two copies simply
+ * stop being the same function whenever core moves.
+ *
+ * The instance was patched twice before the class was:
+ *   2026-07  `@uniweb/core/section-id` pinned as a string, after the SSR twin
+ *            rendered section ids from a frozen copy while the SPA used the live
+ *            one. That fixed the one subpath anyone had noticed.
+ *   2026-09  `prefetch.js` imported four more (`fetch-config`, `datastore`,
+ *            `route-match`, `locale-config`), so `dist/worker-runtime.js` shipped
+ *            TWO copies each of `deriveCacheKey`, `resolveFetchConfigs` and
+ *            `routePatternToRegex` — `hydrateDataStore` keying the datastore with
+ *            the live `deriveCacheKey` (dist/ssr.js:302) while
+ *            `resolvePageFetchConfigs` de-duplicated with the frozen one (:1303).
+ *            `@uniweb/core/route-match` had already been frozen this way by
+ *            `ssr-renderer.js` — and that one is a cross-boundary contract: a
+ *            host decides which page a path names and the runtime hydrates over
+ *            that decision, so the matcher has to exist exactly once.
+ *
+ * A regex closes the class: a subpath added tomorrow is external without anyone
+ * remembering this file exists. `tests/ssr-externals.test.js` runs THESE matchers
+ * against `@uniweb/core`'s real `exports` map rather than restating the list —
+ * a second list would just be the same drift with an extra place to forget.
+ *
+ * `(\/.*)?$` is anchored, so `/^react(\/.*)?$/` covers `react/jsx-runtime` and
+ * does not swallow `react-dom`.
+ */
+export const EXTERNAL = [
+  /^react(\/.*)?$/,
+  /^react-dom(\/.*)?$/,
+  /^react-router-dom(\/.*)?$/,
+  /^@uniweb\/core(\/.*)?$/,
+  /^@uniweb\/semantic-parser(\/.*)?$/,
+  /^@uniweb\/theming(\/.*)?$/,
+]
+
 export default defineConfig({
   plugins: [react()],
 
@@ -31,21 +74,7 @@ export default defineConfig({
 
     // Externalize dependencies - they'll be resolved at runtime
     rollupOptions: {
-      external: [
-        'react',
-        'react-dom',
-        'react-dom/server',
-        'react-router-dom',
-        '@uniweb/core',
-        // Rollup's external matcher is exact-string, so the bare entry above
-        // does NOT cover a subpath — the same trap `react-dom/server` sits in
-        // two lines up. Without this the leaf module is silently bundled in,
-        // and the SSR twin renders section ids from a frozen copy while the
-        // SPA uses the live one.
-        '@uniweb/core/section-id',
-        '@uniweb/semantic-parser',
-        '@uniweb/theming'
-      ],
+      external: EXTERNAL,
       output: {
         // Preserve module structure for better debugging
         preserveModules: false,

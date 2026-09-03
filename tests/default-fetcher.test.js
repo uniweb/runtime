@@ -277,6 +277,71 @@ describe('createDefaultFetcher — config.headers', () => {
   })
 })
 
+describe('createDefaultFetcher — the host\'s records.envelope on the live lane', () => {
+  // `config.records` is stamped by the backend that answers records requests; its
+  // `envelope` says how ITS responses are packaged. Ruled 2026-09-03: the backend
+  // sets config.records, the fetch comes from the runtime — so the runtime unwraps
+  // with it, and nobody outside the runtime has to.
+  let fetchStub
+  beforeEach(() => { fetchStub = stubFetch({ body: {} }) })
+  afterEach(() => fetchStub.restore())
+
+  const RECORDS = { list: '/_records/{path}', record: '/_records/{path}/{param}', envelope: { list: 'entries', item: 'entry', error: 'message' } }
+
+  it('unwraps a records-lane list response with records.envelope.list', async () => {
+    fetchStub.setResponse({ body: { entries: [{ id: 1 }, { id: 2 }], total: 2 } })
+    const f = createDefaultFetcher({ records: RECORDS })
+    const result = await f.resolve({ endpoint: '/_records/members', as: 'members' })
+    expect(result.data).toEqual([{ id: 1 }, { id: 2 }])
+  })
+
+  it('unwraps a records-lane detail response with records.envelope.item', async () => {
+    fetchStub.setResponse({ body: { entry: { id: 42 } } })
+    const f = createDefaultFetcher({ records: RECORDS })
+    const result = await f.resolve({
+      endpoint: '/_records/members/42',
+      as: 'members',
+      dynamicContext: { paramName: 'slug', paramValue: '42', schema: 'members' },
+    })
+    expect(result.data).toEqual({ id: 42 })
+  })
+
+  it('reads the error message where records.envelope.error says', async () => {
+    fetchStub.setResponse({ status: 404, body: { message: 'no such member' } })
+    const f = createDefaultFetcher({ records: RECORDS })
+    const result = await f.resolve({ endpoint: '/_records/members/nope', as: 'members' })
+    expect(result.error).toBe('no such member')
+  })
+
+  it('the stamp wins over the site\'s own fetcher.envelope on the live lane', async () => {
+    fetchStub.setResponse({ body: { entries: [1, 2], data: { items: [3, 4] } } })
+    const f = createDefaultFetcher({ config: { envelope: { list: 'data.items' } }, records: RECORDS })
+    const result = await f.resolve({ endpoint: '/_records/x', as: 'x' })
+    expect(result.data).toEqual([1, 2])
+  })
+
+  it('CONTROL — a request that is NOT on the live lane ignores the stamp', async () => {
+    fetchStub.setResponse({ body: { entries: [1, 2], data: { items: [3, 4] } } })
+    const f = createDefaultFetcher({ config: { envelope: { list: 'data.items' } }, records: RECORDS })
+    const result = await f.resolve({ url: 'https://api.example.com/x' })
+    expect(result.data).toEqual([3, 4])
+  })
+
+  it('CONTROL — a per-request envelope still wins over the stamp', async () => {
+    fetchStub.setResponse({ body: { entries: [1, 2], mine: [9] } })
+    const f = createDefaultFetcher({ records: RECORDS })
+    const result = await f.resolve({ endpoint: '/_records/x', as: 'x', envelope: { list: 'mine' } })
+    expect(result.data).toEqual([9])
+  })
+
+  it('CONTROL — without a stamp envelope the live lane reads the body as-is', async () => {
+    fetchStub.setResponse({ body: [{ id: 1 }] })
+    const f = createDefaultFetcher({ records: { list: '/_records/{path}', record: '/_records/{path}/{param}' } })
+    const result = await f.resolve({ endpoint: '/_records/x', as: 'x' })
+    expect(result.data).toEqual([{ id: 1 }])
+  })
+})
+
 describe('createDefaultFetcher — config.envelope', () => {
   let fetchStub
   beforeEach(() => { fetchStub = stubFetch({ body: {} }) })

@@ -92,7 +92,7 @@ const KNOWN_OPERATORS = new Set(['where', 'limit', 'sort'])
  *   does not carry warns.
  * @returns {{ resolve: (req: Object, ctx: Object) => Promise<{ data, error? }> }}
  */
-export function createDefaultFetcher({ basePath = '', config = {}, dev = false } = {}) {
+export function createDefaultFetcher({ basePath = '', config = {}, dev = false, records = null } = {}) {
   const pathPrefix = basePath && basePath !== '/' ? basePath.replace(/\/$/, '') : ''
 
   const baseUrl = typeof config?.baseUrl === 'string'
@@ -139,6 +139,19 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false }
     ? config.envelope
     : null
   const envelope = { ...(style.defaultEnvelope || {}), ...(siteEnvelope || {}) }
+
+  // ⭐ The LIVE LANE's envelope is the host's. `config.records` is stamped by the backend
+  // that answers a records request, so how ITS responses are packaged — where the array
+  // lives, where one record lives, where an error message lives — is its to declare, and
+  // the runtime reads it here (`records.envelope.{list,item,error}`). It applies only to a
+  // request that resolved to that lane (`endpoint` set) and wins over the site's own
+  // `fetcher.envelope`, which describes the author's backend, not the host's.
+  // Ruled 2026-09-03 [Diego]: the backend sets `config.records`; the fetch comes from the
+  // runtime. Until this line the runtime resolved `list`/`record` off the stamp and ignored
+  // its envelope, so a host had to unwrap for itself.
+  const laneEnvelope = (records?.envelope && typeof records.envelope === 'object')
+    ? records.envelope
+    : null
 
   return {
     /**
@@ -295,7 +308,8 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false }
         const requestEnvelope = (request.envelope && typeof request.envelope === 'object')
           ? request.envelope
           : null
-        const effectiveEnvelope = requestEnvelope ?? envelope
+        const effectiveEnvelope = requestEnvelope
+          ?? (endpoint && laneEnvelope ? { ...envelope, ...laneEnvelope } : envelope)
 
         if (!response.ok) {
           // If `envelope.error` is configured, try to extract a human message

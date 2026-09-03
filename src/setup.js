@@ -244,8 +244,11 @@ function buildDefaultFetcher(content) {
   // recognizes `baseUrl` and `envelope`; foundations with their own fetchers
   // may read additional keys from the same block via ctx.website.config.fetcher.
   const config = content?.config?.fetcher ?? {}
+  // The host's live-records stamp (`config.records`), when a backend set one: the fetcher
+  // reads its `envelope` for requests that resolved to that lane.
+  const records = content?.config?.records ?? null
   const dev = !!(import.meta.env && import.meta.env.DEV)
-  return createDefaultFetcher({ basePath, config, dev })
+  return createDefaultFetcher({ basePath, config, dev, records })
 }
 
 /**

@@ -126,3 +126,17 @@ describe('executeFetchConfigs', () => {
     expect(people.data).toBeNull()
   })
 })
+
+describe('what a prefetched entry says about depth', () => {
+  it('carries the depth the config asked for as meta, and hydration files it in the record index', async () => {
+    const { fetch } = stubFetch({ '/_records/members': { entries: [{ $uuid: 'u1', slug: 'ada' }] } })
+    const fetched = await prefetchPageData({ content: CONTENT, route: '/team', fetch })
+    const people = fetched.find((e) => e.config.as === 'people')
+    expect(people.config.depth).toBe('brief') // a live list with a record address is a list of briefs
+    expect(people.meta).toEqual({ depth: 'brief' })
+    const dataStore = new DataStore()
+    hydrateDataStore({ dataStore }, fetched)
+    expect(dataStore.getRecord('u1')).toEqual({ depth: 'brief', record: { $uuid: 'u1', slug: 'ada' } })
+    expect(dataStore.get(deriveCacheKey(people.config)).data).toEqual([{ $uuid: 'u1', slug: 'ada' }])
+  })
+})

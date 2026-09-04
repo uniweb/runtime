@@ -37,7 +37,7 @@
  *                (`build/src/prerender.js`) and never calls this. `'author'` is the explicit opt-in
  *                for a caller that bakes; omitting the option must not silently reproduce the
  *                2026-07-28 outcome — prefetch a no-op on a live-data template, page still 200.
- *   - returns    one entry per DECLARED config, `{ config, outcome, data, error? }`, keyed
+ *   - returns    one entry per DECLARED config, `{ config, outcome, data, meta?, error? }`, keyed
  *                downstream by `deriveCacheKey(config)`. `outcome` is `fetched`, `failed`
  *                (transport or HTTP error, `error` says which) or `skipped` (the author
  *                deferred it to the browser with `prerender: false`). `hydrateDataStore`
@@ -142,7 +142,7 @@ export async function executeFetchConfigs(configs, { content, fetch = null, dev 
     }
     const result = await fetcher.resolve(config, ctx)
     if (result?.error) out.push({ config, outcome: 'failed', data: null, error: result.error })
-    else out.push({ config, outcome: 'fetched', data: result?.data ?? null })
+    else out.push({ config, outcome: 'fetched', data: result?.data ?? null, ...(result?.meta ? { meta: result.meta } : {}) })
   }
   return out
 }

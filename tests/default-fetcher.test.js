@@ -933,3 +933,39 @@ describe('createDefaultFetcher — the fallback sort is the ONE evaluator, singl
     error.mockRestore()
   })
 })
+
+describe('createDefaultFetcher — a single-record request on the live lane', () => {
+  let fetchStub
+  beforeEach(() => { fetchStub = stubFetch({ body: {} }) })
+  afterEach(() => fetchStub.restore())
+  const RECORDS = { list: '/_records/{path}', record: '/_records/{path}/{param}', envelope: { records: 'entries' } }
+
+  it('is NOT unwrapped with the list key — an entity address answers the bare record', async () => {
+    // A folder address yields a listing under the stamped key; an entity address
+    // yields the record itself. Unwrapping the record with the list key read it
+    // as `undefined` → `[]`, and the detail page delivered `[[]]`.
+    fetchStub.setResponse({ body: { $uuid: 'u1', slug: 'ada', bio: 'Full' } })
+    const f = createDefaultFetcher({ records: RECORDS })
+    const result = await f.resolve({
+      endpoint: '/_records/members/ada', as: 'members', depth: 'full',
+      dynamicContext: { paramName: 'slug', paramValue: 'ada' },
+    })
+    expect(result.data).toEqual({ $uuid: 'u1', slug: 'ada', bio: 'Full' })
+    expect(result.meta).toEqual({ depth: 'full' })
+  })
+
+  it('echoes the depth a list asked for', async () => {
+    fetchStub.setResponse({ body: { entries: [{ $uuid: 'u1' }] } })
+    const f = createDefaultFetcher({ records: RECORDS })
+    const result = await f.resolve({ endpoint: '/_records/members', as: 'members', depth: 'brief' })
+    expect(result.data).toEqual([{ $uuid: 'u1' }])
+    expect(result.meta).toEqual({ depth: 'brief' })
+  })
+
+  it('CONTROL — a request with no depth carries no meta', async () => {
+    fetchStub.setResponse({ body: [{ id: 1 }] })
+    const f = createDefaultFetcher()
+    const result = await f.resolve({ url: 'https://api.example.com/x' })
+    expect(result.meta).toBeUndefined()
+  })
+})

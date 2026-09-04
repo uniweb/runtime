@@ -376,7 +376,13 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false, 
         // silently ignored — the source returned what it returned.
         data = applyFallbackOperators(data, request, pushedOperators, { dev })
 
-        return { data: data ?? [] }
+        // ⭐ Say what depth was delivered, so the record index can file it. On
+        // the address door that is what the config asked for — a list at brief
+        // depth when the query has a per-record source, a record in full — so
+        // the config's `depth` is echoed. A door that reports `depths` per key
+        // will override this with what it actually served.
+        const depth = request.depth === 'brief' || request.depth === 'full' ? request.depth : undefined
+        return depth ? { data: data ?? [], meta: { depth } } : { data: data ?? [] }
       } catch (error) {
         if (error?.name === 'AbortError') {
           return { data: [], error: 'aborted' }

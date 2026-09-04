@@ -2,58 +2,54 @@
  * Runtime default fetcher.
  *
  * Used as the FetcherDispatcher's terminal fallback when no foundation
- * route and no foundation fallback match. Sites that declare no fetcher
- * at all — starter/docs/marketing templates hitting /data/*.json — ride
- * on this path with zero config.
+ * transport claims the request. Sites that declare no transport at all —
+ * starter/docs/marketing templates hitting /data/*.json — ride on this path
+ * with zero config, and so does a site a host serves live.
  *
- * The fetcher recognizes a general-purpose vocabulary under `site.yml fetcher:`
- * so sites with a real backend don't need a foundation just to add a base URL
- * or static headers:
+ * ⭐ It speaks exactly THREE lanes, and takes NO site-level vocabulary for a
+ * backend of the author's own:
  *
- *   fetcher:
- *     baseUrl: https://api.example.com
- *     headers:
- *       X-Tenant: acme
- *       Accept: application/vnd.example+json
- *     envelope:
- *       list: data.items
- *       item: data.article
- *       error: errors.0.message
+ *   - a compiled file — `path:` under the site's base (`/data/<query>.json`,
+ *     a per-record file), or a plain JSON `url:` the author wrote;
+ *   - the host's ADDRESS DOOR — `endpoint:`, resolved upstream from the
+ *     `config.records` stamp (`@uniweb/core/query-address`), unwrapped with
+ *     the stamp's own `envelope.records`;
+ *   - the host's QUESTION DOOR — `door:`, one POST per tick carrying every
+ *     question the page asked, answered per key (the records door's contract,
+ *     as this client reads it).
  *
- * Per-fetch, the request may carry `method: 'POST'` + `body:` for backends
- * that take queries in a body (GraphQL, search endpoints). `{paramName}`
- * placeholders in body strings are substituted from `request.dynamicContext`
- * so template-page detail queries can reference route params.
+ * `where:` / `sort:` / `limit:` are evaluated HERE, locally, over what the
+ * first two lanes return — with `@uniweb/core`'s one evaluator, the same the
+ * build uses to materialize a file — and by the source on the third. Nothing
+ * decides that per site: the LANE decides.
  *
- * Every key is optional. When the config is empty, behavior is byte-for-byte
- * identical to a plain `fetch()` with JSON parsing.
+ * ⛔ RETIRED 2026-09-04 [Diego]: `fetcher.baseUrl`, `headers`, `envelope`,
+ * `supports`, `request.style` / `request.rename` and the `json-body`
+ * request-style registry. *"3rd party endpoints must be supported at the
+ * foundation level… making the runtime+core lean."* A backend with its own
+ * base, headers, wire or query language is a TRANSPORT — a named
+ * `{ resolve, cacheKey? }` the foundation (or an extension) registers and
+ * the site selects per schema in `fetcher.transports`. The build warns once
+ * and drops a retired key from the payload, so an author's backend does not
+ * silently stop being reached.
+ *
+ * Per-fetch, the request may still carry `method: 'POST'` + `body:` for a
+ * backend that takes a query in a body (GraphQL, a search endpoint);
+ * `{paramName}` placeholders in body strings are substituted from
+ * `request.dynamicContext`, so a template page's detail query can reference
+ * its route param. `transform:` and the object form of `detail:` (its own
+ * `envelope`) stay per fetch too — they describe ONE response, not a backend.
  *
  * Exported from a subpath — `@uniweb/runtime/default-fetcher` — for
  * runtime-level callers (the editor's preview iframe, custom runtime
  * harnesses). **Foundations should not import this.** A foundation that
- * wants plain URL + JSON behavior simply omits its own fetcher; the
- * runtime installs this one automatically. A foundation that needs
- * auth / retry / response normalization declares a named transport
- * and composes `@uniweb/fetchers` middleware around its own `resolve()`.
+ * wants plain URL + JSON behavior simply omits its own transport; the
+ * runtime installs this one automatically.
  *
- * There is intentionally no "reuse the default and wrap it" path for
- * foundations — doing so would duplicate this code into every foundation
- * bundle. The subpath export exists specifically for preview-mode shells
- * that need to delegate *non-authenticated* requests to a default-fetcher
- * instance while intercepting authenticated ones via their own transport.
- *
- * Intentional omissions: credentials / secrets are NOT part of the vocabulary.
- * Any value the framework puts into the served HTML is public to the browser.
- * Sites needing private credentials use a deployment-layer proxy — the site
- * fetches a same-origin URL, and a layer in front (e.g. the Uniweb platform's
- * edge worker, or any custom backend) resolves the credential and forwards
- * upstream. Framework sees a plain URL; platform owns the secret.
- *
- * `headers:` IS supported because static per-site headers (tenant routing,
- * content-type negotiation, custom Accept values) aren't credentials and
- * aren't anything sites try to hide. Sites that accidentally put a secret
- * in `headers:` have the same problem they'd have hardcoding it in the URL:
- * it's public. That's not a framework feature gap; it's how browsers work.
+ * Intentional omission: credentials / secrets. Any value the framework puts
+ * into the served HTML is public to the browser. Sites needing private
+ * credentials use a deployment-layer proxy — the site fetches a same-origin
+ * URL, and a layer in front resolves the credential and forwards upstream.
  */
 
 import {
@@ -62,101 +58,37 @@ import {
   sortRecords,
   sortToWire,
   deriveCacheKey,
-  resolveRequestStyle,
   resolveServiceUrl,
 } from '@uniweb/core'
-
-// The request style is the wire dialect operators are encoded in. One
-// ships — json-body, the framework's own — and `resolveRequestStyle` is
-// loud on any other name: it throws in dev and logs once in production.
-// Another dialect is a named transport, from the foundation or from an
-// extension the site selects; it is never a second built-in style.
-
-// Operators the default fetcher knows how to handle. When listed in
-// `config.supports`, they're shipped to the source as part of the
-// request; when not listed, they're applied as a JS fallback after
-// fetch. The cache key reflects which operators get pushed down — same
-// query against different `supports:` produces different cache entries.
-const KNOWN_OPERATORS = new Set(['where', 'limit', 'sort'])
 
 /**
  * @param {Object} [options]
  * @param {string} [options.basePath=''] - Prepended to local absolute paths
  *   for subpath deployments. Remote URLs pass through unchanged.
- * @param {Object} [options.config={}] - Site-level fetcher config from
- *   `site.yml fetcher:`. Vocabulary recognized by the default fetcher:
- *   `baseUrl`, `headers`, `envelope`, `supports`, `request.style`,
- *   `request.rename`. Unknown keys are ignored (foundations may use the
- *   same block for their own keys). Default behavior (empty config)
- *   matches today's plain GET + JSON.
- * @param {boolean} [options.dev=false] - Enable dev-mode diagnostics: an
- *   unknown request style throws; a rename entry for an operator the wire
- *   does not carry warns.
- * @returns {{ resolve: (req: Object, ctx: Object) => Promise<{ data, error? }> }}
+ * @param {boolean} [options.dev=false] - Dev-mode diagnostics: a bad `sort:`
+ *   throws instead of delivering the records unsorted.
+ * @param {Object|null} [options.records=null] - The host's `config.records`
+ *   stamp; its `envelope.records` names the key a list sits under on the
+ *   address door.
+ * @param {Function|null} [options.fetch=null] - The transport. A host executing
+ *   fetches outside a browser (an SSR isolate) decides how a site-relative
+ *   address is dispatched — through its own origin or a service binding — and
+ *   hands that in. Defaults to the global `fetch`, resolved at call time so a
+ *   test stub installed later is honoured.
+ * @returns {{ cacheKey: (req: Object) => string, resolve: (req: Object, ctx: Object) => Promise<{ data, error?, meta? }> }}
  */
-export function createDefaultFetcher({ basePath = '', config = {}, dev = false, records = null, fetch: fetchImpl = null } = {}) {
-  // The transport is injectable: a host executing fetches outside a browser (an SSR isolate)
-  // decides how a site-relative address such as `/_records/members` is dispatched — through its
-  // own origin or a service binding — and hands that in. Defaults to the global `fetch`, resolved
-  // at call time so a test stub installed later is honoured.
+export function createDefaultFetcher({ basePath = '', dev = false, records = null, fetch: fetchImpl = null } = {}) {
   const doFetch = (input, init) => (fetchImpl || globalThis.fetch)(input, init)
   const pathPrefix = basePath && basePath !== '/' ? basePath.replace(/\/$/, '') : ''
-
-  const baseUrl = typeof config?.baseUrl === 'string'
-    ? config.baseUrl.replace(/\/$/, '')
-    : ''
-
-  // Static headers merged into every remote request. Local `/data/*.json`
-  // requests are never decorated — they're just file reads under public/.
-  const staticHeaders = buildStaticHeaders(config?.headers)
-
-  // `supports:` declares which query operators (where, limit, sort) the
-  // backend evaluates at the source. Operators in this list are shipped
-  // in the request; operators not in this list are applied as a JS
-  // fallback after the response arrives. Default: empty — the framework
-  // default fetcher serving static files supports nothing natively.
-  const supports = normalizeSupports(config?.supports)
-
-  // Request style — the wire dialect operators are encoded in. Read from
-  // `site.yml fetcher.request.style`; `null`/absent and `json-body` both
-  // resolve to the one shipped style, and any other name is loud (see
-  // `resolveRequestStyle`).
-  const requestConfig = (config?.request && typeof config.request === 'object') ? config.request : {}
-  const styleName = typeof requestConfig.style === 'string' ? requestConfig.style : null
-  const style = resolveRequestStyle(styleName, { dev })
-
-  // Operator-name renames applied on top of the style's wire names.
-  // Shallow: only the operator keys (where / limit / sort) are rewritten.
-  // Field names inside a where-object are untouched.
-  const rename = normalizeRename(requestConfig.rename, style, { dev })
-
-  // `envelope:` extends today's `transform:` to cover detail responses and
-  // errors. Three dot-paths, all optional:
-  //   - envelope.list — applied on list responses. Per-fetch
-  //     `transform:` on the request wins (per-fetch overrides site-level).
-  //   - envelope.item       — applied when request.dynamicContext is set
-  //     (the request is for a template-page item).
-  //   - envelope.error      — extract error text from non-2xx response body.
-  //
-  // Priority (highest wins): per-fetch request.envelope > site-level
-  // config.envelope > style.defaultEnvelope. json-body declares no
-  // envelope; the slot is the encoder's to fill, and a site-level value
-  // always wins over it.
-  const siteEnvelope = (config?.envelope && typeof config.envelope === 'object')
-    ? config.envelope
-    : null
-  const envelope = { ...(style.defaultEnvelope || {}), ...(siteEnvelope || {}) }
 
   // ⭐ The LIVE LANE's envelope is the backend's. `config.records` is stamped by the backend
   // that answers a records request, so where the array sits in ITS response is its to
   // declare: `records.envelope.records` — the KEY says what it holds, the VALUE is the JSON
   // key the array sits under (`{ records: "entries" }` ⇒ body.entries). That spelling is the
   // agreed one (2026-08-30: `collection` retired; ⛔ not `list`, which is a URL pattern on the
-  // same stamp). It applies only to a request that resolved to that lane (`endpoint` set)
-  // and wins over the site's own `fetcher.envelope`, which describes the author's backend.
+  // same stamp). It applies only to a request that resolved to that lane (`endpoint` set).
   // Ruled 2026-09-03 [Diego]: the backend sets `config.records`; the fetch comes from the
-  // runtime. Until this line the runtime resolved `list`/`record` off the stamp and ignored
-  // its envelope.
+  // runtime.
   const stampedArrayKey = (records?.envelope && typeof records.envelope === 'object'
     && typeof records.envelope.records === 'string' && records.envelope.records.length)
     ? records.envelope.records
@@ -168,7 +100,7 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false, 
   // The entity store dispatches every config a page needs in one synchronous
   // loop before awaiting any of them, so a door request enqueued here and
   // flushed on the next microtask carries every miss of that page in one body
-  // (kb/framework/open-work.md A6). The batch response is never cached as
+  // The batch response is never cached as
   // one: each request gets its own answer, keyed by its own question.
   const doorQueues = new Map()
   const askDoor = (request, ctx) =>
@@ -188,39 +120,15 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false, 
 
   return {
     /**
-     * Cache-key function. The default-fetcher's cache key includes only
-     * the operators it pushes down (because they affect what the source
-     * sees). Operators applied as runtime fallback operate on a shared
-     * cached value and therefore must NOT split the cache.
-     *
-     * Example: with `supports: []`, two pages declaring different
-     * `where:` clauses against the same path share one cache entry —
-     * the file is fetched once and each page filters its own copy. With
-     * `supports: [where]`, the same two pages fire two requests because
-     * the predicate travels in the request.
+     * The cache identity is the request's ADDRESS — or, on a question door,
+     * the QUESTION (`deriveCacheKey` hashes every operator of an address-less
+     * request). Operators evaluated here run over a shared cached value and
+     * must NOT split the cache: two pages declaring different `where:` clauses
+     * against the same path share one entry — the file is fetched once and
+     * each page filters its own copy.
      */
     cacheKey(request) {
-      // A question is identified by the question — `deriveCacheKey` hashes
-      // every operator of an address-less request — so the door needs no
-      // projection.
-      if (request?.door) return deriveCacheKey(request)
-      // Build a request projection that includes only operators the active
-      // style will actually push for this request. deriveCacheKey already
-      // covers the always-keyed fields.
-      //
-      // The key also carries the style name. With one shipped style it is
-      // a constant segment, kept so that key shapes do not move.
-      const base = deriveCacheKey(request)
-      const projected = {}
-      for (const op of supports) {
-        if (!style.canPush.has(op)) continue
-        if (request[op] !== undefined) projected[op] = request[op]
-      }
-      if (Object.keys(projected).length === 0 && style.name === 'json-body') {
-        // Keep back-compat key shape when the ambient default pushes nothing.
-        return base
-      }
-      return base + '::style=' + style.name + '::' + JSON.stringify(projected)
+      return deriveCacheKey(request)
     },
 
     async resolve(request, ctx = {}) {
@@ -238,77 +146,27 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false, 
       }
 
       let target
-      let isRemote
       if (endpoint) {
-        // A host-declared collection lane, resolved upstream from the pattern
-        // it published (`@uniweb/core/query-address`). FINAL ON ARRIVAL:
-        //
-        //   - `baseUrl` is NOT joined. That knob points a site at ITS OWN
-        //     backend; prepending it to an address a host composed would
-        //     corrupt exactly the layout the pattern exists to let them own.
-        //   - the site `base` IS applied to a rooted address, the same rule
-        //     every other site-relative address follows — shared with
-        //     `resolveServiceUrl` rather than spelled a second time here.
-        //
-        // Remote semantics otherwise: this answers a QUERY, so operator
-        // pushdown and static headers both apply, which is what separates it
-        // from `path` (a static file that can neither filter nor sort).
+        // The host's address door, resolved upstream from the pattern it
+        // published. FINAL ON ARRIVAL: the site `base` is applied to a rooted
+        // address — the same rule every other site-relative address follows,
+        // shared with `resolveServiceUrl` rather than spelled a second time —
+        // and nothing else is joined onto it. A pattern may carry a site id,
+        // its own root, any layout at all; none of it is ours.
         target = resolveServiceUrl(endpoint, pathPrefix)
-        isRemote = true
       } else if (path) {
         // Local file under public/ — basePath applies for subpath deploys.
         target = pathPrefix && path.startsWith('/') && !path.startsWith('//')
           ? pathPrefix + path
           : path
-        isRemote = false
       } else if (url) {
-        // Remote URL — baseUrl applies when url is relative (no scheme,
-        // not protocol-relative). Absolute or protocol-relative pass through.
-        target = isAbsoluteUrl(url) ? url : joinUrl(baseUrl, url)
-        isRemote = true
+        // A URL the author wrote, sent exactly as written.
+        target = url
       } else {
         return { data: [], error: 'No path, url or endpoint specified' }
       }
 
       const init = { signal: ctx.signal, method }
-      const headers = {}
-
-      // Static site-level headers go on remote requests only — we don't
-      // decorate local file reads with tenant/content-type headers.
-      if (isRemote && staticHeaders) Object.assign(headers, staticHeaders)
-
-      // Push down supported query operators to the source via the active
-      // request style. Pushdown only applies to remote URLs — local `path:`
-      // reads are static files that can't filter or sort. Operators the
-      // style didn't push get applied as a JS fallback after the response
-      // (see the post-fetch block below).
-      //
-      // The style owns the wire format: json-body encodes GET pushdown as
-      // `?_where=<JSON>&_limit=&_sort=` and POST pushdown as top-level keys
-      // merged into an object body. It is the only shipped wire — another
-      // dialect is a named transport.
-      const pushCandidates = new Set()
-      if (isRemote) {
-        for (const op of KNOWN_OPERATORS) {
-          if (
-            supports.has(op) &&
-            style.canPush.has(op) &&
-            request[op] !== undefined &&
-            request[op] !== null
-          ) {
-            pushCandidates.add(op)
-          }
-        }
-      }
-
-      const encoded = pushCandidates.size > 0
-        ? style.encode(request, { method, pushCandidates, rename })
-        : { queryParams: [], bodyMerge: null, pushed: new Set() }
-      const pushedOperators = encoded.pushed
-
-      if (encoded.queryParams.length > 0 && method === 'GET') {
-        target = appendStyleQueryParams(target, encoded.queryParams)
-      }
 
       if (method === 'POST') {
         // Substitute {paramName} placeholders in body strings using the
@@ -316,50 +174,36 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false, 
         // build it from dynamicContext's { paramName, paramValue } shape.
         // Strict-brace matcher: GraphQL selection sets pass through unchanged.
         const dc = request.dynamicContext
-        const resolvedBody = (rawBody !== undefined && rawBody !== null && dc && dc.paramName)
+        const body = (rawBody !== undefined && rawBody !== null && dc && dc.paramName)
           ? substitutePlaceholders(rawBody, { [dc.paramName]: dc.paramValue }, { encode: false })
           : rawBody
-
-        // Compose the final body: author-supplied body merged with pushed
-        // operators from the style. When no body and no pushdown, send
-        // a body containing just the pushed operators if any exist.
-        const finalBody = composePostBody(resolvedBody, encoded.bodyMerge)
-
-        if (finalBody !== null) {
-          // Default Content-Type to JSON unless the site's static headers
-          // already set one (for application/graphql or form-urlencoded).
-          if (!hasHeader(headers, 'Content-Type')) {
-            headers['Content-Type'] = 'application/json'
-          }
-          init.body = typeof finalBody === 'string' ? finalBody : JSON.stringify(finalBody)
+        if (body !== undefined && body !== null) {
+          init.headers = { 'Content-Type': 'application/json' }
+          init.body = typeof body === 'string' ? body : JSON.stringify(body)
         }
       }
-
-      if (Object.keys(headers).length) init.headers = headers
 
       try {
         const response = await doFetch(target, init)
 
-        // Per-request envelope (set by object-form `detail:`) wins over
-        // site-level envelope. This lets a detail query declare its own
-        // item/collection/error paths independently of the collection.
+        // A per-request envelope (set by the object form of `detail:`) describes
+        // this one response; on the address door the stamp describes the lane.
         const requestEnvelope = (request.envelope && typeof request.envelope === 'object')
           ? request.envelope
           : null
-        const effectiveEnvelope = requestEnvelope
-          ?? (endpoint && laneEnvelope ? { ...envelope, ...laneEnvelope } : envelope)
+        const envelope = requestEnvelope ?? (endpoint && laneEnvelope ? laneEnvelope : {})
 
         if (!response.ok) {
-          // If `envelope.error` is configured, try to extract a human message
+          // If `envelope.error` names a path, try to extract a human message
           // from the parsed body; fall back to status text if the path is
           // missing or the body isn't JSON.
           let extracted
-          if (effectiveEnvelope.error) {
+          if (envelope.error) {
             try {
               const text = await response.text()
               const body = safeParseJSON(text)
               if (body !== undefined) {
-                const candidate = getNestedValue(body, effectiveEnvelope.error)
+                const candidate = getNestedValue(body, envelope.error)
                 if (typeof candidate === 'string' && candidate.length) {
                   extracted = candidate
                 }
@@ -387,23 +231,21 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false, 
           }
         }
 
-        // Unwrap response envelope. Priority order, highest wins:
-        //   1. Per-fetch `transform:` (existing, documented knob).
-        //   2. Per-request `envelope.item` (detail) or `envelope.list`.
-        //   3. Site-level `envelope.item` (detail) or `envelope.list`.
+        // Unwrap the response. Per-fetch `transform:` wins; otherwise the
+        // envelope's `item` path on a single-record request, `list` on a list.
         const isDetailRequest = !!request.dynamicContext
         const effectiveTransform =
           transform
-          || (isDetailRequest ? effectiveEnvelope.item : effectiveEnvelope.list)
+          || (isDetailRequest ? envelope.item : envelope.list)
         if (effectiveTransform && data !== null && data !== undefined) {
           data = getNestedValue(data, effectiveTransform)
         }
 
-        // Apply runtime fallback for query operators not pushed down.
-        // Only applies to array data (filtering/sorting/limiting a single
-        // record doesn't make sense). For non-arrays, operators are
-        // silently ignored — the source returned what it returned.
-        data = applyFallbackOperators(data, request, pushedOperators, { dev })
+        // Evaluate the query locally. Only applies to array data
+        // (filtering/sorting/limiting a single record doesn't make sense).
+        // For non-arrays, operators are ignored — the source returned what
+        // it returned.
+        data = applyOperators(data, request, { dev })
 
         // ⭐ Say what depth was delivered, so the record index can file it. On
         // the address door that is what the config asked for — a list at brief
@@ -424,7 +266,7 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false, 
 
 /**
  * One question of a door batch, in the door's own vocabulary
- * (kb/backend/records-query-contract.md §2): `schema` required, `scope` a bare
+ * (the records door's contract, §2): `schema` required, `scope` a bare
  * path, `sort` one key spelled `date` / `-date`, `depth` brief or full. The
  * where-object crosses as authored except for the two spellings the language
  * settled differently from the evaluator's: `nin` is `not_in` there, and a
@@ -521,115 +363,28 @@ async function flushDoor(url, queue, doFetch) {
 }
 
 /**
- * Normalize the `request.rename` map. Returns null if nothing valid.
- * Dev-mode warns on operator names that don't exist in the style's
- * `canPush` set — a rename that targets an operator the style doesn't
- * push is silently dead config, and the warning surfaces the mistake.
+ * Evaluate the query over what the source returned — the ONE evaluator,
+ * `@uniweb/core`'s, so the browser orders and filters exactly as the build
+ * did when it materialized `/data/<name>.json`.
  */
-function normalizeRename(raw, style, { dev }) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
-  const out = {}
-  for (const [op, wireName] of Object.entries(raw)) {
-    if (typeof wireName !== 'string' || wireName.length === 0) continue
-    if (dev && !style.canPush.has(op) && !warnedRenameTargets.has(op)) {
-      warnedRenameTargets.add(op)
-      console.warn(
-        `[default-fetcher] request.rename: operator "${op}" is not pushed by ` +
-          `style "${style.name}" — rename has no effect. Known operators for ` +
-          `this style: ${[...style.canPush].join(', ') || '(none)'}.`,
-      )
-    }
-    out[op] = wireName
-  }
-  return Object.keys(out).length ? out : null
-}
-const warnedRenameTargets = new Set()
-
-/**
- * Normalize the supports declaration to a Set of known operators. Unknown
- * operator names are ignored with a one-time dev warning.
- */
-function normalizeSupports(raw) {
-  const out = new Set()
-  if (!Array.isArray(raw)) return out
-  for (const op of raw) {
-    if (typeof op !== 'string') continue
-    if (KNOWN_OPERATORS.has(op)) out.add(op)
-    else if (!warnedUnknownOperators.has(op)) {
-      warnedUnknownOperators.add(op)
-      console.warn(`[default-fetcher] supports: unknown operator "${op}" — ignored.`)
-    }
-  }
-  return out
-}
-const warnedUnknownOperators = new Set()
-
-/**
- * Append [key, value] pairs emitted by a style to a URL as query
- * parameters. Existing query string is preserved; values are URL-encoded.
- */
-function appendStyleQueryParams(url, pairs) {
-  if (!pairs || pairs.length === 0) return url
-  const params = pairs.map(
-    ([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v),
-  )
-  const sep = url.includes('?') ? '&' : '?'
-  return url + sep + params.join('&')
-}
-
-/**
- * Compose a POST body that includes the style's bodyMerge alongside the
- * author-supplied body. When neither exists, returns null (no body sent).
- *
- * If the author supplied a string body (typically GraphQL), we can't
- * merge — the string is sent as-is and the style's bodyMerge is dropped.
- * Sites with string POST bodies needing pushdown should write the
- * operators into the body themselves.
- */
-function composePostBody(authorBody, bodyMerge) {
-  if (!bodyMerge) {
-    return authorBody === undefined ? null : authorBody
-  }
-  if (typeof authorBody === 'string') {
-    return authorBody
-  }
-  const base = (authorBody && typeof authorBody === 'object') ? authorBody : {}
-  return { ...base, ...bodyMerge }
-}
-
-/**
- * Apply query operators that weren't pushed down to the source. The
- * source returned `data` unfiltered/unlimited/unsorted for those
- * operators; the runtime applies them now in JS.
- */
-function applyFallbackOperators(data, request, pushedOperators, { dev = false } = {}) {
+function applyOperators(data, request, { dev = false } = {}) {
   if (!Array.isArray(data)) return data
   let result = data
-
-  if (request.where && !pushedOperators.has('where')) {
-    result = matchWhere(request.where, result)
-  }
-  if (request.sort && !pushedOperators.has('sort')) {
-    result = applySortFallback(result, request.sort, dev)
-  }
-  if (typeof request.limit === 'number' && request.limit > 0 && !pushedOperators.has('limit')) {
-    result = result.slice(0, request.limit)
-  }
+  if (request.where) result = matchWhere(request.where, result)
+  if (request.sort) result = applySort(result, request.sort, dev)
+  if (typeof request.limit === 'number' && request.limit > 0) result = result.slice(0, request.limit)
   return result
 }
 
 /**
- * The fallback sort — `@uniweb/core`'s one evaluator, the same the build runs
- * when it materializes `/data/<name>.json`, so the two lanes order identically.
- *
- * ⛔ This was a second implementation until 2026-09-04, and it honoured a
- * comma-separated MULTI-KEY sort the language does not have (single-key by
+ * ⛔ This was a second sort implementation until 2026-09-04, and it honoured
+ * a comma-separated MULTI-KEY sort the language does not have (single-key by
  * ruling). A bad `sort:` is an authoring error: dev throws so it is seen; in
  * production the records are delivered in source order and the reason is
  * logged once — a wrong order is not worth a broken page for a visitor.
  */
 const warnedBadSorts = new Set()
-function applySortFallback(items, sortExpr, dev) {
+function applySort(items, sortExpr, dev) {
   try {
     return sortRecords(items, sortExpr)
   } catch (err) {
@@ -641,53 +396,6 @@ function applySortFallback(items, sortExpr, dev) {
     }
     return items
   }
-}
-
-/**
- * Build the static headers object from `site.yml fetcher.headers:`. Returns
- * null when none are configured so the caller can skip adding an empty
- * `headers` init option.
- */
-function buildStaticHeaders(headers) {
-  if (!headers || typeof headers !== 'object' || Array.isArray(headers)) return null
-  const out = {}
-  for (const [k, v] of Object.entries(headers)) {
-    if (v === null || v === undefined) continue
-    out[k] = String(v)
-  }
-  return Object.keys(out).length ? out : null
-}
-
-/**
- * Case-insensitive header-key check. Lets a site write `Content-Type` or
- * `content-type` and still override the POST default correctly.
- */
-function hasHeader(headers, name) {
-  const lower = name.toLowerCase()
-  return Object.keys(headers).some((k) => k.toLowerCase() === lower)
-}
-
-/**
- * Is this URL absolute (has a scheme) or protocol-relative? Those two pass
- * through the default fetcher unchanged. Everything else is considered
- * relative and resolves against `config.baseUrl` (if set).
- */
-function isAbsoluteUrl(url) {
-  if (typeof url !== 'string') return false
-  if (url.startsWith('//')) return true        // protocol-relative
-  return /^[a-z][a-z0-9+.-]*:\/\//i.test(url)  // scheme://…
-}
-
-/**
- * Join `baseUrl` with a relative `url`, avoiding double slashes. If `baseUrl`
- * is empty, the url is returned unchanged — even if relative — so sites that
- * don't set `baseUrl` behave exactly like they did before this capability
- * was added.
- */
-function joinUrl(baseUrl, url) {
-  if (!baseUrl) return url
-  if (url.startsWith('/')) return baseUrl + url
-  return baseUrl + '/' + url
 }
 
 /**

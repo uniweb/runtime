@@ -240,15 +240,17 @@ function buildDefaultFetcher(content) {
   // serve data wherever it likes — including intercepting a site-local path and
   // proxying it onward — with no framework change.
   const basePath = content?.config?.base || import.meta.env?.BASE_URL || ''
-  // Per-site transport config from `site.yml fetcher:`. The default fetcher
-  // recognizes `baseUrl` and `envelope`; foundations with their own fetchers
-  // may read additional keys from the same block via ctx.website.config.fetcher.
-  const config = content?.config?.fetcher ?? {}
+  // ⛔ `site.yml fetcher:` is NOT read here — the default fetcher takes no
+  // site-level vocabulary (retired 2026-09-04: baseUrl / headers / envelope /
+  // supports / request). The block is the site's SELECTION of foundation
+  // transports (`fetcher.transports`) plus a transport's own binding config,
+  // which a transport reads through ctx.website.config.fetcher.
+  //
   // The host's live-records stamp (`config.records`), when a backend set one: the fetcher
   // reads its `envelope` for requests that resolved to that lane.
   const records = content?.config?.records ?? null
   const dev = !!(import.meta.env && import.meta.env.DEV)
-  return createDefaultFetcher({ basePath, config, dev, records })
+  return createDefaultFetcher({ basePath, dev, records })
 }
 
 /**

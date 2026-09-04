@@ -2,14 +2,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createDefaultFetcher } from '../src/default-fetcher.js'
 
 /**
- * Tests for the runtime's default fetcher. Covers:
- *   - Baseline: plain GET, JSON, transform, basePath (today's behavior).
- *   - baseUrl: relative URL resolution for remote fetches.
- *   - envelope: list / item / error dot-paths.
- *   - method: POST + body + placeholder substitution from dynamicContext.
+ * Tests for the runtime's default fetcher — THREE lanes and no site-level
+ * vocabulary for a backend of the author's own:
+ *   - a compiled file / a plain `url:`: GET, JSON, transform, basePath,
+ *     `method: POST` + body + placeholder substitution from dynamicContext,
+ *     every operator evaluated locally with the one evaluator;
+ *   - the host's address door (`endpoint:`), unwrapped with the stamp;
+ *   - the host's question door (`door:`) — `query-door.test.js`.
  *
- * Auth headers / passthrough / env-var tokens are intentionally not part
- * of the default fetcher's vocabulary — see the architecture doc.
+ * ⛔ `fetcher.baseUrl` / `headers` / `envelope` / `supports` / `request.*`
+ * were RETIRED on 2026-09-04: a third party's conventions are a foundation
+ * transport. The last group here pins that the fetcher does not read them.
  */
 
 // ─── Test helpers ───────────────────────────────────────────────────────────
@@ -150,132 +153,6 @@ describe('createDefaultFetcher — basePath (subpath deploys)', () => {
   })
 })
 
-describe('createDefaultFetcher — config.baseUrl', () => {
-  let fetchStub
-  beforeEach(() => { fetchStub = stubFetch({ body: [{ id: 1 }] }) })
-  afterEach(() => fetchStub.restore())
-
-  it('prepends baseUrl to relative URLs starting with /', async () => {
-    const f = createDefaultFetcher({ config: { baseUrl: 'https://api.example.com' } })
-    await f.resolve({ url: '/articles' })
-    expect(fetchStub.calls[0].input).toBe('https://api.example.com/articles')
-  })
-
-  it('prepends baseUrl to relative URLs without a leading slash', async () => {
-    const f = createDefaultFetcher({ config: { baseUrl: 'https://api.example.com' } })
-    await f.resolve({ url: 'articles/featured' })
-    expect(fetchStub.calls[0].input).toBe('https://api.example.com/articles/featured')
-  })
-
-  it('strips trailing slash on baseUrl', async () => {
-    const f = createDefaultFetcher({ config: { baseUrl: 'https://api.example.com/' } })
-    await f.resolve({ url: '/articles' })
-    expect(fetchStub.calls[0].input).toBe('https://api.example.com/articles')
-  })
-
-  it('passes through absolute URLs (https://…) unchanged', async () => {
-    const f = createDefaultFetcher({ config: { baseUrl: 'https://api.example.com' } })
-    await f.resolve({ url: 'https://other.example.com/x' })
-    expect(fetchStub.calls[0].input).toBe('https://other.example.com/x')
-  })
-
-  it('passes through http:// URLs unchanged', async () => {
-    const f = createDefaultFetcher({ config: { baseUrl: 'https://api.example.com' } })
-    await f.resolve({ url: 'http://legacy.example.com/x' })
-    expect(fetchStub.calls[0].input).toBe('http://legacy.example.com/x')
-  })
-
-  it('passes through protocol-relative (//…) URLs unchanged', async () => {
-    const f = createDefaultFetcher({ config: { baseUrl: 'https://api.example.com' } })
-    await f.resolve({ url: '//cdn.example.com/x.json' })
-    expect(fetchStub.calls[0].input).toBe('//cdn.example.com/x.json')
-  })
-
-  it('does not touch local paths even when baseUrl is set', async () => {
-    const f = createDefaultFetcher({
-      basePath: '/docs/',
-      config: { baseUrl: 'https://api.example.com' },
-    })
-    await f.resolve({ path: '/data/team.json' })
-    expect(fetchStub.calls[0].input).toBe('/docs/data/team.json')
-  })
-
-  it('baseUrl is a no-op when empty (baseline behavior preserved)', async () => {
-    const f = createDefaultFetcher({ config: {} })
-    await f.resolve({ url: '/articles' })
-    expect(fetchStub.calls[0].input).toBe('/articles')
-  })
-
-  it('handles non-string baseUrl gracefully', async () => {
-    const f = createDefaultFetcher({ config: { baseUrl: null } })
-    await f.resolve({ url: '/articles' })
-    expect(fetchStub.calls[0].input).toBe('/articles')
-  })
-})
-
-describe('createDefaultFetcher — config.headers', () => {
-  let fetchStub
-  beforeEach(() => { fetchStub = stubFetch({ body: [] }) })
-  afterEach(() => fetchStub.restore())
-
-  it('sends static headers on remote requests', async () => {
-    const f = createDefaultFetcher({
-      config: {
-        baseUrl: 'https://api.example.com',
-        headers: { 'X-Tenant': 'acme', Accept: 'application/json' },
-      },
-    })
-    await f.resolve({ url: '/articles' })
-    expect(fetchStub.calls[0].init.headers).toEqual({
-      'X-Tenant': 'acme',
-      Accept: 'application/json',
-    })
-  })
-
-  it('does NOT send headers on local path requests', async () => {
-    const f = createDefaultFetcher({
-      config: { headers: { 'X-Tenant': 'acme' } },
-    })
-    await f.resolve({ path: '/data/team.json' })
-    expect(fetchStub.calls[0].init.headers).toBeUndefined()
-  })
-
-  it('stringifies header values', async () => {
-    const f = createDefaultFetcher({
-      config: { headers: { 'X-Retry-Count': 3 } },
-    })
-    await f.resolve({ url: 'https://api.example.com/x' })
-    expect(fetchStub.calls[0].init.headers).toEqual({ 'X-Retry-Count': '3' })
-  })
-
-  it('skips null / undefined header values', async () => {
-    const f = createDefaultFetcher({
-      config: { headers: { 'X-Keep': 'yes', 'X-Drop-Null': null, 'X-Drop-Undef': undefined } },
-    })
-    await f.resolve({ url: 'https://api.example.com/x' })
-    expect(fetchStub.calls[0].init.headers).toEqual({ 'X-Keep': 'yes' })
-  })
-
-  it('site headers.Content-Type wins over POST default on POST requests', async () => {
-    const f = createDefaultFetcher({
-      config: {
-        baseUrl: 'https://api.example.com',
-        headers: { 'Content-Type': 'application/graphql' },
-      },
-    })
-    await f.resolve({ url: '/graphql', method: 'POST', body: '{ articles { id } }' })
-    expect(fetchStub.calls[0].init.headers['Content-Type']).toBe('application/graphql')
-  })
-
-  it('case-insensitive content-type override', async () => {
-    const f = createDefaultFetcher({
-      config: { headers: { 'content-type': 'application/graphql' } },
-    })
-    await f.resolve({ url: 'https://api.example.com/x', method: 'POST', body: 'raw' })
-    expect(fetchStub.calls[0].init.headers['content-type']).toBe('application/graphql')
-    expect(fetchStub.calls[0].init.headers['Content-Type']).toBeUndefined()
-  })
-})
 
 describe('createDefaultFetcher — the backend\'s records.envelope on the live lane', () => {
   // `config.records` is stamped by the backend that answers records requests; its
@@ -295,18 +172,11 @@ describe('createDefaultFetcher — the backend\'s records.envelope on the live l
     expect(result.data).toEqual([{ id: 1 }, { id: 2 }])
   })
 
-  it('the stamp wins over the site\'s own fetcher.envelope on the live lane', async () => {
-    fetchStub.setResponse({ body: { entries: [1, 2], data: { items: [3, 4] } } })
-    const f = createDefaultFetcher({ config: { envelope: { list: 'data.items' } }, records: RECORDS })
-    const result = await f.resolve({ endpoint: '/_records/x', as: 'x' })
-    expect(result.data).toEqual([1, 2])
-  })
-
   it('CONTROL — a request that is NOT on the live lane ignores the stamp', async () => {
     fetchStub.setResponse({ body: { entries: [1, 2], data: { items: [3, 4] } } })
-    const f = createDefaultFetcher({ config: { envelope: { list: 'data.items' } }, records: RECORDS })
+    const f = createDefaultFetcher({ records: RECORDS })
     const result = await f.resolve({ url: 'https://api.example.com/x' })
-    expect(result.data).toEqual([3, 4])
+    expect(result.data).toEqual({ entries: [1, 2], data: { items: [3, 4] } })
   })
 
   it('CONTROL — a per-request envelope still wins over the stamp', async () => {
@@ -331,76 +201,67 @@ describe('createDefaultFetcher — the backend\'s records.envelope on the live l
   })
 })
 
-describe('createDefaultFetcher — config.envelope', () => {
+
+describe('createDefaultFetcher — a per-request envelope (the object form of detail:)', () => {
+  // A per-request envelope describes ONE response — the record a template
+  // page asked for — not a backend. It is the only envelope the default
+  // fetcher reads besides the host's stamp: the site-level `fetcher.envelope`
+  // was retired 2026-09-04.
   let fetchStub
   beforeEach(() => { fetchStub = stubFetch({ body: {} }) })
   afterEach(() => fetchStub.restore())
 
-  it('envelope.list unwraps list responses', async () => {
-    fetchStub.setResponse({ body: { data: { items: [{ id: 1 }, { id: 2 }] } } })
-    const f = createDefaultFetcher({
-      config: { envelope: { list: 'data.items' } },
-    })
-    const result = await f.resolve({ url: 'https://api.example.com/articles' })
-    expect(result.data).toEqual([{ id: 1 }, { id: 2 }])
-  })
-
-  it('envelope.item unwraps detail responses', async () => {
+  it('envelope.item unwraps a detail response', async () => {
     fetchStub.setResponse({ body: { data: { article: { id: 42 } } } })
-    const f = createDefaultFetcher({
-      config: { envelope: { list: 'data.items', item: 'data.article' } },
-    })
+    const f = createDefaultFetcher()
     const result = await f.resolve({
       url: 'https://api.example.com/articles/42',
+      envelope: { list: 'data.items', item: 'data.article' },
       dynamicContext: { paramName: 'slug', paramValue: '42', schema: 'articles' },
     })
     expect(result.data).toEqual({ id: 42 })
   })
 
-  it('per-fetch transform wins over envelope.collection', async () => {
+  it('envelope.list unwraps a list response', async () => {
+    fetchStub.setResponse({ body: { data: { items: [{ id: 1 }, { id: 2 }] } } })
+    const f = createDefaultFetcher()
+    const result = await f.resolve({ url: 'https://api.example.com/articles', envelope: { list: 'data.items' } })
+    expect(result.data).toEqual([{ id: 1 }, { id: 2 }])
+  })
+
+  it('per-fetch transform wins over envelope.list', async () => {
     fetchStub.setResponse({ body: { a: { b: [1, 2] }, data: { items: [3, 4] } } })
-    const f = createDefaultFetcher({
-      config: { envelope: { list: 'data.items' } },
-    })
-    const result = await f.resolve({ url: 'https://api.example.com/x', transform: 'a.b' })
+    const f = createDefaultFetcher()
+    const result = await f.resolve({ url: 'https://api.example.com/x', transform: 'a.b', envelope: { list: 'data.items' } })
     expect(result.data).toEqual([1, 2])
   })
 
-  it('envelope.error extracts error text from non-2xx body', async () => {
-    fetchStub.setResponse({
-      status: 404,
-      body: { errors: [{ message: 'article not found' }] },
-    })
-    const f = createDefaultFetcher({
-      config: { envelope: { error: 'errors.0.message' } },
-    })
-    const result = await f.resolve({ url: 'https://api.example.com/x' })
+  it('envelope.error extracts error text from a non-2xx body', async () => {
+    fetchStub.setResponse({ status: 404, body: { errors: [{ message: 'article not found' }] } })
+    const f = createDefaultFetcher()
+    const result = await f.resolve({ url: 'https://api.example.com/x', envelope: { error: 'errors.0.message' } })
     expect(result.data).toEqual([])
     expect(result.error).toBe('article not found')
   })
 
-  it('envelope.error falls back to status text when path missing', async () => {
+  it('envelope.error falls back to status text when the path is missing', async () => {
     fetchStub.setResponse({ status: 404, body: { other: 'shape' } })
-    const f = createDefaultFetcher({
-      config: { envelope: { error: 'errors.0.message' } },
-    })
-    const result = await f.resolve({ url: 'https://api.example.com/x' })
+    const f = createDefaultFetcher()
+    const result = await f.resolve({ url: 'https://api.example.com/x', envelope: { error: 'errors.0.message' } })
     expect(result.error).toMatch(/^HTTP 404/)
   })
 
-  it('envelope.error falls back when body is not JSON', async () => {
+  it('envelope.error falls back when the body is not JSON', async () => {
     fetchStub.setResponse({ status: 500, body: 'raw text', contentType: 'text/plain' })
-    const f = createDefaultFetcher({
-      config: { envelope: { error: 'errors.0.message' } },
-    })
-    const result = await f.resolve({ url: 'https://api.example.com/x' })
+    const f = createDefaultFetcher()
+    const result = await f.resolve({ url: 'https://api.example.com/x', envelope: { error: 'errors.0.message' } })
     expect(result.error).toMatch(/^HTTP 500/)
   })
 
-  it('empty envelope behaves like today (no-op)', async () => {
+  it('an empty envelope is a no-op', async () => {
     fetchStub.setResponse({ body: [{ id: 1 }] })
-    const f = createDefaultFetcher({ config: { envelope: {} } })
-    const result = await f.resolve({ url: 'https://api.example.com/x' })
+    const f = createDefaultFetcher()
+    const result = await f.resolve({ url: 'https://api.example.com/x', envelope: {} })
     expect(result.data).toEqual([{ id: 1 }])
   })
 })
@@ -417,9 +278,9 @@ describe('createDefaultFetcher — method + body (POST)', () => {
   })
 
   it('sends a POST with JSON-serialized body', async () => {
-    const f = createDefaultFetcher({ config: { baseUrl: 'https://api.example.com' } })
+    const f = createDefaultFetcher()
     await f.resolve({
-      url: '/search',
+      url: 'https://api.example.com/search',
       method: 'POST',
       body: { filter: { status: 'published' }, limit: 10 },
     })
@@ -430,21 +291,21 @@ describe('createDefaultFetcher — method + body (POST)', () => {
   })
 
   it('defaults Content-Type to application/json on POST', async () => {
-    const f = createDefaultFetcher({ config: { baseUrl: 'https://api.example.com' } })
-    await f.resolve({ url: '/x', method: 'POST', body: { q: 1 } })
+    const f = createDefaultFetcher()
+    await f.resolve({ url: 'https://api.example.com/x', method: 'POST', body: { q: 1 } })
     expect(fetchStub.calls[0].init.headers['Content-Type']).toBe('application/json')
   })
 
   it('accepts string body passed through unchanged', async () => {
-    const f = createDefaultFetcher({ config: { baseUrl: 'https://api.example.com' } })
-    await f.resolve({ url: '/graphql', method: 'POST', body: '{ articles { id } }' })
+    const f = createDefaultFetcher()
+    await f.resolve({ url: 'https://api.example.com/graphql', method: 'POST', body: '{ articles { id } }' })
     expect(fetchStub.calls[0].init.body).toBe('{ articles { id } }')
   })
 
   it('substitutes {paramName} placeholders in body using dynamicContext', async () => {
-    const f = createDefaultFetcher({ config: { baseUrl: 'https://api.example.com' } })
+    const f = createDefaultFetcher()
     await f.resolve({
-      url: '/graphql',
+      url: 'https://api.example.com/graphql',
       method: 'POST',
       body: {
         query: 'query Article($slug: String!) { article(slug: $slug) { id } }',
@@ -460,29 +321,27 @@ describe('createDefaultFetcher — method + body (POST)', () => {
   })
 
   it('GET request with body is a no-op (body dropped)', async () => {
-    const f = createDefaultFetcher({ config: { baseUrl: 'https://api.example.com' } })
-    await f.resolve({ url: '/articles', body: { x: 1 } })
+    const f = createDefaultFetcher()
+    await f.resolve({ url: 'https://api.example.com/articles', body: { x: 1 } })
     expect(fetchStub.calls[0].init.body).toBeUndefined()
   })
 
   it('warns and falls back to GET for unsupported method', async () => {
-    const f = createDefaultFetcher({ config: { baseUrl: 'https://api.example.com' } })
-    await f.resolve({ url: '/articles', method: 'DELETE' })
+    const f = createDefaultFetcher()
+    await f.resolve({ url: 'https://api.example.com/articles', method: 'DELETE' })
     expect(fetchStub.calls[0].init.method).toBe('GET')
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('not supported'))
   })
 
   it('method is case-insensitive', async () => {
-    const f = createDefaultFetcher({ config: { baseUrl: 'https://api.example.com' } })
-    await f.resolve({ url: '/x', method: 'post', body: { q: 1 } })
+    const f = createDefaultFetcher()
+    await f.resolve({ url: 'https://api.example.com/x', method: 'post', body: { q: 1 } })
     expect(fetchStub.calls[0].init.method).toBe('POST')
   })
 
-  it('per-request envelope overrides site-level envelope', async () => {
+  it('a per-request envelope unwraps a POSTed detail response', async () => {
     fetchStub.setResponse({ body: { data: { article: { id: 7 } }, other: [] } })
-    const f = createDefaultFetcher({
-      config: { envelope: { list: 'data.x' } }, // site-level
-    })
+    const f = createDefaultFetcher()
     const result = await f.resolve({
       url: 'https://api.example.com/x',
       method: 'POST',
@@ -494,9 +353,10 @@ describe('createDefaultFetcher — method + body (POST)', () => {
   })
 })
 
-// ─── supports: capability declaration + where/limit/sort ────────────────────
+// ─── where / limit / sort — evaluated locally, over what arrived ────────────
 
-describe('createDefaultFetcher — supports: [] (default, runtime fallback)', () => {
+
+describe('createDefaultFetcher — the query is evaluated locally over what the source returned', () => {
   let fetchStub
   beforeEach(() => {
     fetchStub = stubFetch({
@@ -509,20 +369,20 @@ describe('createDefaultFetcher — supports: [] (default, runtime fallback)', ()
   })
   afterEach(() => fetchStub.restore())
 
-  it('applies where as runtime fallback (no pushdown)', async () => {
+  it('applies where locally — the URL is sent exactly as written', async () => {
     const f = createDefaultFetcher()
     const result = await f.resolve({ url: 'https://api.example.com/x', where: { tenured: true } })
     expect(result.data.map((r) => r.id)).toEqual([1, 3])
     expect(fetchStub.calls[0].input).toBe('https://api.example.com/x')
   })
 
-  it('applies limit and sort as runtime fallback', async () => {
+  it('applies limit and sort locally', async () => {
     const f = createDefaultFetcher()
     const result = await f.resolve({ url: 'https://api.example.com/x', sort: 'year desc', limit: 2 })
     expect(result.data.map((r) => r.id)).toEqual([3, 2])
   })
 
-  it('cache key does not include operators when none are pushed down', async () => {
+  it('the cache identity is the ADDRESS — a different where shares the entry', async () => {
     const f = createDefaultFetcher()
     const k1 = f.cacheKey({ url: 'https://api.example.com/x', where: { tenured: true } })
     const k2 = f.cacheKey({ url: 'https://api.example.com/x', where: { tenured: false } })
@@ -530,283 +390,8 @@ describe('createDefaultFetcher — supports: [] (default, runtime fallback)', ()
   })
 })
 
-describe('createDefaultFetcher — supports: [where] (predicate pushdown)', () => {
-  let fetchStub
-  beforeEach(() => {
-    fetchStub = stubFetch({ body: [{ id: 99, filtered: true }] })
-  })
-  afterEach(() => fetchStub.restore())
 
-  it('appends ?_where= to GET URLs when where is pushed down', async () => {
-    const f = createDefaultFetcher({ config: { supports: ['where'] } })
-    await f.resolve({ url: 'https://api.example.com/x', where: { tenured: true } })
-    const url = fetchStub.calls[0].input
-    expect(url).toContain('_where=')
-    expect(decodeURIComponent(url.split('_where=')[1])).toBe(JSON.stringify({ tenured: true }))
-  })
-
-  it('returns the source response unchanged when where is pushed down', async () => {
-    const f = createDefaultFetcher({ config: { supports: ['where'] } })
-    const result = await f.resolve({ url: 'https://api.example.com/x', where: { tenured: true } })
-    expect(result.data).toEqual([{ id: 99, filtered: true }])
-  })
-
-  it('cache key includes where when pushed down', async () => {
-    const f = createDefaultFetcher({ config: { supports: ['where'] } })
-    const k1 = f.cacheKey({ url: 'https://api.example.com/x', where: { tenured: true } })
-    const k2 = f.cacheKey({ url: 'https://api.example.com/x', where: { tenured: false } })
-    expect(k1).not.toBe(k2)
-  })
-
-  it('does not push down on local path: requests', async () => {
-    const f = createDefaultFetcher({ config: { supports: ['where'] } })
-    await f.resolve({ path: '/data/local.json', where: { tenured: true } })
-    expect(fetchStub.calls[0].input).toBe('/data/local.json')
-  })
-})
-
-describe('createDefaultFetcher — supports: partial (mixed pushdown + fallback)', () => {
-  let fetchStub
-  beforeEach(() => {
-    fetchStub = stubFetch({
-      body: [
-        { id: 1, year: 1850, tenured: true },
-        { id: 2, year: 1860, tenured: false },
-        { id: 3, year: 1870, tenured: true },
-      ],
-    })
-  })
-  afterEach(() => fetchStub.restore())
-
-  it('pushes down sort but applies where as fallback', async () => {
-    const f = createDefaultFetcher({ config: { supports: ['sort'] } })
-    const result = await f.resolve({
-      url: 'https://api.example.com/x',
-      where: { tenured: true },
-      sort: 'year desc',
-    })
-    const url = fetchStub.calls[0].input
-    expect(url).toContain('_sort=')
-    expect(url).not.toContain('_where=')
-    // Where is applied client-side after the source returned everything.
-    expect(result.data.map((r) => r.id)).toEqual([1, 3])
-  })
-
-  it('appends _limit= when limit is pushed down', async () => {
-    const f = createDefaultFetcher({ config: { supports: ['limit'] } })
-    await f.resolve({ url: 'https://api.example.com/x', limit: 5 })
-    expect(fetchStub.calls[0].input).toContain('_limit=5')
-  })
-})
-
-describe('createDefaultFetcher — POST with where pushdown', () => {
-  let fetchStub
-  beforeEach(() => {
-    fetchStub = stubFetch({ body: [{ id: 1 }] })
-  })
-  afterEach(() => fetchStub.restore())
-
-  it('merges where into POST body when pushed down', async () => {
-    const f = createDefaultFetcher({ config: { supports: ['where'] } })
-    await f.resolve({
-      url: 'https://api.example.com/search',
-      method: 'POST',
-      body: { token: 'abc' },
-      where: { tenured: true },
-    })
-    const body = JSON.parse(fetchStub.calls[0].init.body)
-    expect(body.token).toBe('abc')
-    expect(body.where).toEqual({ tenured: true })
-  })
-
-  it('sends a body with only operators when no author body is supplied', async () => {
-    const f = createDefaultFetcher({ config: { supports: ['where', 'limit'] } })
-    await f.resolve({
-      url: 'https://api.example.com/search',
-      method: 'POST',
-      where: { tenured: true },
-      limit: 5,
-    })
-    const body = JSON.parse(fetchStub.calls[0].init.body)
-    expect(body).toEqual({ where: { tenured: true }, limit: 5 })
-  })
-})
-
-describe('createDefaultFetcher — supports: validation', () => {
-  let fetchStub
-  beforeEach(() => {
-    fetchStub = stubFetch({ body: [] })
-  })
-  afterEach(() => fetchStub.restore())
-
-  it('ignores unknown operators in supports with a warning', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const f = createDefaultFetcher({ config: { supports: ['where', 'unknownOp'] } })
-    await f.resolve({ url: 'https://api.example.com/x', where: { id: 1 } })
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('unknown operator'))
-    warn.mockRestore()
-  })
-
-  it('non-array supports treated as empty', async () => {
-    const f = createDefaultFetcher({ config: { supports: 'where' } })
-    const result = await f.resolve({ url: 'https://api.example.com/x', where: { id: 1 } })
-    // No pushdown — request URL has no _where= param, response is filtered locally.
-    expect(fetchStub.calls[0].input).toBe('https://api.example.com/x')
-    expect(result.data).toEqual([])
-  })
-})
-
-describe('createDefaultFetcher — config.request.style (one shipped wire)', () => {
-  let fetchStub
-
-  beforeEach(() => {
-    fetchStub = stubFetch({ body: [{ id: 1 }] })
-  })
-  afterEach(() => fetchStub.restore())
-
-  it("ambient default when request.style is unset (json-body semantics)", async () => {
-    const f = createDefaultFetcher({ config: { supports: ['where'] } })
-    await f.resolve({ url: 'https://api.example.com/x', where: { id: 1 } })
-    expect(fetchStub.calls[0].input).toContain('_where=')
-  })
-
-  it('explicit request.style: json-body matches the ambient default', async () => {
-    const f = createDefaultFetcher({
-      config: { supports: ['where'], request: { style: 'json-body' } },
-    })
-    await f.resolve({ url: 'https://api.example.com/x', where: { id: 1 } })
-    expect(fetchStub.calls[0].input).toContain('_where=')
-  })
-
-  // A site naming a style the framework does not ship must not be served
-  // the default wire silently — `_where=<JSON>` against a backend that
-  // expects another dialect returns the wrong set with a 200.
-  it('unknown style throws in dev — the site does not boot on the wrong wire', () => {
-    expect(() =>
-      createDefaultFetcher({
-        config: { supports: ['where'], request: { style: 'strapi' } },
-        dev: true,
-      }),
-    ).toThrow(/unknown request style "strapi"/)
-  })
-
-  it('unknown style logs an error once and falls back to json-body in production', async () => {
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const f = createDefaultFetcher({
-      config: { supports: ['where'], request: { style: 'nonexistent-prod' } },
-    })
-    await f.resolve({ url: 'https://api.example.com/x', where: { id: 1 } })
-    expect(error).toHaveBeenCalledWith(
-      expect.stringContaining('unknown request style "nonexistent-prod"'),
-    )
-    // Behavior is json-body — the only wire.
-    expect(fetchStub.calls[0].input).toContain('_where=')
-    error.mockRestore()
-  })
-})
-
-describe('createDefaultFetcher — config.request.rename', () => {
-  let fetchStub
-
-  beforeEach(() => {
-    fetchStub = stubFetch({ body: [] })
-  })
-  afterEach(() => fetchStub.restore())
-
-  it('renames GET wire names on the json-body style', async () => {
-    const f = createDefaultFetcher({
-      config: {
-        supports: ['limit', 'sort'],
-        request: { rename: { limit: 'pageSize', sort: 'orderBy' } },
-      },
-    })
-    await f.resolve({ url: 'https://api.example.com/x', limit: 10, sort: 'date desc' })
-    const url = fetchStub.calls[0].input
-    expect(url).toContain('pageSize=10')
-    expect(url).toContain('orderBy=')
-    expect(url).not.toContain('_limit=')
-    expect(url).not.toContain('_sort=')
-  })
-
-  it('renames POST body keys on the json-body style', async () => {
-    const f = createDefaultFetcher({
-      config: {
-        supports: ['limit'],
-        request: { rename: { limit: 'pageSize' } },
-      },
-    })
-    await f.resolve({
-      url: 'https://api.example.com/x',
-      method: 'POST',
-      limit: 10,
-    })
-    const body = JSON.parse(fetchStub.calls[0].init.body)
-    expect(body).toEqual({ pageSize: 10 })
-  })
-
-  it('warns in dev for rename entries targeting operators the style cannot push', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    createDefaultFetcher({
-      config: {
-        supports: ['limit'],
-        request: { rename: { somethingElse: 'wire' } },
-      },
-      dev: true,
-    })
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('operator "somethingElse" is not pushed'),
-    )
-    warn.mockRestore()
-  })
-
-  it('ignores empty-string / non-string rename values', async () => {
-    const f = createDefaultFetcher({
-      config: {
-        supports: ['limit'],
-        request: { rename: { limit: '' } },
-      },
-    })
-    await f.resolve({ url: 'https://api.example.com/x', limit: 10 })
-    const url = fetchStub.calls[0].input
-    // Empty string is invalid — rename falls back to style default `_limit`.
-    expect(url).toContain('_limit=10')
-  })
-})
-
-describe('createDefaultFetcher — cacheKey varies by style', () => {
-  it('same style + same request → same key', () => {
-    const a = createDefaultFetcher({ config: { supports: ['where'] } })
-    const b = createDefaultFetcher({
-      config: { supports: ['where'], request: { style: 'json-body' } },
-    })
-    const req = { url: 'https://api.example.com/x', schema: 'x', where: { id: 1 } }
-    expect(a.cacheKey(req)).toEqual(b.cacheKey(req))
-  })
-
-  it('style name appears in the key when operators are pushed', () => {
-    const f = createDefaultFetcher({
-      config: { supports: ['where'], request: { style: 'json-body' } },
-    })
-    const key = f.cacheKey({
-      url: 'https://api.example.com/x',
-      schema: 'x',
-      where: { id: 1 },
-    })
-    expect(key).toContain('style=json-body')
-  })
-
-  it('no pushed operators → key stays in back-compat shape (no style suffix)', () => {
-    const f = createDefaultFetcher() // supports: []
-    const key = f.cacheKey({
-      url: 'https://api.example.com/x',
-      schema: 'x',
-      where: { id: 1 },
-    })
-    expect(key).not.toContain('style=')
-  })
-})
-
-describe('endpoint — a host-declared collection lane', () => {
+describe('endpoint — the host\'s address door', () => {
   let calls
   let originalFetch
 
@@ -845,41 +430,13 @@ describe('endpoint — a host-declared collection lane', () => {
     expect(lastUrl()).toBe('https://h.example/s/abc/c/news.json')
   })
 
-  it('does NOT join the site\'s own baseUrl onto it', async () => {
-    // `fetcher.baseUrl` points a site at ITS OWN backend. Prepending it to an
-    // address a host composed corrupts exactly the layout the pattern exists
-    // to let them own — and only for sites that happen to use both.
-    const f = createDefaultFetcher({ config: { baseUrl: 'https://my-own-api.example' } })
-    await f.resolve({ endpoint: '/_data/articles', schema: 'articles' })
+  it('sends the address bare — no operators on the wire, no headers of ours', async () => {
+    // The address door answers an ADDRESS. The query is evaluated here over
+    // what it returned; a door that answers a QUESTION is `door:`.
+    const f = createDefaultFetcher()
+    await f.resolve({ endpoint: '/_data/articles', schema: 'articles', where: { a: 1 }, limit: 3, sort: 'slug' })
     expect(lastUrl()).toBe('/_data/articles')
-  })
-
-  it('still joins baseUrl onto a relative url: — the control', async () => {
-    // Without this, a bug that disabled baseUrl entirely would pass the
-    // assertion above while breaking every site that declares one.
-    const f = createDefaultFetcher({ config: { baseUrl: 'https://my-own-api.example' } })
-    await f.resolve({ url: '/things', schema: 'things' })
-    expect(lastUrl()).toBe('https://my-own-api.example/things')
-  })
-
-  it('pushes operators down — an endpoint answers a query, unlike a file', async () => {
-    const f = createDefaultFetcher({ config: { supports: ['where', 'limit'] } })
-    await f.resolve({ endpoint: '/_data/articles', schema: 'articles', where: { a: 1 }, limit: 3 })
-    expect(lastUrl()).toContain('_where=')
-    expect(lastUrl()).toContain('_limit=3')
-  })
-
-  it('does not push operators onto a path: — the control', async () => {
-    // A compiled file can neither filter nor sort, so the runtime does it.
-    const f = createDefaultFetcher({ config: { supports: ['where', 'limit'] } })
-    await f.resolve({ path: '/data/articles.json', schema: 'articles', where: { a: 1 }, limit: 3 })
-    expect(lastUrl()).toBe('/data/articles.json')
-  })
-
-  it('sends the site\'s static headers, as it does for any remote source', async () => {
-    const f = createDefaultFetcher({ config: { headers: { 'X-Tenant': 'acme' } } })
-    await f.resolve({ endpoint: '/_data/articles', schema: 'articles' })
-    expect(calls[calls.length - 1].init.headers['X-Tenant']).toBe('acme')
+    expect(calls[calls.length - 1].init.headers).toBeUndefined()
   })
 
   it('reports when a request names no source at all', async () => {
@@ -934,6 +491,7 @@ describe('createDefaultFetcher — the fallback sort is the ONE evaluator, singl
   })
 })
 
+
 describe('createDefaultFetcher — a single-record request on the live lane', () => {
   let fetchStub
   beforeEach(() => { fetchStub = stubFetch({ body: {} }) })
@@ -967,5 +525,60 @@ describe('createDefaultFetcher — a single-record request on the live lane', ()
     const f = createDefaultFetcher()
     const result = await f.resolve({ url: 'https://api.example.com/x' })
     expect(result.meta).toBeUndefined()
+  })
+})
+
+describe('⛔ the retired site-level vocabulary is NOT read (2026-09-04)', () => {
+  // `fetcher.baseUrl` / `headers` / `envelope` / `supports` / `request.*` used
+  // to turn this fetcher into a client for the author's backend. A backend
+  // with its own conventions is a foundation TRANSPORT now; this fetcher takes
+  // no `config` option at all. A site still declaring the keys gets a build
+  // warning and they are dropped from the payload — and even handed in here
+  // directly, nothing reads them.
+  let fetchStub
+  beforeEach(() => {
+    fetchStub = stubFetch({ body: [{ id: 1, tenured: true }, { id: 2, tenured: false }] })
+  })
+  afterEach(() => fetchStub.restore())
+
+  const RETIRED = {
+    baseUrl: 'https://my-own-api.example',
+    headers: { 'X-Tenant': 'acme' },
+    envelope: { list: 'data.items' },
+    supports: ['where', 'limit', 'sort'],
+    request: { style: 'json-body', rename: { limit: 'pageSize' } },
+  }
+
+  it('a relative url: is sent as written — no baseUrl is joined', async () => {
+    const f = createDefaultFetcher({ config: RETIRED })
+    await f.resolve({ url: '/things' })
+    expect(fetchStub.calls[0].input).toBe('/things')
+  })
+
+  it('no static headers ride on a remote request', async () => {
+    const f = createDefaultFetcher({ config: RETIRED })
+    await f.resolve({ url: 'https://api.example.com/x' })
+    expect(fetchStub.calls[0].init.headers).toBeUndefined()
+  })
+
+  it('where is evaluated locally — nothing is pushed onto the wire', async () => {
+    const f = createDefaultFetcher({ config: RETIRED })
+    const result = await f.resolve({ url: 'https://api.example.com/x', where: { tenured: true }, limit: 5 })
+    expect(fetchStub.calls[0].input).toBe('https://api.example.com/x')
+    expect(result.data.map((r) => r.id)).toEqual([1])
+  })
+
+  it('a site-level envelope does not unwrap — the body is read as-is', async () => {
+    fetchStub.setResponse({ body: { data: { items: [3, 4] } } })
+    const f = createDefaultFetcher({ config: RETIRED })
+    const result = await f.resolve({ url: 'https://api.example.com/x' })
+    expect(result.data).toEqual({ data: { items: [3, 4] } })
+  })
+
+  it('the cache key is the address alone — no style segment, no operator projection', () => {
+    const f = createDefaultFetcher({ config: RETIRED })
+    const key = f.cacheKey({ url: 'https://api.example.com/x', where: { tenured: true }, limit: 5 })
+    expect(key).toBe(createDefaultFetcher().cacheKey({ url: 'https://api.example.com/x' }))
+    expect(key).not.toContain('style=')
   })
 })

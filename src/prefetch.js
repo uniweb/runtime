@@ -15,7 +15,7 @@
  *
  * ⛔ Contract with the host, deliberately small:
  *   - `content`  the render payload (`site-content.json` / `__DATA__`), config included —
- *                `config.records`, `config.fetcher`, `config.base` are read from it.
+ *                `config.records` and `config.base` are read from it.
  *   - `route`    the page to prefetch for; a `[slug]` template resolves through the same
  *                matcher the SPA uses, so `/blog/post-1` finds `/blog/:slug`.
  *   - `fetch`    how to dispatch a request. The runtime composes the address; the host
@@ -142,8 +142,8 @@ export function resolvePageFetchConfigs(content, route, { locale = null } = {}) 
   // against; when that query has a per-record source (a live lane's record address,
   // a `deferred:` query's per-record file), the record itself comes from a second
   // request — which this helper never built, so a host prerendering a template page
-  // got the BRIEF and the body arrived after hydration as a client fetch (E2,
-  // kb/framework/open-work.md). The detail config is built by the one rule the
+  // got the BRIEF and the body arrived after hydration as a client fetch. The
+  // detail config is built by the one rule the
   // entity store uses (`buildDetailConfig`), keyed by the route's param.
   if (binding && binding.paramValue !== undefined && page.parentSchema) {
     const listCfg = [...out.values()].find((cfg) => cfg.as === page.parentSchema && cfg.detail)
@@ -162,7 +162,7 @@ export function resolvePageFetchConfigs(content, route, { locale = null } = {}) 
  * @param {Object[]} configs  resolved configs (from `resolvePageFetchConfigs` or the host's own
  *                             call to `resolveFetchConfigs`)
  * @param {Object} opts
- * @param {Object} opts.content  the payload — `config.base`, `config.fetcher`, `config.records`
+ * @param {Object} opts.content  the payload — `config.base`, `config.records`
  * @param {Function} [opts.fetch]  the transport; defaults to the global `fetch`
  * @param {boolean} [opts.dev]
  * @returns {Promise<Array<{ config: Object, outcome: 'fetched'|'failed'|'skipped', data: any, error?: string }>>}
@@ -173,7 +173,6 @@ export async function executeFetchConfigs(configs, { content, fetch = null, dev 
   }
   const fetcher = createDefaultFetcher({
     basePath: content?.config?.base || '',
-    config: content?.config?.fetcher ?? {},
     records: content?.config?.records ?? null,
     dev,
     fetch,

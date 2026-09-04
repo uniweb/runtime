@@ -1,7 +1,7 @@
 /**
  * The default fetcher's QUESTION-door client — dark until a host stamps the
  * door, pinned here against a stub that speaks backend's contract
- * (kb/backend/records-query-contract.md §2, §5).
+ * (the records door's contract, §2 and §5).
  */
 import { describe, it, expect, vi } from 'vitest'
 import { createDefaultFetcher } from '../src/default-fetcher.js'

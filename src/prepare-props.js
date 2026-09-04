@@ -266,7 +266,7 @@ function applyRichSchemaToValue(value, schema) {
  * form-definition schema — which cannot name the author's fields — can never
  * reach into them. It fills the envelope defaults its own author declared.
  *
- * (Established with the editor team, 2026-07-31, channel frontend-framework-066d.
+ * (Established with the editor team, 2026-07-31, channel frontend↔framework.
  * The editor shadows a foundation's `form` declaration with its own builder via
  * `builtinSchemas()`; that is about the EDITING UI and is orthogonal to whether a
  * foundation declares a schema for validation.)

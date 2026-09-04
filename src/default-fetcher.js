@@ -60,6 +60,7 @@ import {
   substitutePlaceholders,
   matchWhere,
   sortRecords,
+  sortToWire,
   deriveCacheKey,
   resolveRequestStyle,
   resolveServiceUrl,
@@ -162,6 +163,29 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false, 
     : null
   const laneEnvelope = stampedArrayKey ? { list: stampedArrayKey } : null
 
+  // ⭐ THE QUESTION DOOR — a batch of the misses, one POST, merged per key.
+  //
+  // The entity store dispatches every config a page needs in one synchronous
+  // loop before awaiting any of them, so a door request enqueued here and
+  // flushed on the next microtask carries every miss of that page in one body
+  // (kb/framework/open-work.md A6). The batch response is never cached as
+  // one: each request gets its own answer, keyed by its own question.
+  const doorQueues = new Map()
+  const askDoor = (request, ctx) =>
+    new Promise((resolve) => {
+      const url = resolveServiceUrl(request.door, pathPrefix)
+      let queue = doorQueues.get(url)
+      if (!queue) {
+        queue = []
+        doorQueues.set(url, queue)
+        queueMicrotask(() => {
+          doorQueues.delete(url)
+          flushDoor(url, queue, doFetch)
+        })
+      }
+      queue.push({ request, ctx, resolve })
+    })
+
   return {
     /**
      * Cache-key function. The default-fetcher's cache key includes only
@@ -176,6 +200,10 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false, 
      * the predicate travels in the request.
      */
     cacheKey(request) {
+      // A question is identified by the question — `deriveCacheKey` hashes
+      // every operator of an address-less request — so the door needs no
+      // projection.
+      if (request?.door) return deriveCacheKey(request)
       // Build a request projection that includes only operators the active
       // style will actually push for this request. deriveCacheKey already
       // covers the always-keyed fields.
@@ -197,6 +225,7 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false, 
 
     async resolve(request, ctx = {}) {
       if (!request) return { data: null }
+      if (request.door) return askDoor(request, ctx)
       const { path, url, endpoint, transform, body: rawBody } = request
 
       // Normalize method. Only GET and POST are supported by the default
@@ -391,6 +420,104 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false, 
       }
     },
   }
+}
+
+/**
+ * One question of a door batch, in the door's own vocabulary
+ * (kb/backend/records-query-contract.md §2): `schema` required, `scope` a bare
+ * path, `sort` one key spelled `date` / `-date`, `depth` brief or full. The
+ * where-object crosses as authored except for the two spellings the language
+ * settled differently from the evaluator's: `nin` is `not_in` there, and a
+ * top-level `path: { under }` — the file lane's way of naming a folder branch —
+ * is the door's `scope`. Anything the door does not accept (`like`, a dotted
+ * path) is sent as written and refused there by name: loud, never approximated.
+ */
+function doorQuestion(request) {
+  const q = { schema: request.schema }
+  let where = request.where && typeof request.where === 'object' ? request.where : null
+  let scope = typeof request.scope === 'string' && request.scope ? request.scope : null
+  if (where && !scope && where.path && typeof where.path === 'object' && typeof where.path.under === 'string' && where.path.under) {
+    const { path, ...rest } = where
+    scope = path.under
+    where = Object.keys(rest).length ? rest : null
+  }
+  if (scope) q.scope = scope
+  if (where) q.where = renameOperators(where)
+  const sort = sortToWire(request.sort)
+  if (sort) q.sort = sort
+  if (typeof request.limit === 'number' && request.limit > 0) q.limit = request.limit
+  if (request.depth === 'brief' || request.depth === 'full') q.depth = request.depth
+  return q
+}
+
+const DOOR_OPERATOR = { nin: 'not_in' }
+function renameOperators(where) {
+  if (Array.isArray(where)) return where.map(renameOperators)
+  if (!where || typeof where !== 'object') return where
+  const out = {}
+  for (const [key, value] of Object.entries(where)) {
+    out[DOOR_OPERATOR[key] ?? key] = value && typeof value === 'object' ? renameOperators(value) : value
+  }
+  return out
+}
+
+/**
+ * Send one batch to a door and hand each question its own answer.
+ *
+ * The response is `{ data, depths?, errors? }` (contract §5): `data` answers
+ * exactly the keys sent, `[]` when nothing matched; a key that ERRORED is absent
+ * from `data` and present in `errors`; `depths` says what was actually served,
+ * which the record index files rather than what was asked for. A key missing
+ * from both is a protocol violation and is reported as an error, never as
+ * silence.
+ */
+async function flushDoor(url, queue, doFetch) {
+  const body = {}
+  const keys = []
+  for (const entry of queue) {
+    const base = entry.request.as || 'q'
+    let key = base
+    for (let n = 2; key in body; n += 1) key = `${base}#${n}`
+    keys.push(key)
+    body[key] = doorQuestion(entry.request)
+  }
+  let parsed
+  try {
+    const response = await doFetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!response.ok) {
+      const error = `HTTP ${response.status}: ${response.statusText}`
+      for (const entry of queue) entry.resolve({ data: null, error })
+      return
+    }
+    parsed = await response.json()
+  } catch (error) {
+    const message = error?.name === 'AbortError' ? 'aborted' : (error?.message || String(error))
+    for (const entry of queue) entry.resolve({ data: null, error: message })
+    return
+  }
+  const data = parsed && typeof parsed.data === 'object' && parsed.data ? parsed.data : {}
+  const errors = parsed && typeof parsed.errors === 'object' && parsed.errors ? parsed.errors : {}
+  const depths = parsed && typeof parsed.depths === 'object' && parsed.depths ? parsed.depths : {}
+  queue.forEach((entry, i) => {
+    const key = keys[i]
+    if (key in errors) {
+      const e = errors[key]
+      entry.resolve({ data: null, error: typeof e === 'string' ? e : (e?.message || JSON.stringify(e)) })
+      return
+    }
+    if (!(key in data)) {
+      entry.resolve({ data: null, error: `the records door answered without the key "${key}"` })
+      return
+    }
+    const depth = depths[key] === 'brief' || depths[key] === 'full'
+      ? depths[key]
+      : (entry.request.depth === 'brief' || entry.request.depth === 'full' ? entry.request.depth : undefined)
+    entry.resolve(depth ? { data: data[key], meta: { depth } } : { data: data[key] })
+  })
 }
 
 /**

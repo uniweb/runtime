@@ -179,20 +179,19 @@ export async function executeFetchConfigs(configs, { content, fetch = null, dev 
     fetch,
   })
   const ctx = { website: null }
-  const out = []
-  for (const config of configs || []) {
-    if (!config) continue
+  // Dispatched together, not one after another: a question door batches the
+  // requests issued in one tick into one POST, and a page's configs are
+  // independent of each other. Order is preserved in the result.
+  return Promise.all((configs || []).filter(Boolean).map(async (config) => {
     if (prerender === 'author' && config.prerender === false) {
       // The author deferred this one to the browser and the caller honours that. Present, so a
       // host can count what was declared against what was tried; not hydrated.
-      out.push({ config, outcome: 'skipped', data: null })
-      continue
+      return { config, outcome: 'skipped', data: null }
     }
     const result = await fetcher.resolve(config, ctx)
-    if (result?.error) out.push({ config, outcome: 'failed', data: null, error: result.error })
-    else out.push({ config, outcome: 'fetched', data: result?.data ?? null, ...(result?.meta ? { meta: result.meta } : {}) })
-  }
-  return out
+    if (result?.error) return { config, outcome: 'failed', data: null, error: result.error }
+    return { config, outcome: 'fetched', data: result?.data ?? null, ...(result?.meta ? { meta: result.meta } : {}) }
+  }))
 }
 
 /** Resolve and execute in one call: what a host passes the isolate as `fetchedData`. */

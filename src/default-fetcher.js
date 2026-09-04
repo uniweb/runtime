@@ -59,6 +59,7 @@
 import {
   substitutePlaceholders,
   matchWhere,
+  sortRecords,
   deriveCacheKey,
   resolveRequestStyle,
   resolveServiceUrl,
@@ -373,7 +374,7 @@ export function createDefaultFetcher({ basePath = '', config = {}, dev = false, 
         // Only applies to array data (filtering/sorting/limiting a single
         // record doesn't make sense). For non-arrays, operators are
         // silently ignored — the source returned what it returned.
-        data = applyFallbackOperators(data, request, pushedOperators)
+        data = applyFallbackOperators(data, request, pushedOperators, { dev })
 
         return { data: data ?? [] }
       } catch (error) {
@@ -468,7 +469,7 @@ function composePostBody(authorBody, bodyMerge) {
  * source returned `data` unfiltered/unlimited/unsorted for those
  * operators; the runtime applies them now in JS.
  */
-function applyFallbackOperators(data, request, pushedOperators) {
+function applyFallbackOperators(data, request, pushedOperators, { dev = false } = {}) {
   if (!Array.isArray(data)) return data
   let result = data
 
@@ -476,7 +477,7 @@ function applyFallbackOperators(data, request, pushedOperators) {
     result = matchWhere(request.where, result)
   }
   if (request.sort && !pushedOperators.has('sort')) {
-    result = applySortFallback(result, request.sort)
+    result = applySortFallback(result, request.sort, dev)
   }
   if (typeof request.limit === 'number' && request.limit > 0 && !pushedOperators.has('limit')) {
     result = result.slice(0, request.limit)
@@ -485,23 +486,28 @@ function applyFallbackOperators(data, request, pushedOperators) {
 }
 
 /**
- * Stable sort by an expression like "date desc" or "order asc, title asc".
- * Mirrors the build-time applySort behavior.
+ * The fallback sort — `@uniweb/core`'s one evaluator, the same the build runs
+ * when it materializes `/data/<name>.json`, so the two lanes order identically.
+ *
+ * ⛔ This was a second implementation until 2026-09-04, and it honoured a
+ * comma-separated MULTI-KEY sort the language does not have (single-key by
+ * ruling). A bad `sort:` is an authoring error: dev throws so it is seen; in
+ * production the records are delivered in source order and the reason is
+ * logged once — a wrong order is not worth a broken page for a visitor.
  */
-function applySortFallback(items, sortExpr) {
-  const sorts = String(sortExpr).split(',').map((s) => {
-    const [field, dir = 'asc'] = s.trim().split(/\s+/)
-    return { field, desc: dir.toLowerCase() === 'desc' }
-  })
-  return [...items].sort((a, b) => {
-    for (const { field, desc } of sorts) {
-      const av = getNestedValue(a, field) ?? ''
-      const bv = getNestedValue(b, field) ?? ''
-      if (av < bv) return desc ? 1 : -1
-      if (av > bv) return desc ? -1 : 1
+const warnedBadSorts = new Set()
+function applySortFallback(items, sortExpr, dev) {
+  try {
+    return sortRecords(items, sortExpr)
+  } catch (err) {
+    if (dev) throw err
+    const key = String(sortExpr)
+    if (!warnedBadSorts.has(key)) {
+      warnedBadSorts.add(key)
+      console.error(`[default-fetcher] ${err.message} Records delivered unsorted.`)
     }
-    return 0
-  })
+    return items
+  }
 }
 
 /**

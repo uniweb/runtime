@@ -888,3 +888,48 @@ describe('endpoint — a host-declared collection lane', () => {
     expect(out.error).toContain('endpoint')
   })
 })
+
+describe('createDefaultFetcher — the fallback sort is the ONE evaluator, single-key', () => {
+  let fetchStub
+  beforeEach(() => {
+    fetchStub = stubFetch({
+      body: [
+        { id: 1, name: 'Banana', year: 1850 },
+        { id: 2, name: 'apple', year: 1860 },
+        { id: 3, name: 'cherry', year: 1870 },
+      ],
+    })
+  })
+  afterEach(() => fetchStub.restore())
+
+  it('orders strings the way the build does — localeCompare, so case does not scatter them', async () => {
+    const f = createDefaultFetcher()
+    const result = await f.resolve({ url: 'https://api.example.com/x', sort: 'name' })
+    expect(result.data.map((r) => r.name)).toEqual(['apple', 'Banana', 'cherry'])
+  })
+
+  it("accepts the door's `-field` spelling", async () => {
+    const f = createDefaultFetcher()
+    const result = await f.resolve({ url: 'https://api.example.com/x', sort: '-year' })
+    expect(result.data.map((r) => r.id)).toEqual([3, 2, 1])
+  })
+
+  it('⛔ a multi-key sort throws in dev — an authoring error is seen, not half-honoured', async () => {
+    const f = createDefaultFetcher({ dev: true })
+    await expect(f.resolve({ url: 'https://api.example.com/x', sort: 'year desc, name asc' }))
+      .resolves.toMatchObject({ error: expect.stringMatching(/more than one key/) })
+  })
+
+  it('in production a multi-key sort delivers the records unsorted and logs once', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const f = createDefaultFetcher()
+    const a = await f.resolve({ url: 'https://api.example.com/x', sort: 'year desc, name asc' })
+    const b = await f.resolve({ url: 'https://api.example.com/x', sort: 'year desc, name asc' })
+    expect(a.error).toBeUndefined()
+    expect(a.data.map((r) => r.id)).toEqual([1, 2, 3])
+    expect(b.data.map((r) => r.id)).toEqual([1, 2, 3])
+    const lines = error.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('more than one key'))
+    expect(lines).toHaveLength(1)
+    error.mockRestore()
+  })
+})

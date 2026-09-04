@@ -91,6 +91,7 @@ export default function BlockRenderer({ block, as = 'section' }) {
   // Reset async data when block changes (SPA navigation)
   useEffect(() => {
     setAsyncData(null)
+    block.dataError = null
   }, [block])
 
   // Fetch missing data asynchronously. The AbortController's signal flows
@@ -103,6 +104,12 @@ export default function BlockRenderer({ block, as = 'section' }) {
     const controller = new AbortController()
     entityStore.fetch(block, meta, { signal: controller.signal }).then((result) => {
       if (controller.signal.aborted) return
+      // ⛔ A failed key is ABSENT from `result.data` (never `[]`) and named on
+      // `result.errors`; the block carries it so a section can tell "no records"
+      // from "the request failed". Set before the state update so the render it
+      // triggers sees it. `data` is `{}` when every key failed — still an
+      // update, so `dataLoading` clears rather than spinning forever.
+      block.dataError = result.errors ?? null
       if (result.data) setAsyncData(result.data)
     })
     return () => controller.abort()

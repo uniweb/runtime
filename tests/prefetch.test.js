@@ -140,3 +140,39 @@ describe('what a prefetched entry says about depth', () => {
     expect(dataStore.get(deriveCacheKey(people.config)).data).toEqual([{ $uuid: 'u1', slug: 'ada' }])
   })
 })
+
+describe('E2 — a template page prefetches ITS RECORD, not only the list', () => {
+  it('builds the detail config for the matched param through the one shared rule', () => {
+    const cfgs = resolvePageFetchConfigs(CONTENT, '/team/ada')
+    const detail = cfgs.find((c) => c.endpoint === '/_records/members/ada')
+    expect(detail).toBeDefined()
+    expect(detail.as).toBe('people')
+    expect(detail.depth).toBe('full')
+    expect(detail.dynamicContext).toEqual({ paramName: 'slug', paramValue: 'ada' })
+    // and the list is still there, at brief depth
+    expect(cfgs.some((c) => c.endpoint === '/_records/members' && c.depth === 'brief')).toBe(true)
+  })
+
+  it('executes it, so the host hands the isolate the record in full', async () => {
+    const { fetch, calls } = stubFetch({
+      '/_records/members/ada': { $uuid: 'u1', slug: 'ada', bio: 'Full' },
+      '/_records/members': { entries: [{ $uuid: 'u1', slug: 'ada' }] },
+    })
+    const fetched = await prefetchPageData({ content: CONTENT, route: '/team/ada', fetch })
+    expect(calls.some((u) => u.endsWith('/site/_records/members/ada'))).toBe(true)
+    const record = fetched.find((e) => e.config.endpoint === '/_records/members/ada')
+    expect(record.outcome).toBe('fetched')
+    expect(record.data).toEqual({ $uuid: 'u1', slug: 'ada', bio: 'Full' })
+    expect(record.meta).toEqual({ depth: 'full' })
+    // hydrated, the record index holds it in FULL — the SPA renders it without a client fetch
+    const dataStore = new DataStore()
+    hydrateDataStore({ dataStore }, fetched)
+    expect(dataStore.getRecord('u1').depth).toBe('full')
+  })
+
+  it('CONTROL — a list page, and a template whose query has no per-record source, add no detail fetch', () => {
+    expect(resolvePageFetchConfigs(CONTENT, '/team').some((c) => c.depth === 'full' && c.dynamicContext)).toBe(false)
+    const noRecordLane = { ...CONTENT, config: { ...CONTENT.config, records: { list: '/_records/{path}' } } }
+    expect(resolvePageFetchConfigs(noRecordLane, '/team/ada').some((c) => c.dynamicContext)).toBe(false)
+  })
+})

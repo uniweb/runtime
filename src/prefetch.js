@@ -50,13 +50,18 @@
  */
 import { resolveFetchConfigs } from '@uniweb/core/fetch-config'
 import { deriveCacheKey } from '@uniweb/core/datastore'
-import { routePatternToRegex } from '@uniweb/core/route-match'
+import { routePatternToRegex, decodeRouteValue, splitPathCapture } from '@uniweb/core/route-match'
+import { buildDetailConfig } from '@uniweb/core/detail-url'
 import { resolveDefaultLocale } from '@uniweb/core/locale-config'
 import { createDefaultFetcher } from './default-fetcher.js'
 
 const isRefinement = (f) => f && typeof f === 'object' && f.refine === true
 
-/** The page a route names — exact first, then the `[slug]` templates, like the SPA. */
+/**
+ * The page a route names — exact first, then the `[slug]` / `[...path]` templates, like
+ * the SPA. Captured params are decoded the way `matchDynamicRoute` decodes them (a
+ * catch-all per segment), so the values are what the site's query is bound against.
+ */
 export function findPageForRoute(content, route) {
   const pages = content?.pages || []
   const exact = pages.find((p) => p.route === route)
@@ -65,9 +70,33 @@ export function findPageForRoute(content, route) {
     if (!page.isDynamic || !page.route) continue
     const compiled = routePatternToRegex(page.route)
     const m = compiled?.regex ? compiled.regex.exec(route) : null
-    if (m) return { page, params: Object.fromEntries((compiled.paramNames || []).map((n, i) => [n, m[i + 1]])) }
+    if (m) {
+      const params = {}
+      ;(compiled.paramNames || []).forEach((n, i) => {
+        const raw = m[i + 1]
+        params[n] = n === compiled.catchAll ? raw.split('/').map(decodeRouteValue).join('/') : decodeRouteValue(raw)
+      })
+      return { page, params }
+    }
   }
   return { page: null, params: {} }
+}
+
+/**
+ * The route's variables and the delivery param for a matched template page — the same
+ * binding the SPA makes in `Website._createDynamicPage`: `[slug]` binds the one capture
+ * under the folder's own name; `[...path]` splits its capture into `path` / `dir` /
+ * `slug` and delivers by `slug`, the record's handle.
+ */
+function routeBinding(page, params) {
+  const { catchAll } = routePatternToRegex(page.route)
+  if (catchAll && params[catchAll] !== undefined) {
+    const parts = splitPathCapture(params[catchAll])
+    const paramName = page.paramName || 'slug'
+    return { paramName, paramValue: parts.slug, variables: { ...params, ...parts } }
+  }
+  const paramName = page.paramName || Object.keys(params)[0]
+  return { paramName, paramValue: params[paramName], variables: { ...params } }
 }
 
 /**
@@ -79,15 +108,17 @@ export function findPageForRoute(content, route) {
  * @returns {Object[]} resolved fetch configs
  */
 export function resolvePageFetchConfigs(content, route, { locale = null } = {}) {
-  const { page } = findPageForRoute(content, route)
+  const { page, params } = findPageForRoute(content, route)
   if (!page) return []
   const pages = content?.pages || []
   const parent = page.parent ? pages.find((p) => p.route === page.parent) : null
+  const binding = page.isDynamic && Object.keys(params).length ? routeBinding(page, params) : null
   const options = {
     locale,
     defaultLocale: resolveDefaultLocale(content?.config) ?? null,
     queries: content?.config?.queries ?? null,
     records: content?.config?.records ?? null,
+    variables: binding?.variables ?? null,
   }
   const out = new Map()
   const add = (sources) => {
@@ -105,6 +136,23 @@ export function resolvePageFetchConfigs(content, route, { locale = null } = {}) 
     }
   }
   walk(page.sections)
+
+  // ⭐ A template page is ABOUT one record, and the record is a fetch of its own.
+  // The list the page inherits is what the entity store matches the route param
+  // against; when that query has a per-record source (a live lane's record address,
+  // a `deferred:` query's per-record file), the record itself comes from a second
+  // request — which this helper never built, so a host prerendering a template page
+  // got the BRIEF and the body arrived after hydration as a client fetch (E2,
+  // kb/framework/open-work.md). The detail config is built by the one rule the
+  // entity store uses (`buildDetailConfig`), keyed by the route's param.
+  if (binding && binding.paramValue !== undefined && page.parentSchema) {
+    const listCfg = [...out.values()].find((cfg) => cfg.as === page.parentSchema && cfg.detail)
+    const detailCfg = listCfg ? buildDetailConfig(listCfg, { paramName: binding.paramName, paramValue: String(binding.paramValue) }) : null
+    if (detailCfg) {
+      const key = deriveCacheKey(detailCfg)
+      if (!out.has(key)) out.set(key, detailCfg)
+    }
+  }
   return [...out.values()]
 }
 

@@ -444,6 +444,29 @@ describe('endpoint — the host\'s address door', () => {
     const out = await f.resolve({ schema: 'articles' })
     expect(out.error).toContain('endpoint')
   })
+
+  it('appends the stamped locale as ?locale= — the unlanded half of F1, landed 2026-09-04', async () => {
+    // The resolver stamps `locale` on a non-default-locale live request; the
+    // address door takes it as a query param (hosting: passes through verbatim
+    // on both paths; backend: answers with the locale's strings).
+    const f = createDefaultFetcher()
+    await f.resolve({ endpoint: '/_records/members', as: 'members', locale: 'fr' })
+    expect(lastUrl()).toBe('/_records/members?locale=fr')
+  })
+
+  it('joins onto an address that already carries a query', async () => {
+    const f = createDefaultFetcher()
+    await f.resolve({ endpoint: '/_records/members?limit=3', as: 'members', locale: 'fr' })
+    expect(lastUrl()).toBe('/_records/members?limit=3&locale=fr')
+  })
+
+  it('CONTROL — no stamped locale, no query param; and a path: never carries one', async () => {
+    const f = createDefaultFetcher()
+    await f.resolve({ endpoint: '/_records/members', as: 'members' })
+    expect(lastUrl()).toBe('/_records/members')
+    await f.resolve({ path: '/fr/data/members.json', as: 'members', locale: 'fr' })
+    expect(lastUrl()).toBe('/fr/data/members.json')
+  })
 })
 
 describe('createDefaultFetcher — the fallback sort is the ONE evaluator, single-key', () => {

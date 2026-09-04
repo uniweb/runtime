@@ -154,6 +154,15 @@ export function createDefaultFetcher({ basePath = '', dev = false, records = nul
         // and nothing else is joined onto it. A pattern may carry a site id,
         // its own root, any layout at all; none of it is ours.
         target = resolveServiceUrl(endpoint, pathPrefix)
+        // ⭐ The locale rides as a query param on the address door — the config
+        // carries one only on a non-default-locale live request (F1). Until
+        // 2026-09-04 nothing put it on the wire, so localized fields arrived as
+        // `{lang: …}` maps; hosting confirmed that day that an appended `?locale=`
+        // passes through their reshape verbatim, on both the browser and the
+        // isolate path, and backend answers it with the locale's strings.
+        if (typeof request.locale === 'string' && request.locale) {
+          target += (target.includes('?') ? '&' : '?') + 'locale=' + encodeURIComponent(request.locale)
+        }
       } else if (path) {
         // Local file under public/ — basePath applies for subpath deploys.
         target = pathPrefix && path.startsWith('/') && !path.startsWith('//')

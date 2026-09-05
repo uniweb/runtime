@@ -92,6 +92,26 @@ const extra = channelReleases.map((x) => x.v).filter((v) => !onNpm.includes(v))
 console.log(`audit: ${PACKAGE} — ${inChannel.length} in the channel, floor ${floor.join('.')}`)
 if (extra.length) console.log(`audit: in the channel but not on npm: ${extra.join(', ')}`)
 
+// The isolate-API floor (channel-index.js invariant 8): if the index carries
+// one, it must name a published, non-deprecated version at or below `latest`,
+// or a consumer honouring it has nothing it may serve.
+const apiFloor = index.isolateApiFloor
+if (apiFloor !== undefined) {
+  const entry = index.versions[apiFloor]
+  const latestParts = parse(index.latest)
+  const floorParts = parse(apiFloor)
+  if (!entry || entry.deprecated || !floorParts || !latestParts || compare(floorParts, latestParts) > 0) {
+    console.error(
+      `audit: isolateApiFloor ${JSON.stringify(apiFloor)} is not a published, non-deprecated version ` +
+        `at or below latest (${index.latest})`
+    )
+    process.exit(1)
+  }
+  console.log(`audit: isolate-API floor ${apiFloor} — published, usable, at or below latest`)
+} else {
+  console.log('audit: no isolate-API floor recorded yet (it lands at the next channel publish)')
+}
+
 if (missing.length === 0) {
   console.log('audit: every published version since the floor is in the channel')
   process.exit(0)

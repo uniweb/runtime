@@ -64,7 +64,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync, readdirSync
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { addVersion, parseIndex, serializeIndex } from './channel-index.js'
+import { addVersion, parseIndex, serializeIndex, setIsolateApiFloor } from './channel-index.js'
+import { ISOLATE_API_FLOOR } from '../src/isolate-api.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -342,6 +343,10 @@ try {
     },
     integrity
   })
+  // Invariant 8: the floor rides in the index, from the runtime being published,
+  // and only ever rises. A backend reads it beside `latest` and refreshes it
+  // with the listing it already polls.
+  next = setIsolateApiFloor(next, ISOLATE_API_FLOOR)
 } catch (err) {
   // A clean message, not a stack: every throw reachable here names something a
   // human has to fix in this repo (an unknown extension, a malformed entry).
@@ -354,6 +359,7 @@ console.log(`  version   ${version}`)
 console.log(`  browser   ${files.browser.length} file(s)  ${integrity.browser}`)
 console.log(`  isolate   ${files.isolate.length} file(s)  ${integrity.isolate}   (internal — read via binding, not a URL)`)
 console.log(`  latest    ${next.latest}${next.latest === version ? ' (this build)' : ''}`)
+console.log(`  floor     ${next.isolateApiFloor}   (isolate API — every ssr export is present at or above it)`)
 
 if (dryRun) {
   console.log('\n--dry-run: nothing written.')

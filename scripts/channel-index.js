@@ -145,6 +145,30 @@
  *    root means the common directory prefix cannot reach past it. **A consumer
  *    may rely on both.**
  *
+ * 8. **The index carries the ISOLATE-API FLOOR, and it only ever rises.**
+ *
+ *        isolateApiFloor: "0.14.2"        ← top-level, beside `latest`
+ *
+ *    The runtime version at or above which every export of
+ *    `@uniweb/runtime/ssr` a host may call is present — the number
+ *    `src/isolate-api.js` derives from the version each export first shipped
+ *    in, restated by the publisher at every publish from the runtime being
+ *    published, never typed by hand. ⭐ **This document is where a backend
+ *    already learns what runtime versions exist and which is latest, so it is
+ *    where the floor belongs**: a consumer that picks a site's runtime reads
+ *    `max(isolateApiFloor, the floors its foundations declare)` and never
+ *    serves a version below it, however old a foundation's own pin is — and it
+ *    refreshes the floor with the listing it already polls, so adding an
+ *    isolate export is a channel publish, not a bump request plus a deploy.
+ *
+ *    Three rules, all enforced here: it must name a PUBLISHED version (a floor
+ *    nobody can fetch is unusable); it is RATCHETED — a publisher whose own
+ *    floor is lower than the channel's (a patch on an older line) keeps the
+ *    channel's; and a deprecation that would leave no usable version at or
+ *    above it is refused, since a channel that cannot satisfy its own floor is
+ *    broken. **Absent means none** — indexes written before this field carry
+ *    no floor, and a reader must not invent one. Additive: `schema` stays 1.
+ *
  * Pure functions over plain data — no I/O, no dependencies. The publishing
  * script owns the filesystem; this owns the rules.
  */
@@ -344,6 +368,7 @@ export function createIndex({ name }) {
     name,
     integrityAlgorithm: INTEGRITY_ALGORITHM,
     latest: null,
+    isolateApiFloor: null,
     versions: {}
   }
 }
@@ -376,7 +401,44 @@ export function parseIndex(json, { name } = {}) {
     // field, so invariant 2 is untouched.
     integrityAlgorithm: INTEGRITY_ALGORITHM,
     latest: obj.latest ?? null,
+    // Carried through, not restated: the floor is a ratchet over every publish
+    // (invariant 8), and dropping it on a rewrite would silently lower it.
+    isolateApiFloor: parseVersion(obj.isolateApiFloor) ? obj.isolateApiFloor : null,
     versions: { ...(obj.versions || {}) }
+  }
+}
+
+/**
+ * Raise the channel's isolate-API floor — invariant 8. Returns a NEW index.
+ *
+ * Ratcheted: a floor below the one already recorded leaves the index unchanged
+ * (a publisher on an older line does not lower what a newer one promised).
+ * Refuses a floor that names no published version — a consumer must be able to
+ * fetch the version the floor points at.
+ */
+export function setIsolateApiFloor(index, floor) {
+  if (!parseVersion(floor)) throw new Error(`setIsolateApiFloor: not a version: ${floor}`)
+  if (!index.versions[floor]) {
+    throw new Error(
+      `setIsolateApiFloor(${floor}): that version is not published in this channel. ` +
+        `A floor a consumer cannot fetch is unusable; publish the version first.`
+    )
+  }
+  const current = index.isolateApiFloor ?? null
+  if (current && compareVersions(current, floor) >= 0) return index
+  return { ...index, isolateApiFloor: floor }
+}
+
+/** The highest usable version is at or above the floor — or the channel is broken. */
+function assertFloorSatisfiable(index) {
+  const floor = index.isolateApiFloor
+  if (!floor) return
+  const latest = computeLatest(index)
+  if (!latest || compareVersions(latest, floor) < 0) {
+    throw new Error(
+      `the channel's isolate-API floor is ${floor} and no usable version is at or above it ` +
+        `(latest usable: ${latest ?? 'none'}). Refusing to leave a floor nothing can satisfy.`
+    )
   }
 }
 
@@ -523,6 +585,13 @@ export function deprecateVersion(index, version, { reason, supersededBy } = {}) 
     }
   }
   next.latest = computeLatest(next)
+  // Invariant 8: a deprecation must not leave the floor pointing above every
+  // usable version.
+  try {
+    assertFloorSatisfiable(next)
+  } catch (err) {
+    throw new Error(`deprecateVersion(${version}): ${err.message}`)
+  }
   return next
 }
 
@@ -566,6 +635,8 @@ export function serializeIndex(index) {
       name: index.name,
       integrityAlgorithm: index.integrityAlgorithm || INTEGRITY_ALGORITHM,
       latest: index.latest,
+      // Omitted, never null, when no floor has been recorded: absent means none.
+      ...(index.isolateApiFloor ? { isolateApiFloor: index.isolateApiFloor } : {}),
       versions
     },
     null,

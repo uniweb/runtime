@@ -45,8 +45,9 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
     }
   })
 
-  it('the floor is the newest stamp — 0.14.2, the composed render entry', () => {
+  it('the floor is the newest stamp — 0.14.2, the composed render entry — and a version the channel index can carry', () => {
     expect(ISOLATE_API_FLOOR).toBe('0.14.2')
+    expect(ISOLATE_API_FLOOR).toMatch(/^\d+\.\d+\.\d+$/)
     expect(ISOLATE_API.prefetchAndHydrate).toBe(ISOLATE_API_FLOOR)
     expect(ISOLATE_API.createPageRenderer).toBe(ISOLATE_API_FLOOR)
     // and the entry hosting feature-detects today shipped one version earlier

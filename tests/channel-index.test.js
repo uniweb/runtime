@@ -11,7 +11,8 @@ import {
   groupRelativePaths,
   parseIndex,
   parseVersion,
-  serializeIndex
+  serializeIndex,
+  setIsolateApiFloor
 } from '../scripts/channel-index.js'
 
 const H = (c) => c.repeat(64) // a syntactically valid lowercase-hex sha256
@@ -645,5 +646,51 @@ describe('the index states how its digests are built', () => {
     expect(doc.integrityAlgorithm).toBe(INTEGRITY_ALGORITHM)
     expect(doc.versions['0.9.8'].integrity.browser).toBe('sha256-b17c6c7c')
     expect('sha256' in doc.versions['0.9.8'].files.browser[0]).toBe(false)
+  })
+})
+
+describe('the isolate-API floor rides in the index — invariant 8', () => {
+  const two = () => pub(pub(createIndex({ name: '@uniweb/runtime' }), '0.14.2'), '0.15.0')
+
+  it('is written beside latest, and omitted (never null) when none was recorded', () => {
+    const index = two()
+    expect(serializeIndex(index)).not.toContain('isolateApiFloor')
+    const withFloor = setIsolateApiFloor(index, '0.14.2')
+    const doc = JSON.parse(serializeIndex(withFloor))
+    expect(doc.isolateApiFloor).toBe('0.14.2')
+    expect(Object.keys(doc).indexOf('isolateApiFloor')).toBe(Object.keys(doc).indexOf('latest') + 1)
+    expect(doc.schema).toBe(1) // additive — a conforming reader ignores an unknown key
+  })
+
+  it('ratchets: a lower floor from a publisher on an older line leaves the channel\'s alone', () => {
+    const index = setIsolateApiFloor(two(), '0.15.0')
+    expect(setIsolateApiFloor(index, '0.14.2').isolateApiFloor).toBe('0.15.0')
+    expect(setIsolateApiFloor(index, '0.15.0')).toBe(index)
+  })
+
+  it('refuses a floor naming a version the channel does not carry', () => {
+    expect(() => setIsolateApiFloor(two(), '0.16.0')).toThrow(/not published/)
+    expect(() => setIsolateApiFloor(two(), 'nope')).toThrow(/not a version/)
+  })
+
+  it('survives a parse → serialize round trip, and an index without one stays without one', () => {
+    const index = setIsolateApiFloor(two(), '0.14.2')
+    expect(parseIndex(serializeIndex(index)).isolateApiFloor).toBe('0.14.2')
+    expect(parseIndex(serializeIndex(two())).isolateApiFloor).toBeNull()
+    expect(parseIndex({ schema: 1, name: '@uniweb/runtime', versions: {}, isolateApiFloor: 'junk' }).isolateApiFloor).toBeNull()
+  })
+
+  it('refuses a deprecation that would leave no usable version at or above the floor', () => {
+    const index = setIsolateApiFloor(two(), '0.15.0')
+    expect(() => deprecateVersion(index, '0.15.0', { reason: 'bad' })).toThrow(/no usable version is at or above/)
+    // deprecating BELOW the floor is fine
+    expect(deprecateVersion(index, '0.14.2', { reason: 'old' }).isolateApiFloor).toBe('0.15.0')
+  })
+
+  it('never mutates the index it was given', () => {
+    const index = two()
+    const before = JSON.stringify(index)
+    setIsolateApiFloor(index, '0.14.2')
+    expect(JSON.stringify(index)).toBe(before)
   })
 })

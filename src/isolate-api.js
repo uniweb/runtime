@@ -17,7 +17,8 @@
  * ⛔ A floor is a promise about a VERSION, not a rename guard. A site on a newer
  * runtime with a renamed export is still a missing symbol; the test above is what
  * makes that fail before it ships, and the announcement to the consumer is still
- * ours to send (`framework/CLAUDE.md` § Decoupling is the architecture).
+ * ours to send, because a consumer that bundles this package by workspace link
+ * gets the change at commit time, with no version to pin against.
  *
  * ⛔ Not `runtime-pin.json`. That file is emitted per FOUNDATION build and records an
  * observed fact ("built against"), never a guarantee; an isolate-API floor is a

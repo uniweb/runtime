@@ -18,8 +18,8 @@
  *
  *   - **Shell assembly.** The shell arrives built. The import map, the CDN base and
  *     cache headers are host layout, and a runtime that assembled them would be
- *     modelling a deployment it cannot see (hosting drew this line themselves,
- *     2026-09-03; `framework/CLAUDE.md` § *Serve locations are read, never constructed*).
+ *     modelling a deployment it cannot see (the host drew this line itself,
+ *     2026-09-03: a serve location is read from the payload, never constructed here).
  *   - **Init and hydration.** The two lanes differ REALLY here, not incidentally: a
  *     build initializes once and hydrates every collection up front, an isolate
  *     initializes per locale and prefetches per route. Folding either in would fit

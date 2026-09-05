@@ -142,3 +142,87 @@ describe('A6 — the misses of one tick ride one POST, and each gets its own ans
     expect(f.cacheKey(list)).not.toBe(f.cacheKey(record))
   })
 })
+
+
+// ─── backend's wire, as it shipped (2026-09-04) ────────────────────────────────
+// ⚠️ QUOTED from backend's pinned tests (their channel message of 2026-09-04),
+// NOT captured from a running daemon — a live capture replaces these when a
+// daemon at or after their `b7a1e5ec` is reachable.
+
+function problemStub(status, problem) {
+  const fetch = vi.fn(async () => ({
+    ok: false, status, statusText: 'Bad Request',
+    headers: { get: () => 'application/problem+json' },
+    json: async () => problem, text: async () => JSON.stringify(problem),
+  }))
+  return { fetch }
+}
+
+describe("backend's shipped wire — quoted shapes", () => {
+  it('a per-key error is `{ code, detail }`: `detail` is the message, `code` rides beside it', async () => {
+    const { fetch } = doorStub({
+      data: { ok: [] }, depths: { ok: 'brief' },
+      errors: { members: { code: 'schema_not_found', detail: 'no Model named `@nope/x`' } },
+    })
+    const f = createDefaultFetcher({ fetch })
+    const result = await f.resolve(list)
+    expect(result.data).toBeNull()
+    expect(result.error).toBe('no Model named `@nope/x`')
+    expect(result.code).toBe('schema_not_found')
+  })
+
+  it('a whole-request refusal surfaces the problem body\'s `detail` on every key of the batch', async () => {
+    const { fetch } = problemStub(400, { status: 400, title: 'Bad Request', detail: 'query "members": unknown operator `like`' })
+    const f = createDefaultFetcher({ fetch })
+    const [a, b] = await Promise.all([f.resolve(list), f.resolve(record)])
+    expect(a.error).toBe('HTTP 400: query "members": unknown operator `like`')
+    expect(b.error).toBe(a.error)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('`cursors` and `limits` are received and ignored — the answer is delivered whole', async () => {
+    const { fetch } = doorStub({
+      data: { members: [{ $uuid: 'u1', $name: 'ada', name: 'Ada Lovelace' }] },
+      depths: { members: 'brief' },
+      cursors: { members: 'opaque' },
+      limits: { members: 100 },
+    })
+    const f = createDefaultFetcher({ fetch })
+    const result = await f.resolve(list)
+    expect(result.data).toEqual([{ $uuid: 'u1', $name: 'ada', name: 'Ada Lovelace' }])
+    expect(result.meta).toEqual({ depth: 'brief' })
+    expect(result.error).toBeUndefined()
+    expect(result).not.toHaveProperty('cursor')
+  })
+
+  it("the three-question batch from backend's tests, answered per key with depths", async () => {
+    const answer = {
+      data: {
+        staff: [{ $uuid: 'u1', $name: 'ada', name: 'Ada Lovelace', featured: true }],
+        top: [{ $uuid: 'u2', $name: 'bob', name: 'Bob' }],
+        ada: [{ $uuid: 'u1', $name: 'ada', name: 'Ada Lovelace', bio: { text: '…' }, roles: [{ title: '…' }] }],
+      },
+      depths: { staff: 'brief', top: 'brief', ada: 'full' },
+      cursors: { top: '…' },
+    }
+    const { fetch, calls } = doorStub(answer)
+    const f = createDefaultFetcher({ fetch })
+    const door = '/_records/_query/en'
+    const [staff, top, ada] = await Promise.all([
+      f.resolve({ door, query: 'staff', schema: '@std/person', as: 'staff', scope: 'members', where: { featured: true }, locale: 'en' }),
+      f.resolve({ door, query: 'top', schema: '@std/person', as: 'top', scope: 'members', sort: '-rank', limit: 1, locale: 'en' }),
+      f.resolve({ door, query: 'ada', schema: '@std/person', as: 'ada', where: { $name: 'ada' }, depth: 'full', locale: 'en' }),
+    ])
+    expect(calls).toHaveLength(1)
+    expect(calls[0].url).toBe('/_records/_query/en')
+    expect(calls[0].body).toEqual({
+      staff: { schema: '@std/person', scope: 'members', where: { featured: true } },
+      top: { schema: '@std/person', scope: 'members', sort: '-rank', limit: 1 },
+      ada: { schema: '@std/person', where: { $name: 'ada' }, depth: 'full' },
+    })
+    expect(staff.data).toEqual(answer.data.staff)
+    expect(top.meta).toEqual({ depth: 'brief' })
+    expect(ada.data[0].bio).toEqual({ text: '…' })
+    expect(ada.meta).toEqual({ depth: 'full' })
+  })
+})

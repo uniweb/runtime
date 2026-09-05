@@ -315,12 +315,15 @@ function renameOperators(where) {
 /**
  * Send one batch to a door and hand each question its own answer.
  *
- * The response is `{ data, depths?, errors? }` (contract §5): `data` answers
- * exactly the keys sent, `[]` when nothing matched; a key that ERRORED is absent
- * from `data` and present in `errors`; `depths` says what was actually served,
- * which the record index files rather than what was asked for. A key missing
- * from both is a protocol violation and is reported as an error, never as
- * silence.
+ * The response is `{ data, depths?, errors?, cursors?, limits? }` (contract §5):
+ * `data` answers exactly the keys sent, `[]` when nothing matched; a key that
+ * ERRORED is absent from `data` and present in `errors`; `depths` says what was
+ * actually served, which the record index files rather than what was asked for.
+ * A key missing from both is a protocol violation and is reported as an error,
+ * never as silence. `cursors` (a next page per key) and `limits` (a `limit` the
+ * door bounded) are received and IGNORED, by ruling: framework has no paging
+ * concept and is not this door's only client, so whether either is consumed is
+ * a product decision, not a client default.
  */
 async function flushDoor(url, queue, doFetch) {
   const body = {}
@@ -340,7 +343,19 @@ async function flushDoor(url, queue, doFetch) {
       body: JSON.stringify(body),
     })
     if (!response.ok) {
-      const error = `HTTP ${response.status}: ${response.statusText}`
+      // A protocol violation is refused for the WHOLE request with a problem body
+      // whose `detail` names the key and the fault (an unknown operator, an empty
+      // binding key, a non-BCP-47 locale segment…). Surface that sentence on every
+      // key of the batch rather than the bare status: the author reads
+      // `block.dataError` and the status alone says nothing they can act on.
+      let detail = null
+      try {
+        const problem = safeParseJSON(await response.text())
+        if (problem && typeof problem.detail === 'string' && problem.detail) detail = problem.detail
+      } catch { /* an unreadable body falls back to the status line */ }
+      const error = detail
+        ? `HTTP ${response.status}: ${detail}`
+        : `HTTP ${response.status}: ${response.statusText}`
       for (const entry of queue) entry.resolve({ data: null, error })
       return
     }
@@ -356,8 +371,14 @@ async function flushDoor(url, queue, doFetch) {
   queue.forEach((entry, i) => {
     const key = keys[i]
     if (key in errors) {
+      // A per-key error is `{ code, detail }` — `schema_not_found`,
+      // `field_not_in_brief`, `scope_not_found`… The sentence is `detail`; `code`
+      // rides beside it for a reader that wants to branch on it.
       const e = errors[key]
-      entry.resolve({ data: null, error: typeof e === 'string' ? e : (e?.message || JSON.stringify(e)) })
+      const detail = typeof e === 'string' ? e : (e?.detail || e?.message || JSON.stringify(e))
+      const out = { data: null, error: detail }
+      if (e && typeof e === 'object' && typeof e.code === 'string') out.code = e.code
+      entry.resolve(out)
       return
     }
     if (!(key in data)) {

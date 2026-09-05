@@ -246,11 +246,8 @@ function buildDefaultFetcher(content) {
   // transports (`fetcher.transports`) plus a transport's own binding config,
   // which a transport reads through ctx.website.config.fetcher.
   //
-  // The host's live-records stamp (`config.records`), when a backend set one: the fetcher
-  // reads its `envelope` for requests that resolved to that lane.
-  const records = content?.config?.records ?? null
   const dev = !!(import.meta.env && import.meta.env.DEV)
-  return createDefaultFetcher({ basePath, dev, records })
+  return createDefaultFetcher({ basePath, dev })
 }
 
 /**

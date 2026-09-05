@@ -8,15 +8,15 @@ import { resolvePageFetchConfigs, executeFetchConfigs, prefetchPageData, findPag
 import { hydrateDataStore } from '../src/wire-foundation.js'
 import DataStore, { deriveCacheKey } from '@uniweb/core/datastore'
 
-// A payload as a backend publishes it: the records stamp with its envelope, one page with a
-// query fetch, a [slug] child, and a section with its own remote fetch.
+// A payload as a backend publishes it: the question-door stamp and the query's Model ref,
+// one page with a query fetch, a [slug] child, and a section with its own remote fetch.
 const CONTENT = {
   config: {
     base: '/site',
     defaultLanguage: 'en',
     languages: ['en'],
     queries: { members: { name: 'members', schema: '@std/person' } },
-    records: { list: '/_records/{path}', record: '/_records/{path}/{param}', envelope: { records: 'entries' } },
+    records: { query: '/_records/_query/{locale}' },
   },
   pages: [
     { route: '/team', parent: null, isDynamic: false, fetch: { query: 'members', path: '/data/members.json', as: 'people' },
@@ -25,23 +25,38 @@ const CONTENT = {
   ],
 }
 
+// `routes` answers a URL by substring. A door route's value is a FUNCTION of the
+// posted question map, answering per key the way the door does: the record
+// question (narrowed by `$name`) gets the full record, any other the briefs.
 function stubFetch(routes) {
   const calls = []
-  const fetch = vi.fn(async (input) => {
+  const fetch = vi.fn(async (input, init) => {
     const url = String(input)
     calls.push(url)
     const hit = Object.entries(routes).find(([k]) => url.includes(k))
-    const body = hit ? hit[1] : { entries: [] }
+    let body = hit ? hit[1] : { entries: [] }
+    if (typeof body === 'function') body = body(init?.body ? JSON.parse(init.body) : {})
     return { ok: true, status: 200, statusText: 'OK', headers: { get: () => 'application/json' }, json: async () => body, text: async () => JSON.stringify(body) }
   })
   return { fetch, calls }
 }
+const DOOR = '/_records/_query/en'
+const door = ({ briefs = [], full = null }) => (questions) => {
+  const data = {}, depths = {}
+  for (const [key, q] of Object.entries(questions)) {
+    const isRecord = q.where && q.where.$name !== undefined
+    data[key] = isRecord ? (full ? [full] : []) : briefs
+    depths[key] = isRecord ? 'full' : 'brief'
+  }
+  return { data, depths }
+}
 
 describe('resolvePageFetchConfigs', () => {
-  it('resolves the page fetch to the records lane through config.records, once, keyed by cache key', () => {
+  it('resolves the page fetch to the question door through config.records, once, keyed by cache key', () => {
     const cfgs = resolvePageFetchConfigs(CONTENT, '/team')
     const people = cfgs.find((c) => c.as === 'people')
-    expect(people.endpoint).toBe('/_records/members')
+    expect(people.door).toBe(DOOR)
+    expect(people.schema).toBe('@std/person')
     expect(people.path).toBeUndefined()
     expect(new Set(cfgs.map(deriveCacheKey)).size).toBe(cfgs.length)
   })
@@ -56,7 +71,7 @@ describe('resolvePageFetchConfigs', () => {
     expect(hit.page.route).toBe('/team/:slug')
     expect(hit.params).toEqual({ slug: 'ada' })
     const cfgs = resolvePageFetchConfigs(CONTENT, '/team/ada')
-    expect(cfgs.some((c) => c.as === 'people' && c.endpoint === '/_records/members')).toBe(true)
+    expect(cfgs.some((c) => c.as === 'people' && c.door === DOOR)).toBe(true)
   })
 
   it('CONTROL — an unknown route resolves to nothing', () => {
@@ -65,13 +80,13 @@ describe('resolvePageFetchConfigs', () => {
 })
 
 describe('executeFetchConfigs', () => {
-  it('issues the records request through the injected fetch, under the payload base, and unwraps with the stamp\'s envelope', async () => {
-    const { fetch, calls } = stubFetch({ '/_records/members': { entries: [{ slug: 'ada' }, { slug: 'lin' }] } })
+  it('asks the door through the injected fetch, under the payload base, and reads the answer by key', async () => {
+    const { fetch, calls } = stubFetch({ [DOOR]: door({ briefs: [{ $name: 'ada' }, { $name: 'lin' }] }) })
     const configs = resolvePageFetchConfigs(CONTENT, '/team')
     const out = await executeFetchConfigs(configs, { content: CONTENT, fetch })
-    expect(calls.some((u) => u.endsWith('/site/_records/members'))).toBe(true)
+    expect(calls.some((u) => u.endsWith('/site' + DOOR))).toBe(true)
     const people = out.find((e) => e.config.as === 'people')
-    expect(people.data).toEqual([{ slug: 'ada' }, { slug: 'lin' }])
+    expect(people.data).toEqual([{ $name: 'ada' }, { $name: 'lin' }])
   })
 
   it("prerender: 'author' — a fetch the author deferred is present as `skipped`, never requested", async () => {
@@ -108,12 +123,12 @@ describe('executeFetchConfigs', () => {
   })
 
   it('returns the shape hydrateDataStore consumes — round trip into a DataStore', async () => {
-    const { fetch } = stubFetch({ '/_records/members': { entries: [{ slug: 'ada' }] } })
+    const { fetch } = stubFetch({ [DOOR]: door({ briefs: [{ $name: 'ada' }] }) })
     const fetched = await prefetchPageData({ content: CONTENT, route: '/team', fetch })
     const dataStore = new DataStore()
     hydrateDataStore({ dataStore }, fetched)
     const people = fetched.find((e) => e.config.as === 'people')
-    expect(dataStore.get(deriveCacheKey(people.config))?.data).toEqual([{ slug: 'ada' }])
+    expect(dataStore.get(deriveCacheKey(people.config))?.data).toEqual([{ $name: 'ada' }])
   })
 
   it('CONTROL — a transport error is reported on the entry, not thrown', async () => {
@@ -129,40 +144,40 @@ describe('executeFetchConfigs', () => {
 
 describe('what a prefetched entry says about depth', () => {
   it('carries the depth the config asked for as meta, and hydration files it in the record index', async () => {
-    const { fetch } = stubFetch({ '/_records/members': { entries: [{ $uuid: 'u1', slug: 'ada' }] } })
+    const { fetch } = stubFetch({ [DOOR]: door({ briefs: [{ $uuid: 'u1', $name: 'ada' }] }) })
     const fetched = await prefetchPageData({ content: CONTENT, route: '/team', fetch })
     const people = fetched.find((e) => e.config.as === 'people')
-    expect(people.config.depth).toBe('brief') // a live list with a record address is a list of briefs
+    expect(people.config.depth).toBe('brief') // a door list is a list of briefs; the record is its own question
     expect(people.meta).toEqual({ depth: 'brief' })
     const dataStore = new DataStore()
     hydrateDataStore({ dataStore }, fetched)
-    expect(dataStore.getRecord('u1')).toEqual({ depth: 'brief', record: { $uuid: 'u1', slug: 'ada' } })
-    expect(dataStore.get(deriveCacheKey(people.config)).data).toEqual([{ $uuid: 'u1', slug: 'ada' }])
+    expect(dataStore.getRecord('u1')).toEqual({ depth: 'brief', record: { $uuid: 'u1', $name: 'ada' } })
+    expect(dataStore.get(deriveCacheKey(people.config)).data).toEqual([{ $uuid: 'u1', $name: 'ada' }])
   })
 })
 
 describe('E2 — a template page prefetches ITS RECORD, not only the list', () => {
   it('builds the detail config for the matched param through the one shared rule', () => {
     const cfgs = resolvePageFetchConfigs(CONTENT, '/team/ada')
-    const detail = cfgs.find((c) => c.endpoint === '/_records/members/ada')
+    const detail = cfgs.find((c) => c.door === DOOR && c.where?.$name === 'ada')
     expect(detail).toBeDefined()
     expect(detail.as).toBe('people')
     expect(detail.depth).toBe('full')
     expect(detail.dynamicContext).toEqual({ paramName: 'slug', paramValue: 'ada' })
     // and the list is still there, at brief depth
-    expect(cfgs.some((c) => c.endpoint === '/_records/members' && c.depth === 'brief')).toBe(true)
+    expect(cfgs.some((c) => c.door === DOOR && !c.where?.$name && c.depth === 'brief')).toBe(true)
   })
 
   it('executes it, so the host hands the isolate the record in full', async () => {
     const { fetch, calls } = stubFetch({
-      '/_records/members/ada': { $uuid: 'u1', slug: 'ada', bio: 'Full' },
-      '/_records/members': { entries: [{ $uuid: 'u1', slug: 'ada' }] },
+      [DOOR]: door({ briefs: [{ $uuid: 'u1', $name: 'ada' }], full: { $uuid: 'u1', $name: 'ada', bio: 'Full' } }),
     })
     const fetched = await prefetchPageData({ content: CONTENT, route: '/team/ada', fetch })
-    expect(calls.some((u) => u.endsWith('/site/_records/members/ada'))).toBe(true)
-    const record = fetched.find((e) => e.config.endpoint === '/_records/members/ada')
+    // one POST carries both questions
+    expect(calls.filter((u) => u.endsWith('/site' + DOOR))).toHaveLength(1)
+    const record = fetched.find((e) => e.config.where?.$name === 'ada')
     expect(record.outcome).toBe('fetched')
-    expect(record.data).toEqual({ $uuid: 'u1', slug: 'ada', bio: 'Full' })
+    expect(record.data).toEqual([{ $uuid: 'u1', $name: 'ada', bio: 'Full' }])
     expect(record.meta).toEqual({ depth: 'full' })
     // hydrated, the record index holds it in FULL — the SPA renders it without a client fetch
     const dataStore = new DataStore()
@@ -172,7 +187,8 @@ describe('E2 — a template page prefetches ITS RECORD, not only the list', () =
 
   it('CONTROL — a list page, and a template whose query has no per-record source, add no detail fetch', () => {
     expect(resolvePageFetchConfigs(CONTENT, '/team').some((c) => c.depth === 'full' && c.dynamicContext)).toBe(false)
-    const noRecordLane = { ...CONTENT, config: { ...CONTENT.config, records: { list: '/_records/{path}' } } }
-    expect(resolvePageFetchConfigs(noRecordLane, '/team/ada').some((c) => c.dynamicContext)).toBe(false)
+    // a lane with only the retired address patterns is NO lane: the compiled file, no per-record source
+    const noDoor = { ...CONTENT, config: { ...CONTENT.config, records: { list: '/_records/{path}', record: '/_records/{path}/{param}' } } }
+    expect(resolvePageFetchConfigs(noDoor, '/team/ada').some((c) => c.dynamicContext)).toBe(false)
   })
 })

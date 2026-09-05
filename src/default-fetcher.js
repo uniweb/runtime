@@ -6,22 +6,25 @@
  * starter/docs/marketing templates hitting /data/*.json — ride on this path
  * with zero config, and so does a site a host serves live.
  *
- * ⭐ It speaks exactly THREE lanes, and takes NO site-level vocabulary for a
+ * ⭐ It speaks exactly TWO lanes, and takes NO site-level vocabulary for a
  * backend of the author's own:
  *
  *   - a compiled file — `path:` under the site's base (`/data/<query>.json`,
  *     a per-record file), or a plain JSON `url:` the author wrote;
- *   - the host's ADDRESS DOOR — `endpoint:`, resolved upstream from the
- *     `config.records` stamp (`@uniweb/core/query-address`), unwrapped with
- *     the stamp's own `envelope.records`;
  *   - the host's QUESTION DOOR — `door:`, one POST per tick carrying every
  *     question the page asked, answered per key (the records door's contract,
  *     as this client reads it).
  *
  * `where:` / `sort:` / `limit:` are evaluated HERE, locally, over what the
- * first two lanes return — with `@uniweb/core`'s one evaluator, the same the
- * build uses to materialize a file — and by the source on the third. Nothing
- * decides that per site: the LANE decides.
+ * first lane returns — with `@uniweb/core`'s one evaluator, the same the build
+ * uses to materialize a file — and by the source on the door. Nothing decides
+ * that per site: the LANE decides.
+ *
+ * ⛔ A third lane — the host's ADDRESS door, a GET per query with the query
+ * evaluated locally over the whole set — was retired 2026-09-04 by ruling,
+ * with no hosted site to protect: one host answering one query two ways, and a
+ * precedence between the two, was where the failure lived. The stamp's `list`,
+ * `record` and `envelope` keys are not read.
  *
  * ⛔ RETIRED 2026-09-04 [Diego]: `fetcher.baseUrl`, `headers`, `envelope`,
  * `supports`, `request.style` / `request.rename` and the `json-body`
@@ -67,9 +70,6 @@ import {
  *   for subpath deployments. Remote URLs pass through unchanged.
  * @param {boolean} [options.dev=false] - Dev-mode diagnostics: a bad `sort:`
  *   throws instead of delivering the records unsorted.
- * @param {Object|null} [options.records=null] - The host's `config.records`
- *   stamp; its `envelope.records` names the key a list sits under on the
- *   address door.
  * @param {Function|null} [options.fetch=null] - The transport. A host executing
  *   fetches outside a browser (an SSR isolate) decides how a site-relative
  *   address is dispatched — through its own origin or a service binding — and
@@ -77,23 +77,10 @@ import {
  *   test stub installed later is honoured.
  * @returns {{ cacheKey: (req: Object) => string, resolve: (req: Object, ctx: Object) => Promise<{ data, error?, meta? }> }}
  */
-export function createDefaultFetcher({ basePath = '', dev = false, records = null, fetch: fetchImpl = null } = {}) {
+export function createDefaultFetcher({ basePath = '', dev = false, fetch: fetchImpl = null } = {}) {
   const doFetch = (input, init) => (fetchImpl || globalThis.fetch)(input, init)
   const pathPrefix = basePath && basePath !== '/' ? basePath.replace(/\/$/, '') : ''
 
-  // ⭐ The LIVE LANE's envelope is the backend's. `config.records` is stamped by the backend
-  // that answers a records request, so where the array sits in ITS response is its to
-  // declare: `records.envelope.records` — the KEY says what it holds, the VALUE is the JSON
-  // key the array sits under (`{ records: "entries" }` ⇒ body.entries). That spelling is the
-  // agreed one (2026-08-30: `collection` retired; ⛔ not `list`, which is a URL pattern on the
-  // same stamp). It applies only to a request that resolved to that lane (`endpoint` set).
-  // Ruled 2026-09-03 [Diego]: the backend sets `config.records`; the fetch comes from the
-  // runtime.
-  const stampedArrayKey = (records?.envelope && typeof records.envelope === 'object'
-    && typeof records.envelope.records === 'string' && records.envelope.records.length)
-    ? records.envelope.records
-    : null
-  const laneEnvelope = stampedArrayKey ? { list: stampedArrayKey } : null
 
   // ⭐ THE QUESTION DOOR — a batch of the misses, one POST, merged per key.
   //
@@ -103,8 +90,18 @@ export function createDefaultFetcher({ basePath = '', dev = false, records = nul
   // The batch response is never cached as
   // one: each request gets its own answer, keyed by its own question.
   const doorQueues = new Map()
-  const askDoor = (request, ctx) =>
-    new Promise((resolve) => {
+  const askDoor = (request, ctx) => {
+    // ⛔ A door question needs the query's Model ref. A payload that stamps the
+    // door and carries no `config.queries` entry for the query cannot ask; that
+    // is a producer defect and it is said here, per key, with no request made.
+    if (typeof request.schema !== 'string' || !request.schema) {
+      return Promise.resolve({
+        data: null,
+        error: `the payload stamps a records door but carries no Model ref for query ` +
+          `"${request.query ?? request.as}" (config.queries) — the door cannot be asked`,
+      })
+    }
+    return new Promise((resolve) => {
       const url = resolveServiceUrl(request.door, pathPrefix)
       let queue = doorQueues.get(url)
       if (!queue) {
@@ -117,6 +114,7 @@ export function createDefaultFetcher({ basePath = '', dev = false, records = nul
       }
       queue.push({ request, ctx, resolve })
     })
+  }
 
   return {
     /**
@@ -134,7 +132,7 @@ export function createDefaultFetcher({ basePath = '', dev = false, records = nul
     async resolve(request, ctx = {}) {
       if (!request) return { data: null }
       if (request.door) return askDoor(request, ctx)
-      const { path, url, endpoint, transform, body: rawBody } = request
+      const { path, url, transform, body: rawBody } = request
 
       // Normalize method. Only GET and POST are supported by the default
       // fetcher — mutations (PUT/PATCH/DELETE) are a different feature
@@ -146,24 +144,7 @@ export function createDefaultFetcher({ basePath = '', dev = false, records = nul
       }
 
       let target
-      if (endpoint) {
-        // The host's address door, resolved upstream from the pattern it
-        // published. FINAL ON ARRIVAL: the site `base` is applied to a rooted
-        // address — the same rule every other site-relative address follows,
-        // shared with `resolveServiceUrl` rather than spelled a second time —
-        // and nothing else is joined onto it. A pattern may carry a site id,
-        // its own root, any layout at all; none of it is ours.
-        target = resolveServiceUrl(endpoint, pathPrefix)
-        // ⭐ The locale rides as a query param on the address door — the config
-        // carries one only on a non-default-locale live request (F1). Until
-        // 2026-09-04 nothing put it on the wire, so localized fields arrived as
-        // `{lang: …}` maps; hosting confirmed that day that an appended `?locale=`
-        // passes through their reshape verbatim, on both the browser and the
-        // isolate path, and backend answers it with the locale's strings.
-        if (typeof request.locale === 'string' && request.locale) {
-          target += (target.includes('?') ? '&' : '?') + 'locale=' + encodeURIComponent(request.locale)
-        }
-      } else if (path) {
+      if (path) {
         // Local file under public/ — basePath applies for subpath deploys.
         target = pathPrefix && path.startsWith('/') && !path.startsWith('//')
           ? pathPrefix + path
@@ -172,7 +153,7 @@ export function createDefaultFetcher({ basePath = '', dev = false, records = nul
         // A URL the author wrote, sent exactly as written.
         target = url
       } else {
-        return { data: [], error: 'No path, url or endpoint specified' }
+        return { data: [], error: 'No path, url or door specified' }
       }
 
       const init = { signal: ctx.signal, method }
@@ -196,11 +177,10 @@ export function createDefaultFetcher({ basePath = '', dev = false, records = nul
         const response = await doFetch(target, init)
 
         // A per-request envelope (set by the object form of `detail:`) describes
-        // this one response; on the address door the stamp describes the lane.
-        const requestEnvelope = (request.envelope && typeof request.envelope === 'object')
+        // this one response.
+        const envelope = (request.envelope && typeof request.envelope === 'object')
           ? request.envelope
-          : null
-        const envelope = requestEnvelope ?? (endpoint && laneEnvelope ? laneEnvelope : {})
+          : {}
 
         if (!response.ok) {
           // If `envelope.error` names a path, try to extract a human message
@@ -256,11 +236,10 @@ export function createDefaultFetcher({ basePath = '', dev = false, records = nul
         // it returned.
         data = applyOperators(data, request, { dev })
 
-        // ⭐ Say what depth was delivered, so the record index can file it. On
-        // the address door that is what the config asked for — a list at brief
-        // depth when the query has a per-record source, a record in full — so
-        // the config's `depth` is echoed. A door that reports `depths` per key
-        // will override this with what it actually served.
+        // ⭐ Say what depth was delivered, so the record index can file it — what
+        // the config asked for, echoed: a list at brief depth when the query has
+        // a per-record source, a record in full. (A door reports `depths` per
+        // key and overrides this with what it actually served.)
         const depth = request.depth === 'brief' || request.depth === 'full' ? request.depth : undefined
         return depth ? { data: data ?? [], meta: { depth } } : { data: data ?? [] }
       } catch (error) {

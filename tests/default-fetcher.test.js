@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createDefaultFetcher } from '../src/default-fetcher.js'
 
 /**
- * Tests for the runtime's default fetcher — THREE lanes and no site-level
+ * Tests for the runtime's default fetcher — TWO lanes and no site-level
  * vocabulary for a backend of the author's own:
  *   - a compiled file / a plain `url:`: GET, JSON, transform, basePath,
  *     `method: POST` + body + placeholder substitution from dynamicContext,
  *     every operator evaluated locally with the one evaluator;
- *   - the host's address door (`endpoint:`), unwrapped with the stamp;
  *   - the host's question door (`door:`) — `query-door.test.js`.
+ * (The host's ADDRESS door — `endpoint:` — was retired 2026-09-04.)
  *
  * ⛔ `fetcher.baseUrl` / `headers` / `envelope` / `supports` / `request.*`
  * were RETIRED on 2026-09-04: a third party's conventions are a foundation
@@ -85,7 +85,7 @@ describe('createDefaultFetcher — baseline (no config)', () => {
   it('returns { data: [], error } on empty request', async () => {
     const f = createDefaultFetcher()
     const result = await f.resolve({})
-    expect(result).toEqual({ data: [], error: 'No path, url or endpoint specified' })
+    expect(result).toEqual({ data: [], error: 'No path, url or door specified' })
   })
 
   it('returns { data: null } on null request', async () => {
@@ -150,54 +150,6 @@ describe('createDefaultFetcher — basePath (subpath deploys)', () => {
     const f = createDefaultFetcher({ basePath: '/docs/' })
     await f.resolve({ url: '//cdn.example.com/x.json' })
     expect(fetchStub.calls[0].input).toBe('//cdn.example.com/x.json')
-  })
-})
-
-
-describe('createDefaultFetcher — the backend\'s records.envelope on the live lane', () => {
-  // `config.records` is stamped by the backend that answers records requests; its
-  // `envelope.records` names the JSON key the array sits under (agreed 2026-08-30 —
-  // the key was `collection`, and it is not `list`). Ruled 2026-09-03: the backend sets
-  // config.records, the fetch comes from the runtime — so the runtime unwraps with it.
-  let fetchStub
-  beforeEach(() => { fetchStub = stubFetch({ body: {} }) })
-  afterEach(() => fetchStub.restore())
-
-  const RECORDS = { list: '/_records/{path}', record: '/_records/{path}/{param}', envelope: { records: 'entries' } }
-
-  it('unwraps a records-lane list response with records.envelope.records', async () => {
-    fetchStub.setResponse({ body: { entries: [{ id: 1 }, { id: 2 }], total: 2 } })
-    const f = createDefaultFetcher({ records: RECORDS })
-    const result = await f.resolve({ endpoint: '/_records/members', as: 'members' })
-    expect(result.data).toEqual([{ id: 1 }, { id: 2 }])
-  })
-
-  it('CONTROL — a request that is NOT on the live lane ignores the stamp', async () => {
-    fetchStub.setResponse({ body: { entries: [1, 2], data: { items: [3, 4] } } })
-    const f = createDefaultFetcher({ records: RECORDS })
-    const result = await f.resolve({ url: 'https://api.example.com/x' })
-    expect(result.data).toEqual({ entries: [1, 2], data: { items: [3, 4] } })
-  })
-
-  it('CONTROL — a per-request envelope still wins over the stamp', async () => {
-    fetchStub.setResponse({ body: { entries: [1, 2], mine: [9] } })
-    const f = createDefaultFetcher({ records: RECORDS })
-    const result = await f.resolve({ endpoint: '/_records/x', as: 'x', envelope: { list: 'mine' } })
-    expect(result.data).toEqual([9])
-  })
-
-  it('CONTROL — without a stamp envelope the live lane reads the body as-is', async () => {
-    fetchStub.setResponse({ body: [{ id: 1 }] })
-    const f = createDefaultFetcher({ records: { list: '/_records/{path}', record: '/_records/{path}/{param}' } })
-    const result = await f.resolve({ endpoint: '/_records/x', as: 'x' })
-    expect(result.data).toEqual([{ id: 1 }])
-  })
-
-  it('CONTROL — a stamp spelled `list` (not agreed) is NOT read', async () => {
-    fetchStub.setResponse({ body: { entries: [1, 2] } })
-    const f = createDefaultFetcher({ records: { list: '/_records/{path}', record: '/_records/{path}/{param}', envelope: { list: 'entries' } } })
-    const result = await f.resolve({ endpoint: '/_records/x', as: 'x' })
-    expect(result.data).toEqual({ entries: [1, 2] })
   })
 })
 
@@ -391,84 +343,6 @@ describe('createDefaultFetcher — the query is evaluated locally over what the 
 })
 
 
-describe('endpoint — the host\'s address door', () => {
-  let calls
-  let originalFetch
-
-  const respond = () => ({
-    ok: true,
-    headers: { get: () => 'application/json' },
-    json: async () => [{ slug: 'a' }],
-  })
-
-  beforeEach(() => {
-    calls = []
-    originalFetch = globalThis.fetch
-    globalThis.fetch = vi.fn(async (url, init) => {
-      calls.push({ url, init })
-      return respond()
-    })
-  })
-  afterEach(() => {
-    globalThis.fetch = originalFetch
-  })
-
-  const lastUrl = () => calls[calls.length - 1].url
-
-  it('applies the site base to a rooted endpoint', () => {
-    const f = createDefaultFetcher({ basePath: '/docs/' })
-    return f.resolve({ endpoint: '/_data/articles', schema: 'articles' }).then(() => {
-      expect(lastUrl()).toBe('/docs/_data/articles')
-    })
-  })
-
-  it('leaves an absolute endpoint exactly as the host wrote it', async () => {
-    // A pattern may carry a site id, its own root, any layout at all. The
-    // whole point of a pattern over a base is that none of it is ours.
-    const f = createDefaultFetcher({ basePath: '/docs/' })
-    await f.resolve({ endpoint: 'https://h.example/s/abc/c/news.json', schema: 'news' })
-    expect(lastUrl()).toBe('https://h.example/s/abc/c/news.json')
-  })
-
-  it('sends the address bare — no operators on the wire, no headers of ours', async () => {
-    // The address door answers an ADDRESS. The query is evaluated here over
-    // what it returned; a door that answers a QUESTION is `door:`.
-    const f = createDefaultFetcher()
-    await f.resolve({ endpoint: '/_data/articles', schema: 'articles', where: { a: 1 }, limit: 3, sort: 'slug' })
-    expect(lastUrl()).toBe('/_data/articles')
-    expect(calls[calls.length - 1].init.headers).toBeUndefined()
-  })
-
-  it('reports when a request names no source at all', async () => {
-    const f = createDefaultFetcher({})
-    const out = await f.resolve({ schema: 'articles' })
-    expect(out.error).toContain('endpoint')
-  })
-
-  it('appends the stamped locale as ?locale= — the unlanded half of F1, landed 2026-09-04', async () => {
-    // The resolver stamps `locale` on a non-default-locale live request; the
-    // address door takes it as a query param (hosting: passes through verbatim
-    // on both paths; backend: answers with the locale's strings).
-    const f = createDefaultFetcher()
-    await f.resolve({ endpoint: '/_records/members', as: 'members', locale: 'fr' })
-    expect(lastUrl()).toBe('/_records/members?locale=fr')
-  })
-
-  it('joins onto an address that already carries a query', async () => {
-    const f = createDefaultFetcher()
-    await f.resolve({ endpoint: '/_records/members?limit=3', as: 'members', locale: 'fr' })
-    expect(lastUrl()).toBe('/_records/members?limit=3&locale=fr')
-  })
-
-  it('CONTROL — no stamped locale, no query param; and a path: never carries one', async () => {
-    const f = createDefaultFetcher()
-    await f.resolve({ endpoint: '/_records/members', as: 'members' })
-    expect(lastUrl()).toBe('/_records/members')
-    await f.resolve({ path: '/fr/data/members.json', as: 'members', locale: 'fr' })
-    expect(lastUrl()).toBe('/fr/data/members.json')
-  })
-})
-
 describe('createDefaultFetcher — the fallback sort is the ONE evaluator, single-key', () => {
   let fetchStub
   beforeEach(() => {
@@ -515,32 +389,28 @@ describe('createDefaultFetcher — the fallback sort is the ONE evaluator, singl
 })
 
 
-describe('createDefaultFetcher — a single-record request on the live lane', () => {
+describe('createDefaultFetcher — the depth a request asked for is echoed', () => {
   let fetchStub
   beforeEach(() => { fetchStub = stubFetch({ body: {} }) })
   afterEach(() => fetchStub.restore())
-  const RECORDS = { list: '/_records/{path}', record: '/_records/{path}/{param}', envelope: { records: 'entries' } }
 
-  it('is NOT unwrapped with the list key — an entity address answers the bare record', async () => {
-    // A folder address yields a listing under the stamped key; an entity address
-    // yields the record itself. Unwrapping the record with the list key read it
-    // as `undefined` → `[]`, and the detail page delivered `[[]]`.
+  it('echoes the depth a list asked for', async () => {
+    fetchStub.setResponse({ body: [{ $uuid: 'u1' }] })
+    const f = createDefaultFetcher()
+    const result = await f.resolve({ url: 'https://api.example.com/members', as: 'members', depth: 'brief' })
+    expect(result.data).toEqual([{ $uuid: 'u1' }])
+    expect(result.meta).toEqual({ depth: 'brief' })
+  })
+
+  it('a single-record request is not unwrapped with a list key, and echoes full', async () => {
     fetchStub.setResponse({ body: { $uuid: 'u1', slug: 'ada', bio: 'Full' } })
-    const f = createDefaultFetcher({ records: RECORDS })
+    const f = createDefaultFetcher()
     const result = await f.resolve({
-      endpoint: '/_records/members/ada', as: 'members', depth: 'full',
+      url: 'https://api.example.com/members/ada', as: 'members', depth: 'full',
       dynamicContext: { paramName: 'slug', paramValue: 'ada' },
     })
     expect(result.data).toEqual({ $uuid: 'u1', slug: 'ada', bio: 'Full' })
     expect(result.meta).toEqual({ depth: 'full' })
-  })
-
-  it('echoes the depth a list asked for', async () => {
-    fetchStub.setResponse({ body: { entries: [{ $uuid: 'u1' }] } })
-    const f = createDefaultFetcher({ records: RECORDS })
-    const result = await f.resolve({ endpoint: '/_records/members', as: 'members', depth: 'brief' })
-    expect(result.data).toEqual([{ $uuid: 'u1' }])
-    expect(result.meta).toEqual({ depth: 'brief' })
   })
 
   it('CONTROL — a request with no depth carries no meta', async () => {
@@ -603,5 +473,18 @@ describe('⛔ the retired site-level vocabulary is NOT read (2026-09-04)', () =>
     const key = f.cacheKey({ url: 'https://api.example.com/x', where: { tenured: true }, limit: 5 })
     expect(key).toBe(createDefaultFetcher().cacheKey({ url: 'https://api.example.com/x' }))
     expect(key).not.toContain('style=')
+  })
+})
+
+describe('⛔ the retired address door is not a lane (2026-09-04)', () => {
+  let fetchStub
+  beforeEach(() => { fetchStub = stubFetch({ body: [{ id: 1 }] }) })
+  afterEach(() => fetchStub.restore())
+
+  it('a request carrying only `endpoint` names no source, and nothing is fetched', async () => {
+    const f = createDefaultFetcher()
+    const out = await f.resolve({ endpoint: '/_records/members', as: 'members', locale: 'fr' })
+    expect(out.error).toBe('No path, url or door specified')
+    expect(fetchStub.calls).toHaveLength(0)
   })
 })

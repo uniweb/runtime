@@ -46,7 +46,8 @@
  *                is a different cache decision (hosting, 2026-09-03).
  *
  * It resolves nothing the host owns and models no host route layout: every address is
- * `{base}/…` from the payload, or an endpoint the host itself published in `config.records`.
+ * `{base}/…` from the payload, or the question door the host itself published at
+ * `config.records.query`.
  */
 import { resolveFetchConfigs } from '@uniweb/core/fetch-config'
 import { deriveCacheKey } from '@uniweb/core/datastore'
@@ -173,7 +174,6 @@ export async function executeFetchConfigs(configs, { content, fetch = null, dev 
   }
   const fetcher = createDefaultFetcher({
     basePath: content?.config?.base || '',
-    records: content?.config?.records ?? null,
     dev,
     fetch,
   })

@@ -226,3 +226,15 @@ describe("backend's shipped wire — quoted shapes", () => {
     expect(ada.meta).toEqual({ depth: 'full' })
   })
 })
+
+describe('⛔ a door with no Model ref refuses before any request', () => {
+  it('says which query and why, and makes no request', async () => {
+    const { fetch } = doorStub({ data: {} })
+    const f = createDefaultFetcher({ fetch })
+    const result = await f.resolve({ door: '/_records/_query/en', query: 'members', schema: null, as: 'members', locale: 'en' })
+    expect(result.data).toBeNull()
+    expect(result.error).toMatch(/no Model ref for query "members"/)
+    expect(result.error).toMatch(/config\.queries/)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+})

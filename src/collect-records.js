@@ -12,11 +12,22 @@
  *
  * ⇒ So the composition is not duplicated here either. This walks the site's
  * `config.queries`, hands each one to `resolveFetchConfigs` — **the same rule a
- * page render uses**, applying each saved query's own `scope` / `where` / `sort`
- * / `limit` — and asks through the same client. What differs from a page is two
- * fields and nothing else: `depth: 'brief'` (an index wants what a list shows)
- * and `exhaustive: true` (a corpus is not a page, so it follows `cursors` to the
- * end; the records contract bounds a single answer at 100).
+ * page render uses**, applying each saved query's own `scope` and `where` — and
+ * asks through the same client.
+ *
+ * ## ⛔ `limit` IS DROPPED, and it is the one place a corpus must diverge
+ *
+ * A saved query's `limit` is the LIST PAGE's presentation: `limit: 20` means the
+ * page shows twenty. **Its detail pages still exist for every record matching
+ * `scope` + `where`** — so a corpus that honoured `limit` would index twenty and
+ * miss every page beyond them, which is worse than indexing nothing because the
+ * gap is invisible.
+ *
+ * ⚠️ **This shipped wrong in 0.17.0 and was found by the consumer, not by us**
+ * (2026-09-06): the config was passed through unchanged, `limit` crossed as the
+ * question's own, and the corpus was capped. The claim that this surface met
+ * "the population its detail pages can reach" was made *"read charitably"* — a
+ * phrase doing work that one `sed` would have done better.
  *
  * ## What the caller supplies
  *
@@ -46,13 +57,29 @@ import { createDefaultFetcher } from './default-fetcher.js'
  * @param {Function} options.fetch - the transport, `(url, init) => Response`
  * @param {AbortSignal} [options.signal]
  * @param {string[]} [options.only] - restrict to these query names
+ * @param {'brief'|'full'} [options.depth='brief'] - what to ask for. `brief` is
+ *   what a list shows; **`full` is what an index wants** — a brief index cannot
+ *   match body text the record's own detail page displays, and a reader who
+ *   finds a word on the page and not in search meets the inconsistency two
+ *   rankings would produce. The cost is the caller's and is bounded by `maxPages`.
+ * @param {number} [options.maxPages] - the caller's own bound on the walk. The
+ *   default is a bound, not a target; a caller that knows its per-request budget
+ *   passes its own.
  * @returns {Promise<{records: Object, errors: Object|null, meta: Object}>}
  *   `records` is keyed by query NAME, each a flat array; `errors` is keyed the
- *   same and is null when nothing failed; `meta[name]` carries `{ depth, pages,
- *   truncated? }` — `truncated` meaning the loop hit its own bound, never that
- *   the site has more.
+ *   same and is null when nothing failed; `meta[name]` carries
+ *   `{ depth, pages, partial?, bound? }`.
+ *
+ *   ⭐ **`partial` means NOT THE WHOLE POPULATION**, and a key can be in BOTH
+ *   `records` and `errors`: a walk that failed or was aborted with pages already
+ *   in hand keeps them, marked. ⛔ Losing them would be indistinguishable from
+ *   "this query has no records", and on an abort every in-flight key fails at
+ *   once — so discarding would lose the corpus, not a key.
  */
-export async function collectSiteRecords(content, { locale, fetch, signal, only = null } = {}) {
+export async function collectSiteRecords(
+  content,
+  { locale, fetch, signal, only = null, depth = 'brief', maxPages } = {},
+) {
   const config = content?.config
   const services = config?.services ?? null
   const queries = config?.queries ?? null
@@ -82,12 +109,18 @@ export async function collectSiteRecords(content, { locale, fetch, signal, only 
     // `path` has no live lane, and reading that file is the caller's business,
     // not ours — it is in the site's own URL space and they already serve it.
     if (!cfg.ask) return
-    const result = await fetcher.resolve({ ...cfg, depth: 'brief', exhaustive: true }, { signal })
-    if (result?.error) {
-      errors[name] = result.error
-      return
-    }
-    records[name] = Array.isArray(result?.data) ? result.data : []
+    // `limit` is the list page's, never the corpus's — see the header.
+    const { limit, ...population } = cfg
+    const asked = { ...population, depth, exhaustive: true }
+    if (typeof maxPages === 'number' && maxPages > 0) asked.maxPages = maxPages
+
+    const result = await fetcher.resolve(asked, { signal })
+    if (result?.error) errors[name] = result.error
+    // ⭐ Data and an error are not exclusive: a partial walk reports both, and
+    // the caller decides whether partial is usable. Only a walk that collected
+    // nothing leaves the key out of `records` entirely.
+    if (Array.isArray(result?.data)) records[name] = result.data
+    else if (!result?.error) records[name] = []
     if (result?.meta) meta[name] = result.meta
   }))
 

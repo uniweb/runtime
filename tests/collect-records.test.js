@@ -52,7 +52,10 @@ describe('collectSiteRecords', () => {
     // `scope`, `sort` and `limit` come off `config.queries` through
     // resolveFetchConfigs — not re-derived here.
     expect(calls[0].body.members).toMatchObject({ schema: '@std/person', scope: 'team', sort: '-name', depth: 'brief' })
-    expect(calls[0].body.posts).toMatchObject({ schema: '@std/article', limit: 5, depth: 'brief' })
+    // ⛔ `limit: 5` is on the saved query and is NOT sent: it is the list page's
+    // presentation, and the corpus wants the population its detail pages reach.
+    expect(calls[0].body.posts).toMatchObject({ schema: '@std/article', depth: 'brief' })
+    expect(calls[0].body.posts).not.toHaveProperty('limit')
     expect(out.records.members).toEqual([{ $uuid: 'u1', $name: 'ada' }])
     expect(out.errors).toBeNull()
   })
@@ -106,6 +109,60 @@ describe('collectSiteRecords', () => {
     expect((await collectSiteRecords(CONTENT, { locale: '', fetch })).records).toEqual({})
     expect((await collectSiteRecords(null, { locale: 'en', fetch })).records).toEqual({})
     expect(fetch).not.toHaveBeenCalled()
+  })
+
+  // ── The three gaps hosting found on 2026-09-06, each pinned where it was missing.
+
+  it('asks the depth the caller wants — `full` for an index, `brief` by default', async () => {
+    // An index matches body text the record's own detail page shows; a brief
+    // index cannot, and a reader who finds a word on the page and not in search
+    // meets exactly the inconsistency two rankings would produce.
+    const { fetch, calls } = stub([{ data: { members: [] }, depths: {} }])
+    await collectSiteRecords(CONTENT, { locale: 'en', fetch, only: ['members'], depth: 'full' })
+    expect(calls[0].body.members.depth).toBe('full')
+
+    const d = stub([{ data: { members: [] }, depths: {} }])
+    await collectSiteRecords(CONTENT, { locale: 'en', fetch: d.fetch, only: ['members'] })
+    expect(d.calls[0].body.members.depth).toBe('brief')
+  })
+
+  it('honours the caller’s maxPages and marks the key partial rather than spinning', async () => {
+    // A service that always answers with a cursor.
+    const { fetch, calls } = stub([
+      { data: { members: [{ $uuid: 'x' }] }, depths: { members: 'brief' }, cursors: { members: 'c' } },
+    ])
+    const out = await collectSiteRecords(CONTENT, { locale: 'en', fetch, only: ['members'], maxPages: 3 })
+    expect(calls).toHaveLength(3)
+    expect(out.records.members).toHaveLength(3)
+    expect(out.meta.members.partial).toBe(true)
+    expect(out.meta.members.pages).toBe(3)
+    // ⛔ `maxPages` says how many times to ask, never what is asked.
+    expect(calls[0].body.members).not.toHaveProperty('maxPages')
+    expect(calls[0].body.members).not.toHaveProperty('exhaustive')
+  })
+
+  it('⛔ an abort KEEPS the pages already collected, marked — it does not lose the key', async () => {
+    // On an exhaustive walk every in-flight key fails at once, so discarding
+    // held pages loses the corpus rather than one key. A key may appear in both
+    // `records` and `errors`; the caller decides whether partial is usable.
+    let n = 0
+    const fetch = vi.fn(async () => {
+      n += 1
+      if (n === 1) return { ok: true, status: 200, json: async () => ({ data: { members: [{ $uuid: 'u1' }] }, depths: { members: 'brief' }, cursors: { members: 'c1' } }) }
+      const err = new Error('The operation was aborted'); err.name = 'AbortError'
+      throw err
+    })
+    const out = await collectSiteRecords(CONTENT, { locale: 'en', fetch, only: ['members'] })
+    expect(out.records.members).toEqual([{ $uuid: 'u1' }])
+    expect(out.errors.members).toBe('aborted')
+    expect(out.meta.members.partial).toBe(true)
+  })
+
+  it('a walk that collected NOTHING leaves the key out of records entirely', async () => {
+    const fetch = vi.fn(async () => { const e = new Error('x'); e.name = 'AbortError'; throw e })
+    const out = await collectSiteRecords(CONTENT, { locale: 'en', fetch, only: ['members'] })
+    expect(out.records).not.toHaveProperty('members')
+    expect(out.errors.members).toBe('aborted')
   })
 
   it('skips a query with no live lane rather than inventing one', async () => {

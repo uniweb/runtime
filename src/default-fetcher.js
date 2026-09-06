@@ -276,6 +276,8 @@ function toQuestion(request) {
   // `exhaustive` deliberately does NOT cross — it is a client instruction about
   // how many times to ask, not part of the question being asked.
   if (typeof request.cursor === 'string' && request.cursor) q.cursor = request.cursor
+  // ⛔ `maxPages` does not cross either, for the same reason `exhaustive` does not:
+  // both say how many times to ask, never what is being asked.
   return q
 }
 
@@ -310,7 +312,7 @@ function renameOperators(where) {
  *
  * Two behaviours, deliberately not one:
  *
- *   - **a page render REPORTS** — `meta.truncated` and `meta.bound` ride the
+ *   - **a page render REPORTS** — `meta.partial` and `meta.bound` ride the
  *     answer, and nothing pages automatically. Auto-paging here would put
  *     unbounded round trips in front of paint for a section that may only show
  *     ten rows.
@@ -320,8 +322,16 @@ function renameOperators(where) {
  *     a service that always answers with a cursor cannot spin.
  */
 
-/** Pages an exhaustive request will follow before giving up and reporting truncation. */
-const MAX_PAGES = 50
+/**
+ * Pages an exhaustive request follows before stopping and reporting the answer
+ * as partial. A caller sets its own with `request.maxPages`.
+ *
+ * ⚖️ **20 is a bound, not a target** — it is the value a real caller chose for a
+ * real per-request budget (hosting's index, 20 × 100), taken as the default
+ * because any bound prevents a runaway and a low one fails visibly rather than
+ * expensively. A caller that knows its budget passes its own.
+ */
+const DEFAULT_MAX_PAGES = 20
 async function flushAsked(url, queue, doFetch) {
   // One shared page loop: the batch is sent, and any entry that asked to be
   // exhaustive and came back with a cursor is re-sent alone until it is done.
@@ -362,7 +372,15 @@ async function flushAsked(url, queue, doFetch) {
     parsed = await response.json()
   } catch (error) {
     const message = error?.name === 'AbortError' ? 'aborted' : (error?.message || String(error))
-    for (const entry of queue) entry.resolve({ data: null, error: message })
+    // ⛔ AN ABORT KEEPS WHAT ARRIVED. On an exhaustive walk every in-flight key
+    // fails at once here, so discarding held pages loses the whole corpus rather
+    // than one key — the "rejection that loses every key" a caller cannot have.
+    for (const entry of queue) {
+      const held = Array.isArray(entry.collected) && entry.collected.length ? entry.collected : null
+      entry.resolve(held
+        ? { data: held, error: message, meta: withMeta({ partial: true, pages: entry.page }) }
+        : { data: null, error: message })
+    }
     return
   }
   const data = parsed && typeof parsed.data === 'object' && parsed.data ? parsed.data : {}
@@ -373,13 +391,20 @@ async function flushAsked(url, queue, doFetch) {
   const limits = parsed && typeof parsed.limits === 'object' && parsed.limits ? parsed.limits : {}
   queue.forEach((entry, i) => {
     const key = keys[i]
+    // ⛔ A FAILURE MUST NOT DISCARD PAGES ALREADY COLLECTED. An exhaustive walk
+    // that fails on page 7 has six pages in hand, and a caller that asked for a
+    // corpus would rather have them marked partial than lose the key — losing it
+    // is indistinguishable from "this query has no records".
+    const held = Array.isArray(entry.collected) && entry.collected.length ? entry.collected : null
     if (key in errors) {
       // A per-key error is `{ code, detail }` — `schema_not_found`,
       // `field_not_in_brief`, `scope_not_found`… The sentence is `detail`; `code`
       // rides beside it for a reader that wants to branch on it.
       const e = errors[key]
       const detail = typeof e === 'string' ? e : (e?.detail || e?.message || JSON.stringify(e))
-      const out = { data: null, error: detail }
+      const out = held
+        ? { data: held, error: detail, meta: withMeta({ partial: true, pages: entry.page }) }
+        : { data: null, error: detail }
       if (e && typeof e === 'object' && typeof e.code === 'string') out.code = e.code
       entry.resolve(out)
       return
@@ -400,12 +425,15 @@ async function flushAsked(url, queue, doFetch) {
     if (cursor && entry.request.exhaustive && Array.isArray(rows)) {
       const acc = entry.collected ? entry.collected.concat(rows) : rows.slice()
       const page = (entry.page || 1) + 1
-      if (page <= MAX_PAGES) {
+      const cap = typeof entry.request.maxPages === 'number' && entry.request.maxPages > 0
+        ? entry.request.maxPages
+        : DEFAULT_MAX_PAGES
+      if (page <= cap) {
         pending.set(entry, { cursor, collected: acc, page, depth, bound })
         return
       }
-      // The loop's own bound, not the service's: report rather than spin.
-      entry.resolve({ data: acc, meta: withMeta({ depth, bound, truncated: true, pages: MAX_PAGES }) })
+      // The caller's own bound, not the service's: report rather than spin.
+      entry.resolve({ data: acc, meta: withMeta({ depth, bound, partial: true, pages: cap }) })
       return
     }
 
@@ -413,10 +441,20 @@ async function flushAsked(url, queue, doFetch) {
     const meta = withMeta({
       depth,
       bound,
-      // ⭐ A cursor IS the truncation signal, and it is the only one for a query
-      // that declared no `limit`: `limits` is reported only when an author's own
-      // limit was clamped (the records contract §5).
-      truncated: cursor ? true : undefined,
+      // ⭐ ONE FLAG, MEANING **NOT THE WHOLE POPULATION** — asked for by name, so
+      // a caller has one boolean to branch on rather than three signals to
+      // combine. It is set in every case that means it:
+      //   · a cursor came back and this caller does not page (a page render);
+      //   · a cursor came back and the caller's `maxPages` stopped the walk;
+      //   · the walk failed or aborted with pages already in hand;
+      //   · the service reported it BOUNDED the answer and offered no cursor.
+      // ⚠️ The last is why `limits` is read at all: a cursor is the signal for a
+      // query that declared no `limit`, and `limits` is the signal for one whose
+      // author limit was clamped (the records contract §5). Neither alone covers
+      // both. ⛔ Named `truncated` when it shipped in 0.17.0 this morning; renamed
+      // the same day, before any consumer adopted it, because "truncated" says
+      // something was cut and this also means "there is more you did not ask for".
+      partial: (cursor || bound !== undefined) ? true : undefined,
       pages: entry.page && entry.page > 1 ? entry.page : undefined,
     })
     entry.resolve(meta ? { data: collected, meta } : { data: collected })

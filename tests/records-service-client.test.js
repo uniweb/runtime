@@ -195,7 +195,7 @@ describe("backend's shipped wire — quoted shapes", () => {
     const f = createDefaultFetcher({ fetch })
     const result = await f.resolve(list)
     expect(result.data).toEqual([{ $uuid: 'u1', $name: 'ada', name: 'Ada Lovelace' }])
-    expect(result.meta).toEqual({ depth: 'brief', bound: 100, truncated: true })
+    expect(result.meta).toEqual({ depth: 'brief', bound: 100, partial: true })
     expect(result.error).toBeUndefined()
     // ⛔ ONE request: nothing pages in front of paint.
     expect(calls).toHaveLength(1)
@@ -224,9 +224,9 @@ describe("backend's shipped wire — quoted shapes", () => {
     expect(calls[0].body.members).not.toHaveProperty('cursor')
     expect(calls[1].body.members.cursor).toBe('c1')
     expect(calls[2].body.members.cursor).toBe('c2')
-    // Exhausted, so nothing is truncated; the page count rides for a caller
+    // Exhausted, so nothing is partial; the page count rides for a caller
     // that wants to know it cost three round trips.
-    expect(result.meta.truncated).toBeUndefined()
+    expect(result.meta.partial).toBeUndefined()
     expect(result.meta.pages).toBe(3)
   })
 
@@ -239,7 +239,7 @@ describe("backend's shipped wire — quoted shapes", () => {
     }))
     const f = createDefaultFetcher({ fetch })
     const result = await f.resolve({ ...list, exhaustive: true })
-    expect(result.meta.truncated).toBe(true)
+    expect(result.meta.partial).toBe(true)
     expect(result.data.length).toBe(result.meta.pages)
     expect(fetch.mock.calls.length).toBe(result.meta.pages)
   })
@@ -270,8 +270,8 @@ describe("backend's shipped wire — quoted shapes", () => {
       ada: { schema: '@std/person', where: { $name: 'ada' }, depth: 'full' },
     })
     expect(staff.data).toEqual(answer.data.staff)
-    // `top` carried a cursor, so its answer is reported as bounded.
-    expect(top.meta).toEqual({ depth: 'brief', truncated: true })
+    // `top` carried a cursor, so its answer is reported as not the whole population.
+    expect(top.meta).toEqual({ depth: 'brief', partial: true })
     expect(ada.data[0].bio).toEqual({ text: '…' })
     expect(ada.meta).toEqual({ depth: 'full' })
   })

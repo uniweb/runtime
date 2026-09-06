@@ -18,6 +18,7 @@ import React from 'react'
 import { renderToString } from 'react-dom/server'
 import { createUniweb, resolveDefaultLocale } from '@uniweb/core'
 import { sectionDomId } from '@uniweb/core/section-id'
+import { siteUrl, withOpacity } from './background-shared.js'
 import { routePatternToRegex } from '@uniweb/core/route-match'
 import { DEFAULT_ICON_BASE, iconUrl } from '@uniweb/core/icon-corpus'
 import { buildSectionOverrides, FONT_LINKS_MARKER } from '@uniweb/theming'
@@ -86,37 +87,6 @@ export function getWrapperProps(block) {
   return { id: sectionDomId(block), style, className, background }
 }
 
-/**
- * Convert hex/rgb color to rgba with opacity.
- * Mirrors withOpacity() in Background.jsx.
- */
-function withOpacity(color, opacity) {
-  if (color.startsWith('#')) {
-    const r = parseInt(color.slice(1, 3), 16)
-    const g = parseInt(color.slice(3, 5), 16)
-    const b = parseInt(color.slice(5, 7), 16)
-    return `rgba(${r}, ${g}, ${b}, ${opacity})`
-  }
-  if (color.startsWith('rgb')) {
-    const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
-    if (match) {
-      return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${opacity})`
-    }
-  }
-  return color
-}
-
-/**
- * Resolve a URL against the site's base path.
- * Mirrors resolveUrl() in Background.jsx.
- */
-function resolveUrl(url) {
-  if (!url || !url.startsWith('/')) return url
-  const basePath = globalThis.uniweb?.activeWebsite?.basePath || ''
-  if (!basePath) return url
-  if (url.startsWith(basePath + '/') || url === basePath) return url
-  return basePath + url
-}
 
 /**
  * Render a background element for SSR.
@@ -189,7 +159,7 @@ export function renderBackground(background) {
         style: {
           position: 'absolute',
           inset: '0',
-          backgroundImage: `url(${resolveUrl(img.src)})`,
+          backgroundImage: `url(${siteUrl(img.src)})`,
           backgroundPosition: img.position || 'center',
           backgroundSize: img.size || 'cover',
           backgroundRepeat: 'no-repeat',

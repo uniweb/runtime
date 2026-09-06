@@ -8,6 +8,7 @@
  */
 
 import React from 'react'
+import { siteUrl, withOpacity } from '../background-shared.js'
 
 /**
  * Background modes
@@ -25,20 +26,6 @@ const MODES = {
 const OVERLAY_COLORS = {
   light: 'rgba(255, 255, 255, 0.5)',
   dark: 'rgba(0, 0, 0, 0.5)',
-}
-
-/**
- * Resolve a URL against the site's base path
- * Prepends basePath to absolute URLs (starting with /) so they work
- * under subdirectory deployments (e.g., /templates/international/)
- */
-function resolveUrl(url) {
-  if (!url || !url.startsWith('/')) return url
-  const basePath = globalThis.uniweb?.activeWebsite?.basePath || ''
-  if (!basePath) return url
-  // Avoid double-prepending
-  if (url.startsWith(basePath + '/') || url === basePath) return url
-  return basePath + url
 }
 
 /**
@@ -144,28 +131,6 @@ function GradientBackground({ gradient }) {
 }
 
 /**
- * Convert hex color to rgba with opacity
- */
-function withOpacity(color, opacity) {
-  // Handle hex colors
-  if (color.startsWith('#')) {
-    const r = parseInt(color.slice(1, 3), 16)
-    const g = parseInt(color.slice(3, 5), 16)
-    const b = parseInt(color.slice(5, 7), 16)
-    return `rgba(${r}, ${g}, ${b}, ${opacity})`
-  }
-  // Handle rgb/rgba
-  if (color.startsWith('rgb')) {
-    const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
-    if (match) {
-      return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${opacity})`
-    }
-  }
-  // Fallback - return as is
-  return color
-}
-
-/**
  * Image background
  */
 function ImageBackground({ image }) {
@@ -181,7 +146,7 @@ function ImageBackground({ image }) {
   const style = {
     position: 'absolute',
     inset: 0,
-    backgroundImage: `url(${resolveUrl(src)})`,
+    backgroundImage: `url(${siteUrl(src)})`,
     backgroundPosition: position,
     backgroundSize: size,
     backgroundRepeat: 'no-repeat',
@@ -235,7 +200,7 @@ function VideoBackground({ video }) {
   // Build source list: explicit sources array, or infer from src
   const sourceList = (sources || inferSources(src)).map(s => ({
     ...s,
-    src: resolveUrl(s.src)
+    src: siteUrl(s.src)
   }))
 
   return (
@@ -246,7 +211,7 @@ function VideoBackground({ video }) {
       loop={loop}
       muted={muted}
       playsInline
-      poster={resolveUrl(poster)}
+      poster={siteUrl(poster)}
       aria-hidden="true"
     >
       {sourceList.map(({ src: sourceSrc, type }, index) => (

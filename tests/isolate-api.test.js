@@ -20,7 +20,7 @@
 import { describe, it, expect } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { ISOLATE_API, ISOLATE_API_FLOOR, UNRELEASED, UNRELEASED_EXPORTS, compareVersions } from '../src/isolate-api.js'
+import { ISOLATE_API, ISOLATE_API_FLOOR, WIRE_FLOOR, UNRELEASED, UNRELEASED_EXPORTS, compareVersions } from '../src/isolate-api.js'
 import * as ssr from '../src/ssr.js'
 
 const promised = Object.keys(ISOLATE_API).sort()
@@ -58,9 +58,14 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
     }
     const published = Object.values(ISOLATE_API).filter((v) => v !== UNRELEASED)
     expect(published).not.toContain(UNRELEASED)
-    expect(ISOLATE_API_FLOOR, 'the floor is the newest PUBLISHED stamp').toBe(
-      published.reduce((max, v) => (compareVersions(v, max) > 0 ? v : max), '0.0.0'),
-    )
+    // ⚠️ AT OR ABOVE, not equal to: since 2026-09-06 the floor also absorbs
+    // `WIRE_FLOOR`, so it can sit above every export stamp. What must stay true
+    // is only that an UNRELEASED export never lifts it.
+    const apiMax = published.reduce((max, v) => (compareVersions(v, max) > 0 ? v : max), '0.0.0')
+    expect(compareVersions(ISOLATE_API_FLOOR, apiMax), 'the floor is at or above every published stamp').toBeGreaterThanOrEqual(0)
+    for (const name of UNRELEASED_EXPORTS) {
+      expect(ISOLATE_API[name]).toBe(UNRELEASED)
+    }
   })
 
   // ⚠️ The obligation the sentinel creates, and the only thing that will remind
@@ -76,14 +81,24 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
     ).toBeInstanceOf(Array)
   })
 
-  // ⚠️ THE NUMBER IS SPELLED OUT ON PURPOSE. Deriving it here would assert the
-  // implementation against itself and pass for any value; a literal is what makes
-  // raising the floor a deliberate edit that a reviewer sees. It is also the
-  // number backend ratchets, so a silent move is the thing to prevent.
-  it('the floor is the newest PUBLISHED stamp — 0.17.0, the corpus entry — and a version the channel index can carry', () => {
-    expect(ISOLATE_API_FLOOR).toBe('0.17.0')
+  // ⚠️ EVERY NUMBER HERE IS SPELLED OUT ON PURPOSE. Deriving them would assert
+  // the implementation against itself and pass for any value; literals are what
+  // make raising the floor a deliberate edit a reviewer sees. It is also the
+  // number a publisher ratchets, so a silent move is the thing to prevent.
+  it('the floor is 0.18.0 — set by the WIRE, not by the newest export', () => {
+    expect(ISOLATE_API_FLOOR).toBe('0.18.0')
     expect(ISOLATE_API_FLOOR).toMatch(/^\d+\.\d+\.\d+$/)
-    expect(ISOLATE_API.collectSiteRecords).toBe(ISOLATE_API_FLOOR)
+
+    // ⭐ THE CASE THIS FILE COULD NOT EXPRESS UNTIL 2026-09-06. The floor is now
+    // set by a COMPATIBILITY BREAK rather than by an export: below 0.18.0 a
+    // runtime sends `depth` on every records question, the door refuses it as an
+    // unknown field, and every live-records fetch fails. Such a runtime exports
+    // every name in the map and still cannot be used — which is precisely what a
+    // floor derived from export presence alone cannot say.
+    expect(WIRE_FLOOR).toBe('0.18.0')
+    expect(ISOLATE_API.collectSiteRecords).toBe('0.17.0')
+    expect(compareVersions(WIRE_FLOOR, ISOLATE_API.collectSiteRecords)).toBeGreaterThan(0)
+
     // the composed render entry, which was the floor until 0.17.0
     expect(ISOLATE_API.prefetchAndHydrate).toBe('0.14.2')
     expect(ISOLATE_API.createPageRenderer).toBe('0.14.2')

@@ -110,10 +110,43 @@ export const ISOLATE_API = Object.freeze({
 })
 
 /**
- * The runtime version at or above which EVERY name in `ISOLATE_API` is exported —
- * the absolute floor a host may rely on with no feature detection.
  */
-export const ISOLATE_API_FLOOR = Object.values(ISOLATE_API)
+/**
+ * ⭐ A RUNTIME BELOW THIS CANNOT TALK TO THE CURRENT RECORDS SERVICE, whatever it
+ * exports — so it is a floor for a reason the API map cannot express.
+ *
+ * `0.18.0` is the first runtime that sends `whole`. Every earlier one sends
+ * `depth` on **every** records question, briefs included; `depth` is now an
+ * unknown field at the door, and an unknown field is a **protocol violation —
+ * a whole-request `400`**. ⇒ On a site pinned below this, **every** live-records
+ * fetch fails: the corpus walk a host makes AND the fetches a page render
+ * issues. Loud, per key, with a sentence — but total.
+ *
+ * ⛔ **Why this belongs in the same number rather than beside it.** The floor's
+ * job AT ITS CONSUMER is *"never publish a site below this"* — the publisher
+ * reads it and refuses a lower version. That behaviour does not care WHY a
+ * version is unusable, and a second number to read and compose would be one more
+ * thing to miss, failing silently when missed.
+ *
+ * ⚠️ **The name is now slightly narrow, and that is a deliberate trade.** What
+ * ships in the channel index is `isolateApiFloor`, which a consumer already polls
+ * and ratchets; renaming it is a cross-lane change for a word, while the contract
+ * it carries — the minimum a site may be published at — is unchanged and is what
+ * matters. Read it as *the absolute runtime floor*, of which the API map is one
+ * input.
+ *
+ * ⇒ **Raise this when a runtime change makes an older one unable to speak to a
+ * shipped peer.** Not for a feature, not for a fix — for an incompatibility.
+ */
+export const WIRE_FLOOR = '0.18.0'
+
+/**
+ * The runtime version at or above which every name in `ISOLATE_API` is exported
+ * AND the runtime can speak to the current records service — the absolute floor
+ * a host may rely on with no feature detection, and the minimum a publisher may
+ * choose.
+ */
+export const ISOLATE_API_FLOOR = [WIRE_FLOOR, ...Object.values(ISOLATE_API)]
   .filter((v) => v !== UNRELEASED)
   .reduce((max, v) => (compareVersions(v, max) > 0 ? v : max), '0.0.0')
 

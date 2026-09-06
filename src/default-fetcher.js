@@ -271,6 +271,11 @@ function toQuestion(request) {
   if (sort) q.sort = sort
   if (typeof request.limit === 'number' && request.limit > 0) q.limit = request.limit
   if (request.depth === 'brief' || request.depth === 'full') q.depth = request.depth
+  // ⭐ `cursor` is the ONLY field here that is not the author's: it is opaque and
+  // it comes from a previous answer's `cursors` (the records contract §2). ⛔ And
+  // `exhaustive` deliberately does NOT cross — it is a client instruction about
+  // how many times to ask, not part of the question being asked.
+  if (typeof request.cursor === 'string' && request.cursor) q.cursor = request.cursor
   return q
 }
 
@@ -293,12 +298,34 @@ function renameOperators(where) {
  * ERRORED is absent from `data` and present in `errors`; `depths` says what was
  * actually served, which the record index files rather than what was asked for.
  * A key missing from both is a protocol violation and is reported as an error,
- * never as silence. `cursors` (a next page per key) and `limits` (a `limit` the
- * service bounded) are received and IGNORED, by ruling: framework has no paging
- * concept and is not this service's only client, so whether either is consumed
- * is a product decision, not a client default.
+ * never as silence.
+ *
+ * ⭐ `cursors` AND `limits` ARE READ — 2026-09-06 [Diego], reversing the ruling
+ * that had them "received and IGNORED, because framework has no paging concept."
+ * ⛔ **That ruling described our client and was silently wrong about our USERS:**
+ * the service bounds every answer at 100 (the records contract §4.2/§5), and a
+ * `cursors` entry is how it says there is more. Discarding both meant a hosted
+ * list of 500 rendered 100 — no error, no warning, no way for an author to tell
+ * a bound from the end of the data. **The silent class, on a visitor's page.**
+ *
+ * Two behaviours, deliberately not one:
+ *
+ *   - **a page render REPORTS** — `meta.truncated` and `meta.bound` ride the
+ *     answer, and nothing pages automatically. Auto-paging here would put
+ *     unbounded round trips in front of paint for a section that may only show
+ *     ten rows.
+ *   - **an exhaustive caller PAGES** — `request.exhaustive` follows `cursors`
+ *     until the service stops issuing them. `collectSiteRecords` is the caller
+ *     that wants it (a corpus is not a page), and `maxPages` bounds the loop so
+ *     a service that always answers with a cursor cannot spin.
  */
+
+/** Pages an exhaustive request will follow before giving up and reporting truncation. */
+const MAX_PAGES = 50
 async function flushAsked(url, queue, doFetch) {
+  // One shared page loop: the batch is sent, and any entry that asked to be
+  // exhaustive and came back with a cursor is re-sent alone until it is done.
+  const pending = new Map()
   const body = {}
   const keys = []
   for (const entry of queue) {
@@ -341,6 +368,9 @@ async function flushAsked(url, queue, doFetch) {
   const data = parsed && typeof parsed.data === 'object' && parsed.data ? parsed.data : {}
   const errors = parsed && typeof parsed.errors === 'object' && parsed.errors ? parsed.errors : {}
   const depths = parsed && typeof parsed.depths === 'object' && parsed.depths ? parsed.depths : {}
+  // Both absent when empty, never `{}` (the records contract §5).
+  const cursors = parsed && typeof parsed.cursors === 'object' && parsed.cursors ? parsed.cursors : {}
+  const limits = parsed && typeof parsed.limits === 'object' && parsed.limits ? parsed.limits : {}
   queue.forEach((entry, i) => {
     const key = keys[i]
     if (key in errors) {
@@ -361,8 +391,56 @@ async function flushAsked(url, queue, doFetch) {
     const depth = depths[key] === 'brief' || depths[key] === 'full'
       ? depths[key]
       : (entry.request.depth === 'brief' || entry.request.depth === 'full' ? entry.request.depth : undefined)
-    entry.resolve(depth ? { data: data[key], meta: { depth } } : { data: data[key] })
+
+    const cursor = typeof cursors[key] === 'string' && cursors[key] ? cursors[key] : null
+    const bound = typeof limits[key] === 'number' ? limits[key] : undefined
+    const rows = Array.isArray(data[key]) ? data[key] : data[key]
+
+    // An exhaustive caller collects the page and asks for the next one.
+    if (cursor && entry.request.exhaustive && Array.isArray(rows)) {
+      const acc = entry.collected ? entry.collected.concat(rows) : rows.slice()
+      const page = (entry.page || 1) + 1
+      if (page <= MAX_PAGES) {
+        pending.set(entry, { cursor, collected: acc, page, depth, bound })
+        return
+      }
+      // The loop's own bound, not the service's: report rather than spin.
+      entry.resolve({ data: acc, meta: withMeta({ depth, bound, truncated: true, pages: MAX_PAGES }) })
+      return
+    }
+
+    const collected = entry.collected ? entry.collected.concat(Array.isArray(rows) ? rows : []) : rows
+    const meta = withMeta({
+      depth,
+      bound,
+      // ⭐ A cursor IS the truncation signal, and it is the only one for a query
+      // that declared no `limit`: `limits` is reported only when an author's own
+      // limit was clamped (the records contract §5).
+      truncated: cursor ? true : undefined,
+      pages: entry.page && entry.page > 1 ? entry.page : undefined,
+    })
+    entry.resolve(meta ? { data: collected, meta } : { data: collected })
   })
+
+  if (pending.size === 0) return
+  // Re-ask each unfinished key on its own — the cursor is per key, so a batch
+  // would have to correlate several independent positions through one body.
+  await Promise.all([...pending].map(([entry, state]) => {
+    const next = {
+      ...entry,
+      request: { ...entry.request, cursor: state.cursor },
+      collected: state.collected,
+      page: state.page,
+    }
+    return flushAsked(url, [next], doFetch)
+  }))
+}
+
+/** Build a `meta` from the fields that are actually present, or `undefined`. */
+function withMeta(fields) {
+  const out = {}
+  for (const [k, v] of Object.entries(fields)) if (v !== undefined) out[k] = v
+  return Object.keys(out).length ? out : undefined
 }
 
 /**

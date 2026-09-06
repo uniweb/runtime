@@ -28,7 +28,45 @@
  * "since" is the first PUBLISHED version (git tag) whose `@uniweb/runtime/ssr`
  * exported the name — measured with `git log --reverse -S<name> -- src/ssr.js` and
  * `git tag --contains`, 2026-09-04.
+ *
+ * ## ⭐ `UNRELEASED` — and why the mechanism needed it
+ *
+ * ⛔ **This file had no way to stamp an export that has not shipped, and the gap
+ * was invisible because it was written retrospectively** (2026-09-04, at 0.14.2,
+ * stamping names that had all already published). The first genuinely new export
+ * hit it immediately: the test demands every export be stamped, a stamp must be
+ * `<=` package.json's version, and the version an export will ship in **does not
+ * exist until the publish that creates it** — versions are derived from commits
+ * at publish time and never hand-edited.
+ *
+ * ⚠️ **The tempting fix is the dangerous one.** Stamping the current version
+ * (`0.16.0`) would satisfy every check and be **false**: backend reads
+ * `isolateApiFloor` from the channel index and refuses to serve a site below it,
+ * so a floor of 0.16.0 would promise an export that 0.16.0 does not contain —
+ * and a host at the floor is entitled to skip feature detection. That is a
+ * guarantee broken in the one direction the floor exists to prevent.
+ *
+ * ⇒ **`UNRELEASED` says the true thing: this export exists in the tree and in no
+ * published version.** It is stamped like any other name, so nothing rides out
+ * unnoticed, and it is EXCLUDED from the floor — which therefore never promises
+ * more than a published artifact delivers. **The floor rises one step after the
+ * publish, not one step before it**, and the sequence is:
+ *
+ *   1. land the export stamped `UNRELEASED` — the floor does not move;
+ *   2. publish (Diego; agents never publish);
+ *   3. replace `UNRELEASED` with the version that publish produced — the floor
+ *      moves here, and the runtime channel's `isolateApiFloor` follows at the
+ *      next channel publish;
+ *   4. tell backend, which holds the number and must ratchet it.
+ *
+ * ⚖️ **Step 3 is a real obligation, not bookkeeping**: an export left
+ * `UNRELEASED` after it ships keeps the floor below its own API forever, so a
+ * host feature-detects something it could have relied on. The guard is the
+ * test's own message.
  */
+
+/** An export present in the tree and in no published version. Excluded from the floor. */
+export const UNRELEASED = 'UNRELEASED'
 
 /** Every export of `@uniweb/runtime/ssr`, with the version it first shipped in. */
 export const ISOLATE_API = Object.freeze({
@@ -67,13 +105,22 @@ export const ISOLATE_API = Object.freeze({
   // the composed render entry
   createPageRenderer: '0.14.2',
   prefetchAndHydrate: '0.14.2',
+  // the whole corpus, for a host that indexes rather than renders
+  collectSiteRecords: UNRELEASED,
 })
 
 /**
  * The runtime version at or above which EVERY name in `ISOLATE_API` is exported —
  * the absolute floor a host may rely on with no feature detection.
  */
-export const ISOLATE_API_FLOOR = Object.values(ISOLATE_API).reduce((max, v) => (compareVersions(v, max) > 0 ? v : max), '0.0.0')
+export const ISOLATE_API_FLOOR = Object.values(ISOLATE_API)
+  .filter((v) => v !== UNRELEASED)
+  .reduce((max, v) => (compareVersions(v, max) > 0 ? v : max), '0.0.0')
+
+/** The exports that exist here and in no published version — empty is the steady state. */
+export const UNRELEASED_EXPORTS = Object.freeze(
+  Object.entries(ISOLATE_API).filter(([, v]) => v === UNRELEASED).map(([name]) => name),
+)
 
 /** Compare two `x.y.z` versions numerically. Returns <0, 0 or >0. */
 export function compareVersions(a, b) {

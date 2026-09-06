@@ -72,6 +72,13 @@ export {
 // what it deliberately leaves to the host.
 export { createPageRenderer, prefetchAndHydrate } from './page-renderer.js'
 
+// The whole corpus, rather than one page — for a host that indexes a site or
+// derives something over every record its queries return. It asks through the
+// same client and the same composition a page render uses, which is the point:
+// an index that composed its own questions could offer a result whose page then
+// renders empty. The host supplies only the transport.
+export { collectSiteRecords } from './collect-records.js'
+
 // Appearance. injectPageContent() already emits this for every prerendered
 // page; exported for lanes that assemble a shell without a per-page render.
 export { renderAppearanceBootScript } from './appearance.js'

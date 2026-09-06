@@ -180,8 +180,13 @@ describe("backend's shipped wire — quoted shapes", () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
-  it('`cursors` and `limits` are received and ignored — the answer is delivered whole', async () => {
-    const { fetch } = doorStub({
+  // ⭐ REVERSED 2026-09-06 [Diego]. This test used to assert `cursors` and
+  // `limits` were "received and ignored". They are read now, because the service
+  // bounds every answer at 100 and a cursor is how it says there is more: the old
+  // behaviour rendered 100 of 500 with nothing to distinguish that from the end
+  // of the data.
+  it('a page render REPORTS a bounded answer — it does not page', async () => {
+    const { fetch, calls } = doorStub({
       data: { members: [{ $uuid: 'u1', $name: 'ada', name: 'Ada Lovelace' }] },
       depths: { members: 'brief' },
       cursors: { members: 'opaque' },
@@ -190,9 +195,53 @@ describe("backend's shipped wire — quoted shapes", () => {
     const f = createDefaultFetcher({ fetch })
     const result = await f.resolve(list)
     expect(result.data).toEqual([{ $uuid: 'u1', $name: 'ada', name: 'Ada Lovelace' }])
-    expect(result.meta).toEqual({ depth: 'brief' })
+    expect(result.meta).toEqual({ depth: 'brief', bound: 100, truncated: true })
     expect(result.error).toBeUndefined()
-    expect(result).not.toHaveProperty('cursor')
+    // ⛔ ONE request: nothing pages in front of paint.
+    expect(calls).toHaveLength(1)
+    expect(calls[0].body.members).not.toHaveProperty('cursor')
+  })
+
+  it('an exhaustive caller PAGES until the service stops issuing a cursor', async () => {
+    // Three pages, then no cursor. The cursor of page N rides page N+1's question.
+    const pages = [
+      { data: { members: [{ $uuid: 'u1' }] }, depths: { members: 'brief' }, cursors: { members: 'c1' } },
+      { data: { members: [{ $uuid: 'u2' }] }, depths: { members: 'brief' }, cursors: { members: 'c2' } },
+      { data: { members: [{ $uuid: 'u3' }] }, depths: { members: 'brief' } },
+    ]
+    const calls = []
+    let n = 0
+    const fetch = vi.fn(async (url, init) => {
+      calls.push({ url, body: JSON.parse(init.body) })
+      const page = pages[n]; n += 1
+      return { ok: true, status: 200, json: async () => page }
+    })
+    const f = createDefaultFetcher({ fetch })
+    const result = await f.resolve({ ...list, exhaustive: true })
+
+    expect(result.data).toEqual([{ $uuid: 'u1' }, { $uuid: 'u2' }, { $uuid: 'u3' }])
+    expect(calls).toHaveLength(3)
+    expect(calls[0].body.members).not.toHaveProperty('cursor')
+    expect(calls[1].body.members.cursor).toBe('c1')
+    expect(calls[2].body.members.cursor).toBe('c2')
+    // Exhausted, so nothing is truncated; the page count rides for a caller
+    // that wants to know it cost three round trips.
+    expect(result.meta.truncated).toBeUndefined()
+    expect(result.meta.pages).toBe(3)
+  })
+
+  it('an exhaustive caller stops at its own bound and says so, rather than spinning', async () => {
+    // A service that always answers with a cursor: the loop must terminate.
+    const fetch = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: { members: [{ $uuid: 'x' }] }, depths: { members: 'brief' }, cursors: { members: 'always' } }),
+    }))
+    const f = createDefaultFetcher({ fetch })
+    const result = await f.resolve({ ...list, exhaustive: true })
+    expect(result.meta.truncated).toBe(true)
+    expect(result.data.length).toBe(result.meta.pages)
+    expect(fetch.mock.calls.length).toBe(result.meta.pages)
   })
 
   it("the three-question batch from backend's tests, answered per key with depths", async () => {
@@ -221,7 +270,8 @@ describe("backend's shipped wire — quoted shapes", () => {
       ada: { schema: '@std/person', where: { $name: 'ada' }, depth: 'full' },
     })
     expect(staff.data).toEqual(answer.data.staff)
-    expect(top.meta).toEqual({ depth: 'brief' })
+    // `top` carried a cursor, so its answer is reported as bounded.
+    expect(top.meta).toEqual({ depth: 'brief', truncated: true })
     expect(ada.data[0].bio).toEqual({ text: '…' })
     expect(ada.meta).toEqual({ depth: 'full' })
   })

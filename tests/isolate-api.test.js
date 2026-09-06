@@ -20,7 +20,7 @@
 import { describe, it, expect } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { ISOLATE_API, ISOLATE_API_FLOOR, compareVersions } from '../src/isolate-api.js'
+import { ISOLATE_API, ISOLATE_API_FLOOR, UNRELEASED, UNRELEASED_EXPORTS, compareVersions } from '../src/isolate-api.js'
 import * as ssr from '../src/ssr.js'
 
 const promised = Object.keys(ISOLATE_API).sort()
@@ -40,12 +40,43 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
   it('each stamp is a version, and the package is at or above every one of them', () => {
     const pkg = JSON.parse(readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'))
     for (const [name, since] of Object.entries(ISOLATE_API)) {
+      if (since === UNRELEASED) continue // in the tree, in no published version — see below
       expect(since, name).toMatch(/^\d+\.\d+\.\d+$/)
       expect(compareVersions(pkg.version, since), `${name} claims to ship since ${since}, later than this package (${pkg.version})`).toBeGreaterThanOrEqual(0)
     }
   })
 
-  it('the floor is the newest stamp — 0.14.2, the composed render entry — and a version the channel index can carry', () => {
+  // ⭐ The floor is a promise about a PUBLISHED artifact, so an export that has
+  // not published must not raise it. Backend refuses to serve a site below the
+  // floor and a host at it may skip feature detection — so a floor naming a
+  // version that lacks the export breaks the guarantee in the one direction the
+  // floor exists to prevent.
+  it('an UNRELEASED export is stamped, but does NOT raise the floor', () => {
+    for (const name of UNRELEASED_EXPORTS) {
+      expect(name in ssr, `${name} is stamped UNRELEASED but not exported`).toBe(true)
+      expect(ISOLATE_API[name]).toBe(UNRELEASED)
+    }
+    const published = Object.values(ISOLATE_API).filter((v) => v !== UNRELEASED)
+    expect(published).not.toContain(UNRELEASED)
+    expect(ISOLATE_API_FLOOR, 'the floor is the newest PUBLISHED stamp').toBe(
+      published.reduce((max, v) => (compareVersions(v, max) > 0 ? v : max), '0.0.0'),
+    )
+  })
+
+  // ⚠️ The obligation the sentinel creates, and the only thing that will remind
+  // anyone: after the publish that ships them, UNRELEASED exports must be
+  // restamped with the version it produced, or the floor stays below its own API
+  // forever and hosts feature-detect what they could have relied on.
+  it('names what is owed after the next publish', () => {
+    if (UNRELEASED_EXPORTS.length === 0) return // the steady state
+    expect(
+      UNRELEASED_EXPORTS,
+      `after the next @uniweb/runtime publish, restamp these with the version it produced ` +
+        `and raise isolateApiFloor: ${UNRELEASED_EXPORTS.join(', ')}`,
+    ).toBeInstanceOf(Array)
+  })
+
+  it('the floor is the newest PUBLISHED stamp — 0.14.2, the composed render entry — and a version the channel index can carry', () => {
     expect(ISOLATE_API_FLOOR).toBe('0.14.2')
     expect(ISOLATE_API_FLOOR).toMatch(/^\d+\.\d+\.\d+$/)
     expect(ISOLATE_API.prefetchAndHydrate).toBe(ISOLATE_API_FLOOR)

@@ -4,8 +4,8 @@
  * A host renders in an isolate against the site's pinned runtime, loaded as an
  * artifact — it cannot import our names, so it feature-detects, and a renamed or
  * dropped export is indistinguishable from an old runtime: it falls back forever,
- * serving pages with no error and no log (hosting's own note on the coupling,
- * framework-surface.json `undeclarable`). Backend holds the floor as a constant.
+ * serving pages with no error and no log (the host's own note on the coupling,
+ * their own note on the coupling). A publisher holds the floor as a constant.
  * Neither can see a symbol. This suite can.
  *
  * Three things it asserts, and forgetting any of them fails in this repo:
@@ -87,7 +87,7 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
     // the composed render entry, which was the floor until 0.17.0
     expect(ISOLATE_API.prefetchAndHydrate).toBe('0.14.2')
     expect(ISOLATE_API.createPageRenderer).toBe('0.14.2')
-    // and the entry hosting feature-detects today shipped one version earlier
+    // and the entry a host feature-detects today shipped one version earlier
     expect(ISOLATE_API.prefetchPageData).toBe('0.14.1')
   })
 

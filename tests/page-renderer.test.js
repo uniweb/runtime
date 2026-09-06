@@ -182,7 +182,7 @@ describe('prefetchAndHydrate', () => {
     // byte budget — and with an absolute address it SUCCEEDS and reports `fetched`.
     // A wiring mistake wearing a success.
     //
-    // Reachable, not hypothetical: hosting measured (wrangler dev, real Worker
+    // Reachable, not hypothetical: a host measured (a real isolate loader,
     // Loader, 2026-09-03) that a function passed through an entrypoint's
     // fetch(Request) with a JSON body arrives `undefined`, and survives only as an
     // RPC method argument.

@@ -11,7 +11,8 @@
  * shape the datastore expects — a copy of the runtime's logic, in another repo, drifting
  * (the records envelope went silently unread that way on 2026-09-02). [Diego, 2026-09-03]:
  * *the backend sets the records service; the fetch comes from the runtime.* The host now calls
- * this and carries no copy. Hosting agreed to exactly that shape the same day.
+ * this and carries no copy; the host that renders in an isolate agreed to exactly
+ * that shape the same day.
  *
  * ⛔ Contract with the host, deliberately small:
  *   - `content`  the render payload (`site-content.json` / `__DATA__`), config included —
@@ -22,8 +23,8 @@
  *                decides how a site-relative one is reached (its origin, a binding).
  *                ⛔ **Crossing an isolate boundary, this survives only as an RPC method
  *                argument.** Through an entrypoint's `fetch(Request)` with a serialized
- *                body it arrives `undefined` (hosting, measured under `wrangler dev`
- *                against a real Worker Loader, 2026-09-03) — and the fetcher then falls
+ *                body it arrives `undefined` (measured by a host against a real
+ *                isolate loader, 2026-09-03) — and the fetcher then falls
  *                back to `globalThis.fetch`, so the request leaves from the isolate,
  *                outside whatever budget the host wrapped around it. `prefetchAndHydrate`
  *                refuses a non-function for exactly this reason; this entry keeps the
@@ -43,7 +44,7 @@
  *                deferred it to the browser with `prerender: false`). `hydrateDataStore`
  *                takes the list as-is and hydrates only `fetched` entries — a host reads the
  *                outcomes to tell "nothing was tried" from "everything tried failed", which
- *                is a different cache decision (hosting, 2026-09-03).
+ *                is a different cache decision (measured by a host, 2026-09-03).
  *
  * It resolves nothing the host owns and models no host route layout: every address is
  * `{base}/…` from the payload, or the records service the host itself

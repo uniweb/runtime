@@ -54,7 +54,7 @@
  * ## No page-level opt-in, deliberately
  *
  * `section_view` needs one (`trackSections`) because its dimension is unbounded
- * — a site's section types run to the hundreds and hosting capped the
+ * — a site's section types run to the hundreds and a host capped the
  * cardinality. **An outbound hostname is bounded by how many external sites a
  * page links to**, which is small and does not grow with the site.
  *

@@ -363,7 +363,7 @@ export function renderLayout(page, website) {
  * Construct a Uniweb singleton scoped to a single locale.
  *
  * Combines the three steps that every SSR consumer (browser SPA, Node
- * SSG, Cloudflare Worker SSR) needs in the same order: slice the
+ * SSG, a server-side isolate) needs in the same order: slice the
  * multi-locale content payload, run `initPrerender` (which builds the
  * Website + wires foundation capabilities), then `setActiveLocale` so
  * `website.activeLang` stays in sync with what the page is rendering

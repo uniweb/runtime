@@ -2,7 +2,7 @@
  * `loadFoundationCSS` — the skip that lets a host own the `<link>`.
  *
  * ⭐ **Written because a peer lane shipped against this and nothing asserted it.**
- * The site-hosting edge now emits `<link rel="stylesheet">` for the foundation
+ * A host that renders server-side now emits `<link rel="stylesheet">` for the foundation
  * in the assembled head, so the sheet applies during HTML parse rather than
  * after the runtime boots. That is only safe because this function skips a link
  * it finds already present — and on 2026-08-19 that behaviour had **zero**
@@ -91,7 +91,7 @@ describe('loadFoundationCSS', () => {
     expect(doc.links).toHaveLength(2)
   })
 
-  // ⛔ Pins the caveat given to hosting: the match is on the literal attribute,
+  // ⛔ Pins the caveat given to that host: the match is on the literal attribute,
   // so a href that differs only by resolution is NOT deduped. If this ever needs
   // to pass, the comparison must become resolved-to-resolved.
   it('does NOT dedupe a root-relative href against its resolved form', async () => {

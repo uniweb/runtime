@@ -128,8 +128,8 @@ export async function prefetchAndHydrate({ website, content, route, locale = nul
   // ⛔ THE TRANSPORT IS REQUIRED HERE, unlike on `prefetchPageData`, and this is the
   // one place the difference matters.
   //
-  // A function does NOT survive every isolate boundary. Measured by hosting under
-  // `wrangler dev` against a real Worker Loader, 2026-09-03: passed through an
+  // A function does NOT survive every isolate boundary. Measured by a host against
+  // a real isolate loader, 2026-09-03: passed through an
   // entrypoint's `fetch(Request)` with a JSON body the transport arrives
   // **`undefined`**; passed as an argument to an RPC method it arrives as a callable
   // function and the isolate invokes it. Only the RPC shape carries it.

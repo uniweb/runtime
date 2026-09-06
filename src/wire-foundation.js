@@ -119,10 +119,10 @@ export function wireFoundationCapabilities(uniweb, foundation) {
  * each `dist/{locale}/site-content.json` separately) get pass-through
  * behavior.
  *
- * The shape comes from the editor's publish payload, which is the
- * production canonical for multi-locale content (the Cloudflare Worker
- * SSR path consumes it directly). Build-time SSG pre-flattens to one
- * file per locale and so falls into the pass-through case.
+ * The shape comes from the editor's publish payload, which is the canonical
+ * form for multi-locale content — a server-side renderer consumes it
+ * directly. Build-time SSG pre-flattens to one file per locale and so falls
+ * into the pass-through case.
  *
  * @param {Object} content - Site content payload, possibly multi-locale.
  * @param {string} locale - Requested locale code.
@@ -152,10 +152,10 @@ export function sliceContentForLocale(content, locale) {
  * value MUST be wrapped as `{ data }` — otherwise the dispatcher's
  * lookup at `_dataStore.get(deriveCacheKey(request))` misses every
  * time and `cached.data` reads `undefined`. Three call sites used to
- * inline this loop independently (browser SPA, Node SSG, Cloudflare
- * Worker SSR); the Cloudflare one was using the wrong shape, silently
- * killing prefetched-data reuse in production. This helper is the one
- * canonical implementation.
+ * inline this loop independently (browser SPA, Node SSG, and a server-side
+ * renderer); one of the three was using the wrong shape, silently killing
+ * prefetched-data reuse wherever it ran. This helper is the one canonical
+ * implementation.
  *
  * @param {import('@uniweb/core').Website} website
  * @param {Array<{config: Object, data: any}>} fetchedData

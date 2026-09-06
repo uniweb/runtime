@@ -28,7 +28,7 @@
  *
  * Environment-neutral by construction. `applyBootScheme` no-ops its DOM writes
  * outside a browser, and `renderAppearanceBootScript` only stringifies — so
- * ssr-renderer.js can import this module in Node and in a Cloudflare isolate.
+ * ssr-renderer.js can import this module in Node and in a server-side isolate.
  *
  * Two writers with independent resolution is the bug this replaced:
  * WebsiteRenderer used to re-apply `appearance.default` from an effect, and

@@ -10,12 +10,12 @@
  * compute that itself: resolve the configs, issue the requests, unwrap the responses in the
  * shape the datastore expects — a copy of the runtime's logic, in another repo, drifting
  * (the records envelope went silently unread that way on 2026-09-02). [Diego, 2026-09-03]:
- * *the backend sets `config.records`; the fetch comes from the runtime.* The host now calls
+ * *the backend sets the records service; the fetch comes from the runtime.* The host now calls
  * this and carries no copy. Hosting agreed to exactly that shape the same day.
  *
  * ⛔ Contract with the host, deliberately small:
  *   - `content`  the render payload (`site-content.json` / `__DATA__`), config included —
- *                `config.records` and `config.base` are read from it.
+ *                `config.services` and `config.base` are read from it.
  *   - `route`    the page to prefetch for; a `[slug]` template resolves through the same
  *                matcher the SPA uses, so `/blog/post-1` finds `/blog/:slug`.
  *   - `fetch`    how to dispatch a request. The runtime composes the address; the host
@@ -46,8 +46,8 @@
  *                is a different cache decision (hosting, 2026-09-03).
  *
  * It resolves nothing the host owns and models no host route layout: every address is
- * `{base}/…` from the payload, or the question door the host itself published at
- * `config.records.query`.
+ * `{base}/…` from the payload, or the records service the host itself
+ * published at `config.services.records`.
  */
 import { resolveFetchConfigs } from '@uniweb/core/fetch-config'
 import { deriveCacheKey } from '@uniweb/core/datastore'
@@ -118,7 +118,7 @@ export function resolvePageFetchConfigs(content, route, { locale = null } = {}) 
     locale,
     defaultLocale: resolveDefaultLocale(content?.config) ?? null,
     queries: content?.config?.queries ?? null,
-    records: content?.config?.records ?? null,
+    services: content?.config?.services ?? null,
     variables: binding?.variables ?? null,
   }
   const out = new Map()
@@ -163,7 +163,7 @@ export function resolvePageFetchConfigs(content, route, { locale = null } = {}) 
  * @param {Object[]} configs  resolved configs (from `resolvePageFetchConfigs` or the host's own
  *                             call to `resolveFetchConfigs`)
  * @param {Object} opts
- * @param {Object} opts.content  the payload — `config.base`, `config.records`
+ * @param {Object} opts.content  the payload — `config.base`, `config.services`
  * @param {Function} [opts.fetch]  the transport; defaults to the global `fetch`
  * @param {boolean} [opts.dev]
  * @returns {Promise<Array<{ config: Object, outcome: 'fetched'|'failed'|'skipped', data: any, error?: string }>>}
@@ -178,7 +178,7 @@ export async function executeFetchConfigs(configs, { content, fetch = null, dev 
     fetch,
   })
   const ctx = { website: null }
-  // Dispatched together, not one after another: a question door batches the
+  // Dispatched together, not one after another: the records service batches the
   // requests issued in one tick into one POST, and a page's configs are
   // independent of each other. Order is preserved in the result.
   return Promise.all((configs || []).filter(Boolean).map(async (config) => {

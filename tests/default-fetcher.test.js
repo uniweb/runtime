@@ -7,8 +7,8 @@ import { createDefaultFetcher } from '../src/default-fetcher.js'
  *   - a compiled file / a plain `url:`: GET, JSON, transform, basePath,
  *     `method: POST` + body + placeholder substitution from dynamicContext,
  *     every operator evaluated locally with the one evaluator;
- *   - the host's question door (`door:`) — `query-door.test.js`.
- * (The host's ADDRESS door — `endpoint:` — was retired 2026-09-04.)
+ *   - the host's question ask (`ask:`) — `query-door.test.js`.
+ * (The host's ADDRESS ask — `endpoint:` — was retired 2026-09-04.)
  *
  * ⛔ `fetcher.baseUrl` / `headers` / `envelope` / `supports` / `request.*`
  * were RETIRED on 2026-09-04: a third party's conventions are a foundation
@@ -85,7 +85,7 @@ describe('createDefaultFetcher — baseline (no config)', () => {
   it('returns { data: [], error } on empty request', async () => {
     const f = createDefaultFetcher()
     const result = await f.resolve({})
-    expect(result).toEqual({ data: [], error: 'No path, url or door specified' })
+    expect(result).toEqual({ data: [], error: 'No path, url or ask specified' })
   })
 
   it('returns { data: null } on null request', async () => {
@@ -362,7 +362,7 @@ describe('createDefaultFetcher — the fallback sort is the ONE evaluator, singl
     expect(result.data.map((r) => r.name)).toEqual(['apple', 'Banana', 'cherry'])
   })
 
-  it("accepts the door's `-field` spelling", async () => {
+  it("accepts the service's `-field` spelling", async () => {
     const f = createDefaultFetcher()
     const result = await f.resolve({ url: 'https://api.example.com/x', sort: '-year' })
     expect(result.data.map((r) => r.id)).toEqual([3, 2, 1])
@@ -476,7 +476,7 @@ describe('⛔ the retired site-level vocabulary is NOT read (2026-09-04)', () =>
   })
 })
 
-describe('⛔ the retired address door is not a lane (2026-09-04)', () => {
+describe('⛔ the retired address ask is not a lane (2026-09-04)', () => {
   let fetchStub
   beforeEach(() => { fetchStub = stubFetch({ body: [{ id: 1 }] }) })
   afterEach(() => fetchStub.restore())
@@ -484,7 +484,7 @@ describe('⛔ the retired address door is not a lane (2026-09-04)', () => {
   it('a request carrying only `endpoint` names no source, and nothing is fetched', async () => {
     const f = createDefaultFetcher()
     const out = await f.resolve({ endpoint: '/_records/members', as: 'members', locale: 'fr' })
-    expect(out.error).toBe('No path, url or door specified')
+    expect(out.error).toBe('No path, url or ask specified')
     expect(fetchStub.calls).toHaveLength(0)
   })
 })

@@ -58,7 +58,7 @@ export {
 
 // Server-side prefetch — the runtime executing a page's fetches for a host, so an isolate
 // receives `fetchedData` computed by our fetcher and the host carries no copy of it.
-// [Diego, 2026-09-03]: the backend sets config.records; the fetch comes from the runtime.
+// [Diego, 2026-09-03]: the backend sets the records service; the fetch comes from the runtime.
 export {
   findPageForRoute,
   resolvePageFetchConfigs,

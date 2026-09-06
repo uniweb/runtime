@@ -1,7 +1,7 @@
 /**
- * The default fetcher's QUESTION-door client — dark until a host stamps the
- * door, pinned here against a stub that speaks backend's contract
- * (the records door's contract, §2 and §5).
+ * The default fetcher's QUESTION-ask client — dark until a host stamps the
+ * ask, pinned here against a stub that speaks backend's contract
+ * (the records contract, §2 and §5).
  */
 import { describe, it, expect, vi } from 'vitest'
 import { createDefaultFetcher } from '../src/default-fetcher.js'
@@ -19,11 +19,11 @@ function doorStub(answer) {
   return { fetch, calls }
 }
 
-const list = { door: '/_records/ask/en', query: 'members', schema: '@std/person', as: 'members', where: { published: true }, sort: 'name desc', limit: 20, depth: 'brief', locale: 'en' }
-const record = { door: '/_records/ask/en', query: 'members', schema: '@std/person', as: 'members', where: { published: true, $name: 'ada' }, depth: 'full', locale: 'en', dynamicContext: { paramName: 'slug', paramValue: 'ada' } }
+const list = { ask: '/_records/ask/en', query: 'members', schema: '@std/person', as: 'members', where: { published: true }, sort: 'name desc', limit: 20, depth: 'brief', locale: 'en' }
+const record = { ask: '/_records/ask/en', query: 'members', schema: '@std/person', as: 'members', where: { published: true, $name: 'ada' }, depth: 'full', locale: 'en', dynamicContext: { paramName: 'slug', paramValue: 'ada' } }
 
 describe('one question — the request map and the answer', () => {
-  it('POSTs the question map to the door under the site base, in the door\'s vocabulary', async () => {
+  it('POSTs the question map to the ask under the site base, in the door\'s vocabulary', async () => {
     const { fetch, calls } = doorStub({ data: { members: [{ $uuid: 'u1', $name: 'ada' }] }, depths: { members: 'brief' } })
     const f = createDefaultFetcher({ basePath: '/site', fetch })
     const result = await f.resolve(list)
@@ -97,7 +97,7 @@ describe('the door\'s vocabulary — what crosses as written and what is respell
     expect(calls[0].body.members).toEqual({ schema: '@std/person', scope: 'team', sort: 'name', limit: 20, depth: 'brief' })
   })
 
-  it('what the door does not accept is sent as written, to be refused there by name — never approximated', async () => {
+  it('what the ask does not accept is sent as written, to be refused there by name — never approximated', async () => {
     const { fetch, calls } = doorStub({ data: {}, errors: { members: 'unknown operator "like"' } })
     const f = createDefaultFetcher({ fetch })
     const result = await f.resolve({ ...list, where: { name: { like: 'A*' } } })
@@ -132,11 +132,11 @@ describe('A6 — the misses of one tick ride one POST, and each gets its own ans
   it('two doors (two locales) never share a batch', async () => {
     const { fetch, calls } = doorStub((call) => ({ data: Object.fromEntries(Object.keys(call.body).map((k) => [k, []])) }))
     const f = createDefaultFetcher({ fetch })
-    await Promise.all([f.resolve(list), f.resolve({ ...list, door: '/_records/ask/fr', locale: 'fr' })])
+    await Promise.all([f.resolve(list), f.resolve({ ...list, ask: '/_records/ask/fr', locale: 'fr' })])
     expect(calls.map((c) => c.url).sort()).toEqual(['/_records/ask/en', '/_records/ask/fr'])
   })
 
-  it('the cache key of a door request is the question, so the dispatcher dedups by it', () => {
+  it('the cache key of a ask request is the question, so the dispatcher dedups by it', () => {
     const f = createDefaultFetcher()
     expect(f.cacheKey(list)).toBe(f.cacheKey({ ...list }))
     expect(f.cacheKey(list)).not.toBe(f.cacheKey(record))
@@ -207,11 +207,11 @@ describe("backend's shipped wire — quoted shapes", () => {
     }
     const { fetch, calls } = doorStub(answer)
     const f = createDefaultFetcher({ fetch })
-    const door = '/_records/_query/en'
+    const ask = '/_records/_query/en'
     const [staff, top, ada] = await Promise.all([
-      f.resolve({ door, query: 'staff', schema: '@std/person', as: 'staff', scope: 'members', where: { featured: true }, locale: 'en' }),
-      f.resolve({ door, query: 'top', schema: '@std/person', as: 'top', scope: 'members', sort: '-rank', limit: 1, locale: 'en' }),
-      f.resolve({ door, query: 'ada', schema: '@std/person', as: 'ada', where: { $name: 'ada' }, depth: 'full', locale: 'en' }),
+      f.resolve({ ask, query: 'staff', schema: '@std/person', as: 'staff', scope: 'members', where: { featured: true }, locale: 'en' }),
+      f.resolve({ ask, query: 'top', schema: '@std/person', as: 'top', scope: 'members', sort: '-rank', limit: 1, locale: 'en' }),
+      f.resolve({ ask, query: 'ada', schema: '@std/person', as: 'ada', where: { $name: 'ada' }, depth: 'full', locale: 'en' }),
     ])
     expect(calls).toHaveLength(1)
     expect(calls[0].url).toBe('/_records/_query/en')
@@ -227,11 +227,11 @@ describe("backend's shipped wire — quoted shapes", () => {
   })
 })
 
-describe('⛔ a door with no Model ref refuses before any request', () => {
+describe('⛔ a ask with no Model ref refuses before any request', () => {
   it('says which query and why, and makes no request', async () => {
     const { fetch } = doorStub({ data: {} })
     const f = createDefaultFetcher({ fetch })
-    const result = await f.resolve({ door: '/_records/_query/en', query: 'members', schema: null, as: 'members', locale: 'en' })
+    const result = await f.resolve({ ask: '/_records/_query/en', query: 'members', schema: null, as: 'members', locale: 'en' })
     expect(result.data).toBeNull()
     expect(result.error).toMatch(/no Model ref for query "members"/)
     expect(result.error).toMatch(/config\.queries/)

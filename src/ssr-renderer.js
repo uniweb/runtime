@@ -1,7 +1,7 @@
 /**
  * SSR Renderer
  *
- * Hook-free rendering pipeline for SSG (build) and cloud SSR (unicloud).
+ * Hook-free rendering pipeline for SSG (build) and server-side SSR.
  * Mirrors BlockRenderer.jsx + Background.jsx using React.createElement
  * directly — no hooks, no JSX, no browser APIs.
  *
@@ -396,10 +396,10 @@ export function initPrerenderForLocale(content, foundation, locale, extensionsOr
  *
  * Returns the configured uniweb instance. Consumers can add extras after:
  * - Build: pre-populate DataStore, load extensions
- * - Unicloud: (none needed — payload is complete)
+ * - A server-side renderer: (none needed — the payload is complete)
  *
  * NOTE: Does NOT clone content. Cloning is the consumer's responsibility
- * (build modifies content before init; unicloud clones upfront).
+ * (build modifies content before init; a server-side renderer clones upfront).
  *
  * @param {Object} content - Site content JSON (pages, config, hierarchy)
  * @param {Object} foundation - Loaded foundation module

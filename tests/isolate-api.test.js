@@ -76,11 +76,17 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
     ).toBeInstanceOf(Array)
   })
 
-  it('the floor is the newest PUBLISHED stamp — 0.14.2, the composed render entry — and a version the channel index can carry', () => {
-    expect(ISOLATE_API_FLOOR).toBe('0.14.2')
+  // ⚠️ THE NUMBER IS SPELLED OUT ON PURPOSE. Deriving it here would assert the
+  // implementation against itself and pass for any value; a literal is what makes
+  // raising the floor a deliberate edit that a reviewer sees. It is also the
+  // number backend ratchets, so a silent move is the thing to prevent.
+  it('the floor is the newest PUBLISHED stamp — 0.17.0, the corpus entry — and a version the channel index can carry', () => {
+    expect(ISOLATE_API_FLOOR).toBe('0.17.0')
     expect(ISOLATE_API_FLOOR).toMatch(/^\d+\.\d+\.\d+$/)
-    expect(ISOLATE_API.prefetchAndHydrate).toBe(ISOLATE_API_FLOOR)
-    expect(ISOLATE_API.createPageRenderer).toBe(ISOLATE_API_FLOOR)
+    expect(ISOLATE_API.collectSiteRecords).toBe(ISOLATE_API_FLOOR)
+    // the composed render entry, which was the floor until 0.17.0
+    expect(ISOLATE_API.prefetchAndHydrate).toBe('0.14.2')
+    expect(ISOLATE_API.createPageRenderer).toBe('0.14.2')
     // and the entry hosting feature-detects today shipped one version earlier
     expect(ISOLATE_API.prefetchPageData).toBe('0.14.1')
   })

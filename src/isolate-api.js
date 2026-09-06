@@ -106,7 +106,7 @@ export const ISOLATE_API = Object.freeze({
   createPageRenderer: '0.14.2',
   prefetchAndHydrate: '0.14.2',
   // the whole corpus, for a host that indexes rather than renders
-  collectSiteRecords: UNRELEASED,
+  collectSiteRecords: '0.17.0',
 })
 
 /**

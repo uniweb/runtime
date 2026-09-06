@@ -20,7 +20,7 @@
 import { describe, it, expect } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { ISOLATE_API, ISOLATE_API_FLOOR, WIRE_FLOOR, UNRELEASED, UNRELEASED_EXPORTS, compareVersions } from '../src/isolate-api.js'
+import { ISOLATE_API, MIN_USABLE_RUNTIME, WIRE_FLOOR, UNRELEASED, UNRELEASED_EXPORTS, compareVersions } from '../src/isolate-api.js'
 import * as ssr from '../src/ssr.js'
 
 const promised = Object.keys(ISOLATE_API).sort()
@@ -62,7 +62,7 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
     // `WIRE_FLOOR`, so it can sit above every export stamp. What must stay true
     // is only that an UNRELEASED export never lifts it.
     const apiMax = published.reduce((max, v) => (compareVersions(v, max) > 0 ? v : max), '0.0.0')
-    expect(compareVersions(ISOLATE_API_FLOOR, apiMax), 'the floor is at or above every published stamp').toBeGreaterThanOrEqual(0)
+    expect(compareVersions(MIN_USABLE_RUNTIME, apiMax), 'the floor is at or above every published stamp').toBeGreaterThanOrEqual(0)
     for (const name of UNRELEASED_EXPORTS) {
       expect(ISOLATE_API[name]).toBe(UNRELEASED)
     }
@@ -86,8 +86,8 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
   // make raising the floor a deliberate edit a reviewer sees. It is also the
   // number a publisher ratchets, so a silent move is the thing to prevent.
   it('the floor is 0.18.0 — set by the WIRE, not by the newest export', () => {
-    expect(ISOLATE_API_FLOOR).toBe('0.18.0')
-    expect(ISOLATE_API_FLOOR).toMatch(/^\d+\.\d+\.\d+$/)
+    expect(MIN_USABLE_RUNTIME).toBe('0.18.0')
+    expect(MIN_USABLE_RUNTIME).toMatch(/^\d+\.\d+\.\d+$/)
 
     // ⭐ THE CASE THIS FILE COULD NOT EXPRESS UNTIL 2026-09-06. The floor is now
     // set by a COMPATIBILITY BREAK rather than by an export: below 0.18.0 a

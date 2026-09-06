@@ -147,7 +147,7 @@
  *
  * 8. **The index carries the ISOLATE-API FLOOR, and it only ever rises.**
  *
- *        isolateApiFloor: "0.14.2"        ← top-level, beside `latest`
+ *        minUsable: "0.18.0"              ← top-level, beside `latest`
  *
  *    The runtime version at or above which every export of
  *    `@uniweb/runtime/ssr` a host may call is present — the number
@@ -156,7 +156,7 @@
  *    published, never typed by hand. ⭐ **This document is where a backend
  *    already learns what runtime versions exist and which is latest, so it is
  *    where the floor belongs**: a consumer that picks a site's runtime reads
- *    `max(isolateApiFloor, the floors its foundations declare)` and never
+ *    `max(minUsable, the floors its foundations declare)` and never
  *    serves a version below it, however old a foundation's own pin is — and it
  *    refreshes the floor with the listing it already polls, so adding an
  *    isolate export is a channel publish, not a bump request plus a deploy.
@@ -368,7 +368,7 @@ export function createIndex({ name }) {
     name,
     integrityAlgorithm: INTEGRITY_ALGORITHM,
     latest: null,
-    isolateApiFloor: null,
+    minUsable: null,
     versions: {}
   }
 }
@@ -403,7 +403,14 @@ export function parseIndex(json, { name } = {}) {
     latest: obj.latest ?? null,
     // Carried through, not restated: the floor is a ratchet over every publish
     // (invariant 8), and dropping it on a rewrite would silently lower it.
-    isolateApiFloor: parseVersion(obj.isolateApiFloor) ? obj.isolateApiFloor : null,
+    //
+    // ⭐ READS THE OLD KEY TOO. `isolateApiFloor` was renamed to `minUsable` on
+    // 2026-09-06, and an index written before that carries only the old spelling.
+    // Parsing it back as `null` would silently LOWER a ratchet — the one
+    // direction this field must never move.
+    minUsable: parseVersion(obj.minUsable ?? obj.isolateApiFloor)
+      ? (obj.minUsable ?? obj.isolateApiFloor)
+      : null,
     versions: { ...(obj.versions || {}) }
   }
 }
@@ -416,22 +423,22 @@ export function parseIndex(json, { name } = {}) {
  * Refuses a floor that names no published version — a consumer must be able to
  * fetch the version the floor points at.
  */
-export function setIsolateApiFloor(index, floor) {
-  if (!parseVersion(floor)) throw new Error(`setIsolateApiFloor: not a version: ${floor}`)
+export function setMinUsable(index, floor) {
+  if (!parseVersion(floor)) throw new Error(`setMinUsable: not a version: ${floor}`)
   if (!index.versions[floor]) {
     throw new Error(
-      `setIsolateApiFloor(${floor}): that version is not published in this channel. ` +
+      `setMinUsable(${floor}): that version is not published in this channel. ` +
         `A floor a consumer cannot fetch is unusable; publish the version first.`
     )
   }
-  const current = index.isolateApiFloor ?? null
+  const current = index.minUsable ?? null
   if (current && compareVersions(current, floor) >= 0) return index
-  return { ...index, isolateApiFloor: floor }
+  return { ...index, minUsable: floor }
 }
 
 /** The highest usable version is at or above the floor — or the channel is broken. */
 function assertFloorSatisfiable(index) {
-  const floor = index.isolateApiFloor
+  const floor = index.minUsable
   if (!floor) return
   const latest = computeLatest(index)
   if (!latest || compareVersions(latest, floor) < 0) {
@@ -636,7 +643,16 @@ export function serializeIndex(index) {
       integrityAlgorithm: index.integrityAlgorithm || INTEGRITY_ALGORITHM,
       latest: index.latest,
       // Omitted, never null, when no floor has been recorded: absent means none.
-      ...(index.isolateApiFloor ? { isolateApiFloor: index.isolateApiFloor } : {}),
+      // ⚠️ BOTH SPELLINGS, FOR EXACTLY ONE PUBLISH. `minUsable` is the name;
+      // `isolateApiFloor` rides beside it because a consumer that has not moved
+      // yet reads the old key, and **absent means none** — so emitting only the
+      // new name would silently drop the floor for them and let a broken runtime
+      // be chosen. ⛔ That is the one failure this field exists to prevent, so it
+      // is not a candidate for a clean cut.
+      //
+      // ⇒ DELETE THE SECOND LINE once the consumer confirms it reads `minUsable`.
+      // The unit of grace is that confirmation, not a version.
+      ...(index.minUsable ? { minUsable: index.minUsable, isolateApiFloor: index.minUsable } : {}),
       versions
     },
     null,

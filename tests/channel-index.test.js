@@ -12,7 +12,7 @@ import {
   parseIndex,
   parseVersion,
   serializeIndex,
-  setIsolateApiFloor
+  setMinUsable
 } from '../scripts/channel-index.js'
 
 const H = (c) => c.repeat(64) // a syntactically valid lowercase-hex sha256
@@ -654,43 +654,74 @@ describe('the isolate-API floor rides in the index — invariant 8', () => {
 
   it('is written beside latest, and omitted (never null) when none was recorded', () => {
     const index = two()
-    expect(serializeIndex(index)).not.toContain('isolateApiFloor')
-    const withFloor = setIsolateApiFloor(index, '0.14.2')
+    expect(serializeIndex(index)).not.toContain('minUsable')
+    const withFloor = setMinUsable(index, '0.14.2')
     const doc = JSON.parse(serializeIndex(withFloor))
-    expect(doc.isolateApiFloor).toBe('0.14.2')
-    expect(Object.keys(doc).indexOf('isolateApiFloor')).toBe(Object.keys(doc).indexOf('latest') + 1)
+    expect(doc.minUsable).toBe('0.14.2')
+    expect(Object.keys(doc).indexOf('minUsable')).toBe(Object.keys(doc).indexOf('latest') + 1)
     expect(doc.schema).toBe(1) // additive — a conforming reader ignores an unknown key
   })
 
   it('ratchets: a lower floor from a publisher on an older line leaves the channel\'s alone', () => {
-    const index = setIsolateApiFloor(two(), '0.15.0')
-    expect(setIsolateApiFloor(index, '0.14.2').isolateApiFloor).toBe('0.15.0')
-    expect(setIsolateApiFloor(index, '0.15.0')).toBe(index)
+    const index = setMinUsable(two(), '0.15.0')
+    expect(setMinUsable(index, '0.14.2').minUsable).toBe('0.15.0')
+    expect(setMinUsable(index, '0.15.0')).toBe(index)
   })
 
   it('refuses a floor naming a version the channel does not carry', () => {
-    expect(() => setIsolateApiFloor(two(), '0.16.0')).toThrow(/not published/)
-    expect(() => setIsolateApiFloor(two(), 'nope')).toThrow(/not a version/)
+    expect(() => setMinUsable(two(), '0.16.0')).toThrow(/not published/)
+    expect(() => setMinUsable(two(), 'nope')).toThrow(/not a version/)
   })
 
   it('survives a parse → serialize round trip, and an index without one stays without one', () => {
-    const index = setIsolateApiFloor(two(), '0.14.2')
-    expect(parseIndex(serializeIndex(index)).isolateApiFloor).toBe('0.14.2')
-    expect(parseIndex(serializeIndex(two())).isolateApiFloor).toBeNull()
-    expect(parseIndex({ schema: 1, name: '@uniweb/runtime', versions: {}, isolateApiFloor: 'junk' }).isolateApiFloor).toBeNull()
+    const index = setMinUsable(two(), '0.14.2')
+    expect(parseIndex(serializeIndex(index)).minUsable).toBe('0.14.2')
+    expect(parseIndex(serializeIndex(two())).minUsable).toBeNull()
+    expect(parseIndex({ schema: 1, name: '@uniweb/runtime', versions: {}, minUsable: 'junk' }).minUsable).toBeNull()
   })
 
   it('refuses a deprecation that would leave no usable version at or above the floor', () => {
-    const index = setIsolateApiFloor(two(), '0.15.0')
+    const index = setMinUsable(two(), '0.15.0')
     expect(() => deprecateVersion(index, '0.15.0', { reason: 'bad' })).toThrow(/no usable version is at or above/)
     // deprecating BELOW the floor is fine
-    expect(deprecateVersion(index, '0.14.2', { reason: 'old' }).isolateApiFloor).toBe('0.15.0')
+    expect(deprecateVersion(index, '0.14.2', { reason: 'old' }).minUsable).toBe('0.15.0')
   })
 
   it('never mutates the index it was given', () => {
     const index = two()
     const before = JSON.stringify(index)
-    setIsolateApiFloor(index, '0.14.2')
+    setMinUsable(index, '0.14.2')
     expect(JSON.stringify(index)).toBe(before)
+  })
+})
+
+describe('the rename to `minUsable` — 2026-09-06', () => {
+  const withFloor = () => {
+    // the suite's own publisher, so this fixture cannot drift from a real index
+    return setMinUsable(pub(fresh(), '0.18.0'), '0.18.0')
+  }
+
+  it('⚠️ EMITS BOTH SPELLINGS, because absent means none for a reader that has not moved', () => {
+    // The old key rides beside the new one for exactly one publish. Emitting
+    // only `minUsable` would leave a consumer still reading `isolateApiFloor`
+    // with NO floor — and no floor means any version may be chosen, including
+    // one that cannot fetch records at all. That is the failure this field
+    // exists to prevent, so it is not a candidate for a clean cut.
+    const doc = JSON.parse(serializeIndex(withFloor()))
+    expect(doc.minUsable).toBe('0.18.0')
+    expect(doc.isolateApiFloor).toBe('0.18.0')
+  })
+
+  it('⛔ READS AN INDEX WRITTEN BEFORE THE RENAME — or a ratchet silently drops', () => {
+    // An index on disk today carries only `isolateApiFloor`. Parsing that back
+    // as null would LOWER the floor, which is the one direction it must never
+    // move — and nothing would report it.
+    const old = { schema: 1, name: '@uniweb/runtime', versions: {}, isolateApiFloor: '0.17.0' }
+    expect(parseIndex(old).minUsable).toBe('0.17.0')
+  })
+
+  it('prefers the new spelling when an index somehow carries both', () => {
+    const both = { schema: 1, name: '@uniweb/runtime', versions: {}, minUsable: '0.18.0', isolateApiFloor: '0.17.0' }
+    expect(parseIndex(both).minUsable).toBe('0.18.0')
   })
 })

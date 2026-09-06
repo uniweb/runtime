@@ -41,7 +41,7 @@
  *
  * ⚠️ **The tempting fix is the dangerous one.** Stamping the current version
  * (`0.16.0`) would satisfy every check and be **false**: backend reads
- * `isolateApiFloor` from the channel index and refuses to serve a site below it,
+ * `minUsable` from the channel index and refuses to serve a site below it,
  * so a floor of 0.16.0 would promise an export that 0.16.0 does not contain —
  * and a host at the floor is entitled to skip feature detection. That is a
  * guarantee broken in the one direction the floor exists to prevent.
@@ -55,7 +55,7 @@
  *   1. land the export stamped `UNRELEASED` — the floor does not move;
  *   2. publish (Diego; agents never publish);
  *   3. replace `UNRELEASED` with the version that publish produced — the floor
- *      moves here, and the runtime channel's `isolateApiFloor` follows at the
+ *      moves here, and the runtime channel's `minUsable` follows at the
  *      next channel publish;
  *   4. tell backend, which holds the number and must ratchet it.
  *
@@ -141,12 +141,20 @@ export const ISOLATE_API = Object.freeze({
 export const WIRE_FLOOR = '0.18.0'
 
 /**
- * The runtime version at or above which every name in `ISOLATE_API` is exported
- * AND the runtime can speak to the current records service — the absolute floor
- * a host may rely on with no feature detection, and the minimum a publisher may
- * choose.
+ * ⭐ **THE MINIMUM RUNTIME VERSION A SITE MAY BE PUBLISHED AT.** At or above it,
+ * every name in `ISOLATE_API` is exported AND the runtime can speak to the
+ * current records service; below it, a runtime **does not work** — not "is
+ * unsupported".
+ *
+ * ⛔ **Named `ISOLATE_API_FLOOR` until 2026-09-06, and the name was wrong twice
+ * over**: the API map is only one of its inputs, and "floor" said nothing about
+ * what falls below it. *[Diego: "I wasn't convinced by `isolateApiFloor` when it
+ * was introduced."]* ⭐ **`usable` is a claim of FACT, and it is chosen to resist
+ * a drift** — raise this for an incompatibility, never for a feature, a fix or a
+ * preference, and a name that says *usable* makes the wrong reason read wrong.
+ * On the wire it is `minUsable`.
  */
-export const ISOLATE_API_FLOOR = [WIRE_FLOOR, ...Object.values(ISOLATE_API)]
+export const MIN_USABLE_RUNTIME = [WIRE_FLOOR, ...Object.values(ISOLATE_API)]
   .filter((v) => v !== UNRELEASED)
   .reduce((max, v) => (compareVersions(v, max) > 0 ? v : max), '0.0.0')
 

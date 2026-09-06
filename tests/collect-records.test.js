@@ -111,7 +111,7 @@ describe('collectSiteRecords', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  // ── The three gaps hosting found on 2026-09-06, each pinned where it was missing.
+  // ── Three gaps a consumer found on 2026-09-06, each pinned where it was missing.
 
   it('asks the depth the caller wants — `full` for an index, `brief` by default', async () => {
     // An index matches body text the record's own detail page shows; a brief

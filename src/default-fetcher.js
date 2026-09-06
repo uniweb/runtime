@@ -327,7 +327,7 @@ function renameOperators(where) {
  * as partial. A caller sets its own with `request.maxPages`.
  *
  * ⚖️ **20 is a bound, not a target** — it is the value a real caller chose for a
- * real per-request budget (hosting's index, 20 × 100), taken as the default
+ * real per-request budget (a search index, 20 × 100), taken as the default
  * because any bound prevents a runaway and a low one fails visibly rather than
  * expensively. A caller that knows its budget passes its own.
  */

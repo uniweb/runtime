@@ -2,7 +2,8 @@
  * Vite Configuration for Runtime Shell (Browser App)
  *
  * Builds a standalone browser app that boots a Uniweb site from __DATA__
- * injected by a dynamic backend (unicloud, PHP, etc.).
+ * injected by a dynamic backend (a Uniweb backend, PHP, anything that can
+ * render a page shell).
  *
  * Produces:
  *   dist/app/
@@ -104,8 +105,9 @@ const APP_EXTERNALS = [...DEFAULT_EXTERNALS, ...HOST_BRIDGES]
 /**
  * Emit manifest.json after the build completes.
  *
- * The manifest describes the build output so consumers (unicloud, PHP)
- * can generate HTML programmatically without parsing index.html.
+ * The manifest describes the build output so a consumer that assembles the
+ * shell server-side can generate HTML programmatically without parsing
+ * index.html.
  */
 function manifestPlugin() {
   return {

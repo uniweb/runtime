@@ -202,6 +202,31 @@ describe("backend's shipped wire — quoted shapes", () => {
     expect(calls[0].body.members).not.toHaveProperty('cursor')
   })
 
+  // ⚠️ THE `limits` HALF OF `partial` HAD NO TEST OF ITS OWN. The case above
+  // carries a cursor AND a bound, so `partial: (cursor || bound !== undefined)`
+  // would have passed with the second half deleted. This is the branch that only
+  // `limits` can set: the service clamped an author's `limit` and offered no next
+  // page, so the answer is complete for what was asked and NOT the whole
+  // population — which is exactly what the flag means.
+  it('a bound with NO cursor still marks the answer partial', async () => {
+    const { fetch, calls } = doorStub({
+      data: { members: [{ $uuid: 'u1' }] },
+      depths: { members: 'brief' },
+      limits: { members: 100 },
+    })
+    const f = createDefaultFetcher({ fetch })
+    const result = await f.resolve(list)
+    expect(result.meta).toEqual({ depth: 'brief', bound: 100, partial: true })
+    expect(calls).toHaveLength(1)
+  })
+
+  it('neither a cursor nor a bound means the answer IS the whole population', async () => {
+    const { fetch } = doorStub({ data: { members: [{ $uuid: 'u1' }] }, depths: { members: 'brief' } })
+    const f = createDefaultFetcher({ fetch })
+    const result = await f.resolve(list)
+    expect(result.meta.partial).toBeUndefined()
+  })
+
   it('an exhaustive caller PAGES until the service stops issuing a cursor', async () => {
     // Three pages, then no cursor. The cursor of page N rides page N+1's question.
     const pages = [

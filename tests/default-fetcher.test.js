@@ -397,20 +397,20 @@ describe('createDefaultFetcher — the depth a request asked for is echoed', () 
   it('echoes the depth a list asked for', async () => {
     fetchStub.setResponse({ body: [{ $uuid: 'u1' }] })
     const f = createDefaultFetcher()
-    const result = await f.resolve({ url: 'https://api.example.com/members', as: 'members', depth: 'brief' })
+    const result = await f.resolve({ url: 'https://api.example.com/members', as: 'members', whole: false })
     expect(result.data).toEqual([{ $uuid: 'u1' }])
-    expect(result.meta).toEqual({ depth: 'brief' })
+    expect(result.meta).toEqual({ whole: false })
   })
 
   it('a single-record request is not unwrapped with a list key, and echoes full', async () => {
     fetchStub.setResponse({ body: { $uuid: 'u1', slug: 'ada', bio: 'Full' } })
     const f = createDefaultFetcher()
     const result = await f.resolve({
-      url: 'https://api.example.com/members/ada', as: 'members', depth: 'full',
+      url: 'https://api.example.com/members/ada', as: 'members', whole: true,
       dynamicContext: { paramName: 'slug', paramValue: 'ada' },
     })
     expect(result.data).toEqual({ $uuid: 'u1', slug: 'ada', bio: 'Full' })
-    expect(result.meta).toEqual({ depth: 'full' })
+    expect(result.meta).toEqual({ whole: true })
   })
 
   it('CONTROL — a request with no depth carries no meta', async () => {

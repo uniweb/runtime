@@ -42,13 +42,14 @@ function stubFetch(routes) {
 }
 const ASK = '/_records/_query/en'
 const askStub = ({ briefs = [], full = null }) => (questions) => {
-  const data = {}, depths = {}
+  const data = {}, whole = {}
   for (const [key, q] of Object.entries(questions)) {
     const isRecord = q.where && q.where.$name !== undefined
     data[key] = isRecord ? (full ? [full] : []) : briefs
-    depths[key] = isRecord ? 'full' : 'brief'
+    // Only keys delivered as WHOLE entities appear; a key's absence is the brief.
+    if (isRecord) whole[key] = true
   }
-  return { data, depths }
+  return Object.keys(whole).length ? { data, whole } : { data }
 }
 
 describe('resolvePageFetchConfigs', () => {
@@ -147,11 +148,11 @@ describe('what a prefetched entry says about depth', () => {
     const { fetch } = stubFetch({ [ASK]: askStub({ briefs: [{ $uuid: 'u1', $name: 'ada' }] }) })
     const fetched = await prefetchPageData({ content: CONTENT, route: '/team', fetch })
     const people = fetched.find((e) => e.config.as === 'people')
-    expect(people.config.depth).toBe('brief') // a ask list is a list of briefs; the record is its own question
-    expect(people.meta).toEqual({ depth: 'brief' })
+    expect(people.config.whole).toBe(false) // a ask list is a list of briefs; the record is its own question
+    expect(people.meta).toEqual({ whole: false })
     const dataStore = new DataStore()
     hydrateDataStore({ dataStore }, fetched)
-    expect(dataStore.getRecord('u1')).toEqual({ depth: 'brief', record: { $uuid: 'u1', $name: 'ada' } })
+    expect(dataStore.getRecord('u1')).toEqual({ whole: false, record: { $uuid: 'u1', $name: 'ada' } })
     expect(dataStore.get(deriveCacheKey(people.config)).data).toEqual([{ $uuid: 'u1', $name: 'ada' }])
   })
 })
@@ -162,10 +163,10 @@ describe('E2 — a template page prefetches ITS RECORD, not only the list', () =
     const detail = cfgs.find((c) => c.ask === ASK && c.where?.$name === 'ada')
     expect(detail).toBeDefined()
     expect(detail.as).toBe('people')
-    expect(detail.depth).toBe('full')
+    expect(detail.whole).toBe(true)
     expect(detail.dynamicContext).toEqual({ paramName: 'slug', paramValue: 'ada' })
     // and the list is still there, at brief depth
-    expect(cfgs.some((c) => c.ask === ASK && !c.where?.$name && c.depth === 'brief')).toBe(true)
+    expect(cfgs.some((c) => c.ask === ASK && !c.where?.$name && c.whole === false)).toBe(true)
   })
 
   it('executes it, so the host hands the isolate the record in full', async () => {
@@ -178,15 +179,15 @@ describe('E2 — a template page prefetches ITS RECORD, not only the list', () =
     const record = fetched.find((e) => e.config.where?.$name === 'ada')
     expect(record.outcome).toBe('fetched')
     expect(record.data).toEqual([{ $uuid: 'u1', $name: 'ada', bio: 'Full' }])
-    expect(record.meta).toEqual({ depth: 'full' })
+    expect(record.meta).toEqual({ whole: true })
     // hydrated, the record index holds it in FULL — the SPA renders it without a client fetch
     const dataStore = new DataStore()
     hydrateDataStore({ dataStore }, fetched)
-    expect(dataStore.getRecord('u1').depth).toBe('full')
+    expect(dataStore.getRecord('u1').whole).toBe(true)
   })
 
   it('CONTROL — a list page, and a template whose query has no per-record source, add no detail fetch', () => {
-    expect(resolvePageFetchConfigs(CONTENT, '/team').some((c) => c.depth === 'full' && c.dynamicContext)).toBe(false)
+    expect(resolvePageFetchConfigs(CONTENT, '/team').some((c) => c.whole === true && c.dynamicContext)).toBe(false)
     // a services block with no `records` row is NO lane: the compiled file, no per-record source
     const noLane = { ...CONTENT, config: { ...CONTENT.config, services: { search: '/_search', submit: '/_submit' } } }
     expect(resolvePageFetchConfigs(noLane, '/team/ada').some((c) => c.dynamicContext)).toBe(false)

@@ -78,7 +78,7 @@ import { createDefaultFetcher } from './default-fetcher.js'
  */
 export async function collectSiteRecords(
   content,
-  { locale, fetch, signal, only = null, depth = 'brief', maxPages } = {},
+  { locale, fetch, signal, only = null, whole = false, maxPages } = {},
 ) {
   const config = content?.config
   const services = config?.services ?? null
@@ -111,7 +111,7 @@ export async function collectSiteRecords(
     if (!cfg.ask) return
     // `limit` is the list page's, never the corpus's — see the header.
     const { limit, ...population } = cfg
-    const asked = { ...population, depth, exhaustive: true }
+    const asked = { ...population, whole, exhaustive: true }
     if (typeof maxPages === 'number' && maxPages > 0) asked.maxPages = maxPages
 
     const result = await fetcher.resolve(asked, { signal })

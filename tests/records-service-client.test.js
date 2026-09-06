@@ -19,28 +19,28 @@ function doorStub(answer) {
   return { fetch, calls }
 }
 
-const list = { ask: '/_records/ask/en', query: 'members', schema: '@std/person', as: 'members', where: { published: true }, sort: 'name desc', limit: 20, depth: 'brief', locale: 'en' }
-const record = { ask: '/_records/ask/en', query: 'members', schema: '@std/person', as: 'members', where: { published: true, $name: 'ada' }, depth: 'full', locale: 'en', dynamicContext: { paramName: 'slug', paramValue: 'ada' } }
+const list = { ask: '/_records/ask/en', query: 'members', schema: '@std/person', as: 'members', where: { published: true }, sort: 'name desc', limit: 20, whole: false, locale: 'en' }
+const record = { ask: '/_records/ask/en', query: 'members', schema: '@std/person', as: 'members', where: { published: true, $name: 'ada' }, whole: true, locale: 'en', dynamicContext: { paramName: 'slug', paramValue: 'ada' } }
 
 describe('one question — the request map and the answer', () => {
   it('POSTs the question map to the ask under the site base, in the door\'s vocabulary', async () => {
-    const { fetch, calls } = doorStub({ data: { members: [{ $uuid: 'u1', $name: 'ada' }] }, depths: { members: 'brief' } })
+    const { fetch, calls } = doorStub({ data: { members: [{ $uuid: 'u1', $name: 'ada' }] }, whole: {} })
     const f = createDefaultFetcher({ basePath: '/site', fetch })
     const result = await f.resolve(list)
     expect(calls).toHaveLength(1)
     expect(calls[0].url).toBe('/site/_records/ask/en')
     expect(calls[0].init.method).toBe('POST')
     expect(calls[0].body).toEqual({
-      members: { schema: '@std/person', where: { published: true }, sort: '-name', limit: 20, depth: 'brief' },
+      members: { schema: '@std/person', where: { published: true }, sort: '-name', limit: 20 },
     })
-    expect(result).toEqual({ data: [{ $uuid: 'u1', $name: 'ada' }], meta: { depth: 'brief' } })
+    expect(result).toEqual({ data: [{ $uuid: 'u1', $name: 'ada' }], meta: { whole: false } })
   })
 
   it('`depths` says what was SERVED — a brief asked of a Model with no brief comes back full, and is filed full', async () => {
-    const { fetch } = doorStub({ data: { members: [{ $uuid: 'u1' }] }, depths: { members: 'full' } })
+    const { fetch } = doorStub({ data: { members: [{ $uuid: 'u1' }] }, whole: { members: true} })
     const f = createDefaultFetcher({ fetch })
     const result = await f.resolve(list)
-    expect(result.meta).toEqual({ depth: 'full' })
+    expect(result.meta).toEqual({ whole: true })
   })
 
   it('a key in `errors` is an error, and its data is NOT `[]`', async () => {
@@ -66,7 +66,7 @@ describe('one question — the request map and the answer', () => {
   })
 
   it('`[]` under a sent key is a delivered answer: no records', async () => {
-    const { fetch } = doorStub({ data: { members: [] }, depths: { members: 'brief' } })
+    const { fetch } = doorStub({ data: { members: [] }, whole: {} })
     const f = createDefaultFetcher({ fetch })
     const result = await f.resolve(list)
     expect(result.data).toEqual([])
@@ -94,7 +94,7 @@ describe('the door\'s vocabulary — what crosses as written and what is respell
     const { fetch, calls } = doorStub({ data: { members: [] } })
     const f = createDefaultFetcher({ fetch })
     await f.resolve({ ...list, scope: 'team', sort: 'name', where: undefined })
-    expect(calls[0].body.members).toEqual({ schema: '@std/person', scope: 'team', sort: 'name', limit: 20, depth: 'brief' })
+    expect(calls[0].body.members).toEqual({ schema: '@std/person', scope: 'team', sort: 'name', limit: 20 })
   })
 
   it('what the ask does not accept is sent as written, to be refused there by name — never approximated', async () => {
@@ -110,15 +110,15 @@ describe('A6 — the misses of one tick ride one POST, and each gets its own ans
   it('batches a list and its record into one request under distinct keys', async () => {
     const { fetch, calls } = doorStub({
       data: { members: [{ $uuid: 'u1', $name: 'ada' }], 'members#2': [{ $uuid: 'u1', $name: 'ada', bio: 'Full' }] },
-      depths: { members: 'brief', 'members#2': 'full' },
+      whole: { 'members#2': true},
     })
     const f = createDefaultFetcher({ fetch })
     const [a, b] = await Promise.all([f.resolve(list), f.resolve(record)])
     expect(calls).toHaveLength(1)
     expect(Object.keys(calls[0].body)).toEqual(['members', 'members#2'])
-    expect(calls[0].body['members#2']).toEqual({ schema: '@std/person', where: { published: true, $name: 'ada' }, depth: 'full' })
-    expect(a).toEqual({ data: [{ $uuid: 'u1', $name: 'ada' }], meta: { depth: 'brief' } })
-    expect(b).toEqual({ data: [{ $uuid: 'u1', $name: 'ada', bio: 'Full' }], meta: { depth: 'full' } })
+    expect(calls[0].body['members#2']).toEqual({ schema: '@std/person', where: { published: true, $name: 'ada' }, whole: true })
+    expect(a).toEqual({ data: [{ $uuid: 'u1', $name: 'ada' }], meta: { whole: false } })
+    expect(b).toEqual({ data: [{ $uuid: 'u1', $name: 'ada', bio: 'Full' }], meta: { whole: true } })
   })
 
   it('a request issued after the tick goes in the next batch', async () => {
@@ -161,7 +161,7 @@ function problemStub(status, problem) {
 describe("backend's shipped wire — quoted shapes", () => {
   it('a per-key error is `{ code, detail }`: `detail` is the message, `code` rides beside it', async () => {
     const { fetch } = doorStub({
-      data: { ok: [] }, depths: { ok: 'brief' },
+      data: { ok: [] }, whole: {},
       errors: { members: { code: 'schema_not_found', detail: 'no Model named `@nope/x`' } },
     })
     const f = createDefaultFetcher({ fetch })
@@ -188,14 +188,14 @@ describe("backend's shipped wire — quoted shapes", () => {
   it('a page render REPORTS a bounded answer — it does not page', async () => {
     const { fetch, calls } = doorStub({
       data: { members: [{ $uuid: 'u1', $name: 'ada', name: 'Ada Lovelace' }] },
-      depths: { members: 'brief' },
+      whole: {},
       cursors: { members: 'opaque' },
       limits: { members: 100 },
     })
     const f = createDefaultFetcher({ fetch })
     const result = await f.resolve(list)
     expect(result.data).toEqual([{ $uuid: 'u1', $name: 'ada', name: 'Ada Lovelace' }])
-    expect(result.meta).toEqual({ depth: 'brief', bound: 100, partial: true })
+    expect(result.meta).toEqual({ whole: false, bound: 100, partial: true })
     expect(result.error).toBeUndefined()
     // ⛔ ONE request: nothing pages in front of paint.
     expect(calls).toHaveLength(1)
@@ -211,17 +211,17 @@ describe("backend's shipped wire — quoted shapes", () => {
   it('a bound with NO cursor still marks the answer partial', async () => {
     const { fetch, calls } = doorStub({
       data: { members: [{ $uuid: 'u1' }] },
-      depths: { members: 'brief' },
+      whole: {},
       limits: { members: 100 },
     })
     const f = createDefaultFetcher({ fetch })
     const result = await f.resolve(list)
-    expect(result.meta).toEqual({ depth: 'brief', bound: 100, partial: true })
+    expect(result.meta).toEqual({ whole: false, bound: 100, partial: true })
     expect(calls).toHaveLength(1)
   })
 
   it('neither a cursor nor a bound means the answer IS the whole population', async () => {
-    const { fetch } = doorStub({ data: { members: [{ $uuid: 'u1' }] }, depths: { members: 'brief' } })
+    const { fetch } = doorStub({ data: { members: [{ $uuid: 'u1' }] }, whole: {} })
     const f = createDefaultFetcher({ fetch })
     const result = await f.resolve(list)
     expect(result.meta.partial).toBeUndefined()
@@ -230,9 +230,9 @@ describe("backend's shipped wire — quoted shapes", () => {
   it('an exhaustive caller PAGES until the service stops issuing a cursor', async () => {
     // Three pages, then no cursor. The cursor of page N rides page N+1's question.
     const pages = [
-      { data: { members: [{ $uuid: 'u1' }] }, depths: { members: 'brief' }, cursors: { members: 'c1' } },
-      { data: { members: [{ $uuid: 'u2' }] }, depths: { members: 'brief' }, cursors: { members: 'c2' } },
-      { data: { members: [{ $uuid: 'u3' }] }, depths: { members: 'brief' } },
+      { data: { members: [{ $uuid: 'u1' }] }, whole: {}, cursors: { members: 'c1' } },
+      { data: { members: [{ $uuid: 'u2' }] }, whole: {}, cursors: { members: 'c2' } },
+      { data: { members: [{ $uuid: 'u3' }] }, whole: {} },
     ]
     const calls = []
     let n = 0
@@ -260,7 +260,7 @@ describe("backend's shipped wire — quoted shapes", () => {
     const fetch = vi.fn(async () => ({
       ok: true,
       status: 200,
-      json: async () => ({ data: { members: [{ $uuid: 'x' }] }, depths: { members: 'brief' }, cursors: { members: 'always' } }),
+      json: async () => ({ data: { members: [{ $uuid: 'x' }] }, whole: {}, cursors: { members: 'always' } }),
     }))
     const f = createDefaultFetcher({ fetch })
     const result = await f.resolve({ ...list, exhaustive: true })
@@ -269,14 +269,14 @@ describe("backend's shipped wire — quoted shapes", () => {
     expect(fetch.mock.calls.length).toBe(result.meta.pages)
   })
 
-  it("the three-question batch from backend's tests, answered per key with depths", async () => {
+  it("the three-question batch from backend's tests, answered per key", async () => {
     const answer = {
       data: {
         staff: [{ $uuid: 'u1', $name: 'ada', name: 'Ada Lovelace', featured: true }],
         top: [{ $uuid: 'u2', $name: 'bob', name: 'Bob' }],
         ada: [{ $uuid: 'u1', $name: 'ada', name: 'Ada Lovelace', bio: { text: '…' }, roles: [{ title: '…' }] }],
       },
-      depths: { staff: 'brief', top: 'brief', ada: 'full' },
+      whole: { ada: true},
       cursors: { top: '…' },
     }
     const { fetch, calls } = doorStub(answer)
@@ -285,20 +285,20 @@ describe("backend's shipped wire — quoted shapes", () => {
     const [staff, top, ada] = await Promise.all([
       f.resolve({ ask, query: 'staff', schema: '@std/person', as: 'staff', scope: 'members', where: { featured: true }, locale: 'en' }),
       f.resolve({ ask, query: 'top', schema: '@std/person', as: 'top', scope: 'members', sort: '-rank', limit: 1, locale: 'en' }),
-      f.resolve({ ask, query: 'ada', schema: '@std/person', as: 'ada', where: { $name: 'ada' }, depth: 'full', locale: 'en' }),
+      f.resolve({ ask, query: 'ada', schema: '@std/person', as: 'ada', where: { $name: 'ada' }, whole: true, locale: 'en' }),
     ])
     expect(calls).toHaveLength(1)
     expect(calls[0].url).toBe('/_records/_query/en')
     expect(calls[0].body).toEqual({
       staff: { schema: '@std/person', scope: 'members', where: { featured: true } },
       top: { schema: '@std/person', scope: 'members', sort: '-rank', limit: 1 },
-      ada: { schema: '@std/person', where: { $name: 'ada' }, depth: 'full' },
+      ada: { schema: '@std/person', where: { $name: 'ada' }, whole: true },
     })
     expect(staff.data).toEqual(answer.data.staff)
     // `top` carried a cursor, so its answer is reported as not the whole population.
-    expect(top.meta).toEqual({ depth: 'brief', partial: true })
+    expect(top.meta).toEqual({ partial: true })
     expect(ada.data[0].bio).toEqual({ text: '…' })
-    expect(ada.meta).toEqual({ depth: 'full' })
+    expect(ada.meta).toEqual({ whole: true })
   })
 })
 

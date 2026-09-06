@@ -41,7 +41,7 @@ describe('collectSiteRecords', () => {
   it('asks one question per declared query, carrying the saved query’s own narrowing', async () => {
     const { fetch, calls } = stub([{
       data: { members: [{ $uuid: 'u1', $name: 'ada' }], posts: [{ $uuid: 'p1', $name: 'hello' }] },
-      depths: { members: 'brief', posts: 'brief' },
+      whole: {},
     }])
 
     const out = await collectSiteRecords(CONTENT, { locale: 'en', fetch })
@@ -51,10 +51,12 @@ describe('collectSiteRecords', () => {
     expect(calls[0].url).toBe('/site/_query/en')
     // `scope`, `sort` and `limit` come off `config.queries` through
     // resolveFetchConfigs — not re-derived here.
-    expect(calls[0].body.members).toMatchObject({ schema: '@std/person', scope: 'team', sort: '-name', depth: 'brief' })
+    expect(calls[0].body.members).toMatchObject({ schema: '@std/person', scope: 'team', sort: '-name' })
+    // ⛔ absence IS the brief — `whole: false` would be noise on every list question
+    expect(calls[0].body.members).not.toHaveProperty('whole')
     // ⛔ `limit: 5` is on the saved query and is NOT sent: it is the list page's
     // presentation, and the corpus wants the population its detail pages reach.
-    expect(calls[0].body.posts).toMatchObject({ schema: '@std/article', depth: 'brief' })
+    expect(calls[0].body.posts).toMatchObject({ schema: '@std/article' })
     expect(calls[0].body.posts).not.toHaveProperty('limit')
     expect(out.records.members).toEqual([{ $uuid: 'u1', $name: 'ada' }])
     expect(out.errors).toBeNull()
@@ -62,8 +64,8 @@ describe('collectSiteRecords', () => {
 
   it('pages to exhaustion — a corpus is not a page', async () => {
     const { fetch, calls } = stub([
-      { data: { members: [{ $uuid: 'u1' }], posts: [] }, depths: { members: 'brief' }, cursors: { members: 'c1' } },
-      { data: { members: [{ $uuid: 'u2' }] }, depths: { members: 'brief' } },
+      { data: { members: [{ $uuid: 'u1' }], posts: [] }, whole: {}, cursors: { members: 'c1' } },
+      { data: { members: [{ $uuid: 'u2' }] }, whole: {} },
     ])
 
     const out = await collectSiteRecords(CONTENT, { locale: 'en', fetch, only: ['members'] })
@@ -75,7 +77,7 @@ describe('collectSiteRecords', () => {
   })
 
   it('the locale is a route segment of the address, so it changes where the question goes', async () => {
-    const { fetch, calls } = stub([{ data: { members: [], posts: [] }, depths: {} }])
+    const { fetch, calls } = stub([{ data: { members: [], posts: [] }, whole: {} }])
     await collectSiteRecords(CONTENT, { locale: 'fr-CA', fetch })
     expect(calls[0].url).toBe('/site/_query/fr-CA')
   })
@@ -83,7 +85,7 @@ describe('collectSiteRecords', () => {
   it('reports a per-key failure without losing the keys that answered', async () => {
     const { fetch } = stub([{
       data: { members: [{ $uuid: 'u1' }] },
-      depths: { members: 'brief' },
+      whole: {},
       errors: { posts: { code: 'schema_not_found', detail: 'no Model @std/article' } },
     }])
     const out = await collectSiteRecords(CONTENT, { locale: 'en', fetch })
@@ -113,23 +115,23 @@ describe('collectSiteRecords', () => {
 
   // ── Three gaps a consumer found on 2026-09-06, each pinned where it was missing.
 
-  it('asks the depth the caller wants — `full` for an index, `brief` by default', async () => {
+  it('asks for WHOLE records when the caller wants them; briefs by default, by omission', async () => {
     // An index matches body text the record's own detail page shows; a brief
     // index cannot, and a reader who finds a word on the page and not in search
     // meets exactly the inconsistency two rankings would produce.
-    const { fetch, calls } = stub([{ data: { members: [] }, depths: {} }])
-    await collectSiteRecords(CONTENT, { locale: 'en', fetch, only: ['members'], depth: 'full' })
-    expect(calls[0].body.members.depth).toBe('full')
+    const { fetch, calls } = stub([{ data: { members: [] }, whole: {} }])
+    await collectSiteRecords(CONTENT, { locale: 'en', fetch, only: ['members'], whole: true })
+    expect(calls[0].body.members.whole).toBe(true)
 
-    const d = stub([{ data: { members: [] }, depths: {} }])
+    const d = stub([{ data: { members: [] }, whole: {} }])
     await collectSiteRecords(CONTENT, { locale: 'en', fetch: d.fetch, only: ['members'] })
-    expect(d.calls[0].body.members.depth).toBe('brief')
+    expect(d.calls[0].body.members).not.toHaveProperty('whole')
   })
 
   it('honours the caller’s maxPages and marks the key partial rather than spinning', async () => {
     // A service that always answers with a cursor.
     const { fetch, calls } = stub([
-      { data: { members: [{ $uuid: 'x' }] }, depths: { members: 'brief' }, cursors: { members: 'c' } },
+      { data: { members: [{ $uuid: 'x' }] }, whole: {}, cursors: { members: 'c' } },
     ])
     const out = await collectSiteRecords(CONTENT, { locale: 'en', fetch, only: ['members'], maxPages: 3 })
     expect(calls).toHaveLength(3)
@@ -148,7 +150,7 @@ describe('collectSiteRecords', () => {
     let n = 0
     const fetch = vi.fn(async () => {
       n += 1
-      if (n === 1) return { ok: true, status: 200, json: async () => ({ data: { members: [{ $uuid: 'u1' }] }, depths: { members: 'brief' }, cursors: { members: 'c1' } }) }
+      if (n === 1) return { ok: true, status: 200, json: async () => ({ data: { members: [{ $uuid: 'u1' }] }, whole: {}, cursors: { members: 'c1' } }) }
       const err = new Error('The operation was aborted'); err.name = 'AbortError'
       throw err
     })
@@ -169,7 +171,7 @@ describe('collectSiteRecords', () => {
     // A query the service does not answer resolves to the compiled artifact's
     // path. Reading that file is the caller's business — it is in the site's own
     // URL space and they already serve it.
-    const { fetch, calls } = stub([{ data: { members: [] }, depths: {} }])
+    const { fetch, calls } = stub([{ data: { members: [] }, whole: {} }])
     const out = await collectSiteRecords(CONTENT, { locale: 'en', fetch, only: ['members'] })
     expect(Object.keys(calls[0].body)).toEqual(['members'])
     expect(out.records).not.toHaveProperty('posts')

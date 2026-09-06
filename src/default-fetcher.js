@@ -230,12 +230,13 @@ export function createDefaultFetcher({ basePath = '', dev = false, fetch: fetchI
         // it returned.
         data = applyOperators(data, request, { dev })
 
-        // ⭐ Say what depth was delivered, so the record index can file it — what
-        // the config asked for, echoed: a list at brief depth when the query has
-        // a per-record source, a record in full. (The service reports `depths` per
+        // ⭐ Say whether WHOLE records were delivered, so the record index can
+        // file them — what the config asked for, echoed: briefs when the query
+        // has a per-record source, whole records otherwise. (The service reports
+        // `whole` per
         // key and overrides this with what it actually served.)
-        const depth = request.depth === 'brief' || request.depth === 'full' ? request.depth : undefined
-        return depth ? { data: data ?? [], meta: { depth } } : { data: data ?? [] }
+        const whole = typeof request.whole === 'boolean' ? request.whole : undefined
+        return whole === undefined ? { data: data ?? [] } : { data: data ?? [], meta: { whole } }
       } catch (error) {
         if (error?.name === 'AbortError') {
           return { data: [], error: 'aborted' }
@@ -270,7 +271,9 @@ function toQuestion(request) {
   const sort = sortToWire(request.sort)
   if (sort) q.sort = sort
   if (typeof request.limit === 'number' && request.limit > 0) q.limit = request.limit
-  if (request.depth === 'brief' || request.depth === 'full') q.depth = request.depth
+  // ⛔ ONLY WHEN TRUE. The brief is the default and absent means the brief, so
+  // sending `whole: false` would be noise on every list question the client makes.
+  if (request.whole === true) q.whole = true
   // ⭐ `cursor` is the ONLY field here that is not the author's: it is opaque and
   // it comes from a previous answer's `cursors` (the records contract §2). ⛔ And
   // `exhaustive` deliberately does NOT cross — it is a client instruction about
@@ -385,7 +388,10 @@ async function flushAsked(url, queue, doFetch) {
   }
   const data = parsed && typeof parsed.data === 'object' && parsed.data ? parsed.data : {}
   const errors = parsed && typeof parsed.errors === 'object' && parsed.errors ? parsed.errors : {}
-  const depths = parsed && typeof parsed.depths === 'object' && parsed.depths ? parsed.depths : {}
+  // ⭐ `whole[key]` is present only for keys delivered as WHOLE entities — so a
+  // key's ABSENCE is the brief, and a key present that never asked is the
+  // brief-less Model saying so. Absent entirely when every key is briefs.
+  const wholes = parsed && typeof parsed.whole === 'object' && parsed.whole ? parsed.whole : {}
   // Both absent when empty, never `{}` (the records contract §5).
   const cursors = parsed && typeof parsed.cursors === 'object' && parsed.cursors ? parsed.cursors : {}
   const limits = parsed && typeof parsed.limits === 'object' && parsed.limits ? parsed.limits : {}
@@ -413,9 +419,9 @@ async function flushAsked(url, queue, doFetch) {
       entry.resolve({ data: null, error: `the records service answered without the key "${key}"` })
       return
     }
-    const depth = depths[key] === 'brief' || depths[key] === 'full'
-      ? depths[key]
-      : (entry.request.depth === 'brief' || entry.request.depth === 'full' ? entry.request.depth : undefined)
+    const whole = typeof wholes[key] === 'boolean'
+      ? wholes[key]
+      : (typeof entry.request.whole === 'boolean' ? entry.request.whole : undefined)
 
     const cursor = typeof cursors[key] === 'string' && cursors[key] ? cursors[key] : null
     const bound = typeof limits[key] === 'number' ? limits[key] : undefined
@@ -429,17 +435,17 @@ async function flushAsked(url, queue, doFetch) {
         ? entry.request.maxPages
         : DEFAULT_MAX_PAGES
       if (page <= cap) {
-        pending.set(entry, { cursor, collected: acc, page, depth, bound })
+        pending.set(entry, { cursor, collected: acc, page, whole, bound })
         return
       }
       // The caller's own bound, not the service's: report rather than spin.
-      entry.resolve({ data: acc, meta: withMeta({ depth, bound, partial: true, pages: cap }) })
+      entry.resolve({ data: acc, meta: withMeta({ whole, bound, partial: true, pages: cap }) })
       return
     }
 
     const collected = entry.collected ? entry.collected.concat(Array.isArray(rows) ? rows : []) : rows
     const meta = withMeta({
-      depth,
+      whole,
       bound,
       // ⭐ ONE FLAG, MEANING **NOT THE WHOLE POPULATION** — asked for by name, so
       // a caller has one boolean to branch on rather than three signals to

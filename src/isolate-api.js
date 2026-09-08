@@ -128,12 +128,16 @@ export const ISOLATE_API = Object.freeze({
  * version is unusable, and a second number to read and compose would be one more
  * thing to miss, failing silently when missed.
  *
- * ⚠️ **The name is now slightly narrow, and that is a deliberate trade.** What
- * ships in the channel index is `isolateApiFloor`, which a consumer already polls
- * and ratchets; renaming it is a cross-lane change for a word, while the contract
- * it carries — the minimum a site may be published at — is unchanged and is what
- * matters. Read it as *the absolute runtime floor*, of which the API map is one
- * input.
+ * ⚠️ **This paragraph used to defend the OLD name, and the defence was hollow.**
+ * It read: *"the name is now slightly narrow, and that is a deliberate trade —
+ * renaming a published key is a cross-lane change for a word."* ⭐ **The whole
+ * argument rested on that cost, and the human simply removed it** *(2026-09-06:
+ * "It's easy to change it. I can tell backend.")* — so the name was fixed rather
+ * than excused, and the key is `minUsable` on the wire.
+ *
+ * ⇒ *Kept because the shape recurs: an argument whose only support is a cost
+ * someone else is willing to pay is not an argument, it is an estimate — and it
+ * should be stated as one, so the person holding the cost can overrule it.*
  *
  * ⇒ **Raise this when a runtime change makes an older one unable to speak to a
  * shipped peer.** Not for a feature, not for a fix — for an incompatibility.

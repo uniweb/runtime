@@ -701,17 +701,20 @@ describe('the rename to `minUsable` — 2026-09-06', () => {
     return setMinUsable(pub(fresh(), '0.18.0'), '0.18.0')
   }
 
-  it('⚠️ EMITS BOTH SPELLINGS, because absent means none for a reader that has not moved', () => {
-    // The old key rides beside the new one for exactly one publish. Emitting
-    // only `minUsable` would leave a consumer still reading `isolateApiFloor`
-    // with NO floor — and no floor means any version may be chosen, including
-    // one that cannot fetch records at all. That is the failure this field
-    // exists to prevent, so it is not a candidate for a clean cut.
+  it('emits ONE spelling — the dual emit ended when its reader confirmed', () => {
+    // `isolateApiFloor` rode beside this for one publish so a reader that had
+    // not moved would not silently lose the floor. The reader confirmed on
+    // 2026-09-07 that it reads `minUsable` and no longer reads the old key,
+    // which was the stated trigger.
     const doc = JSON.parse(serializeIndex(withFloor()))
     expect(doc.minUsable).toBe('0.18.0')
-    expect(doc.isolateApiFloor).toBe('0.18.0')
+    expect(doc).not.toHaveProperty('isolateApiFloor')
   })
 
+  // ⛔ THE PARSE SIDE OUTLIVES THE EMIT SIDE, and the two triggers are different.
+  // The emit guarded a reader that had not moved; this guards an INDEX that has
+  // not moved — the published one still carries only the old key until the next
+  // channel publish rewrites it.
   it('⛔ READS AN INDEX WRITTEN BEFORE THE RENAME — or a ratchet silently drops', () => {
     // An index on disk today carries only `isolateApiFloor`. Parsing that back
     // as null would LOWER the floor, which is the one direction it must never

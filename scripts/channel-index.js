@@ -404,10 +404,16 @@ export function parseIndex(json, { name } = {}) {
     // Carried through, not restated: the floor is a ratchet over every publish
     // (invariant 8), and dropping it on a rewrite would silently lower it.
     //
-    // ⭐ READS THE OLD KEY TOO. `isolateApiFloor` was renamed to `minUsable` on
-    // 2026-09-06, and an index written before that carries only the old spelling.
-    // Parsing it back as `null` would silently LOWER a ratchet — the one
-    // direction this field must never move.
+    // ⭐ STILL READS THE OLD KEY, AND ITS TRIGGER IS NOT THE SAME AS THE EMIT'S.
+    // ⛔ Do not delete this because the emit was deleted — the two guard opposite
+    // ends. The emit protected a READER that had not moved; this protects against
+    // an INDEX that has not moved, and the published index still carries only
+    // `isolateApiFloor` until the next channel publish rewrites it. Parsing that
+    // back as `null` would reset the ratchet — the one direction this field must
+    // never travel.
+    //
+    // ⇒ DELETE once the published index carries `minUsable`:
+    //   curl -s https://uniweb.github.io/runtime/index.json | jq 'has("minUsable")'
     minUsable: parseVersion(obj.minUsable ?? obj.isolateApiFloor)
       ? (obj.minUsable ?? obj.isolateApiFloor)
       : null,
@@ -643,16 +649,13 @@ export function serializeIndex(index) {
       integrityAlgorithm: index.integrityAlgorithm || INTEGRITY_ALGORITHM,
       latest: index.latest,
       // Omitted, never null, when no floor has been recorded: absent means none.
-      // ⚠️ BOTH SPELLINGS, FOR EXACTLY ONE PUBLISH. `minUsable` is the name;
-      // `isolateApiFloor` rides beside it because a consumer that has not moved
-      // yet reads the old key, and **absent means none** — so emitting only the
-      // new name would silently drop the floor for them and let a broken runtime
-      // be chosen. ⛔ That is the one failure this field exists to prevent, so it
-      // is not a candidate for a clean cut.
       //
-      // ⇒ DELETE THE SECOND LINE once the consumer confirms it reads `minUsable`.
-      // The unit of grace is that confirmation, not a version.
-      ...(index.minUsable ? { minUsable: index.minUsable, isolateApiFloor: index.minUsable } : {}),
+      // ⭐ ONE SPELLING AGAIN, 2026-09-07. `isolateApiFloor` rode beside this for
+      // one publish so a reader that had not moved would not silently lose the
+      // floor; **the reader confirmed it reads `minUsable` and no longer reads the
+      // old key**, which was the stated trigger, so the second line is gone. The
+      // unit of grace was that confirmation, and it arrived.
+      ...(index.minUsable ? { minUsable: index.minUsable } : {}),
       versions
     },
     null,

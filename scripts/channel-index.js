@@ -404,19 +404,11 @@ export function parseIndex(json, { name } = {}) {
     // Carried through, not restated: the floor is a ratchet over every publish
     // (invariant 8), and dropping it on a rewrite would silently lower it.
     //
-    // ⭐ STILL READS THE OLD KEY, AND ITS TRIGGER IS NOT THE SAME AS THE EMIT'S.
-    // ⛔ Do not delete this because the emit was deleted — the two guard opposite
-    // ends. The emit protected a READER that had not moved; this protects against
-    // an INDEX that has not moved, and the published index still carries only
-    // `isolateApiFloor` until the next channel publish rewrites it. Parsing that
-    // back as `null` would reset the ratchet — the one direction this field must
-    // never travel.
-    //
-    // ⇒ DELETE once the published index carries `minUsable`:
-    //   curl -s https://uniweb.github.io/runtime/index.json | jq 'has("minUsable")'
-    minUsable: parseVersion(obj.minUsable ?? obj.isolateApiFloor)
-      ? (obj.minUsable ?? obj.isolateApiFloor)
-      : null,
+    // ⭐ ONE SPELLING ON BOTH SIDES SINCE 2026-09-07. A back-compat read of
+    // `isolateApiFloor` lived here while the published index still carried only
+    // that key; the trigger written beside it was `has("minUsable")` on the live
+    // index, and the publish that rewrote it met that trigger.
+    minUsable: parseVersion(obj.minUsable) ? obj.minUsable : null,
     versions: { ...(obj.versions || {}) }
   }
 }

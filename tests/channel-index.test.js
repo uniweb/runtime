@@ -711,20 +711,12 @@ describe('the rename to `minUsable` — 2026-09-06', () => {
     expect(doc).not.toHaveProperty('isolateApiFloor')
   })
 
-  // ⛔ THE PARSE SIDE OUTLIVES THE EMIT SIDE, and the two triggers are different.
-  // The emit guarded a reader that had not moved; this guards an INDEX that has
-  // not moved — the published one still carries only the old key until the next
-  // channel publish rewrites it.
-  it('⛔ READS AN INDEX WRITTEN BEFORE THE RENAME — or a ratchet silently drops', () => {
-    // An index on disk today carries only `isolateApiFloor`. Parsing that back
-    // as null would LOWER the floor, which is the one direction it must never
-    // move — and nothing would report it.
+  // ⭐ THE OLD KEY IS NOT READ ANY MORE, and this pins that rather than leaving
+  // its absence to inference. Both halves of the transition had their own
+  // trigger and both fired: the emit stopped when the reader confirmed, the
+  // parse stopped when the published index carried `minUsable`.
+  it('⛔ an index carrying ONLY the old key yields no floor — absent means none', () => {
     const old = { schema: 1, name: '@uniweb/runtime', versions: {}, isolateApiFloor: '0.17.0' }
-    expect(parseIndex(old).minUsable).toBe('0.17.0')
-  })
-
-  it('prefers the new spelling when an index somehow carries both', () => {
-    const both = { schema: 1, name: '@uniweb/runtime', versions: {}, minUsable: '0.18.0', isolateApiFloor: '0.17.0' }
-    expect(parseIndex(both).minUsable).toBe('0.18.0')
+    expect(parseIndex(old).minUsable).toBeNull()
   })
 })

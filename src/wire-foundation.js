@@ -397,7 +397,8 @@ export function wireTracker(uniweb, { basePath = '', loadScripts = null } = {}) 
   // and the other reading takes every site on it dark with every gate saying
   // yes. `?? null` rather than `?? []` is the whole of that guard.
   // ⛔ Each tier is read from ITS OWN key, not from the merged `options`. The
-  // merge exists so a site can override a host's `consent` or `endpoint`; these
+  // merge exists so a site's own option can override a host's — `consent`, say;
+  // the address is not an option, and comes from `resolveService` above. These
   // two are not overrides of each other but answers to different questions, and
   // reading either off the merge would let one tier answer the other's — a site
   // writing `events:` would widen past what the host stores, silently.

@@ -50,9 +50,9 @@
  * `{base}/…` from the payload, or the records service the host itself
  * published at `config.services.records`.
  */
-import { resolveFetchConfigs } from '@uniweb/core/fetch-config'
+import { resolveFetchConfigs, routeQuery, sectionFetches } from '@uniweb/core/fetch-config'
 import { deriveCacheKey } from '@uniweb/core/datastore'
-import { routePatternToRegex, decodeRouteValue, splitPathCapture } from '@uniweb/core/route-match'
+import { routePatternToRegex, decodeRouteValue, isDynamicRoute, routeBinding, parentRouteOf } from '@uniweb/core/route-match'
 import { buildDetailConfig } from '@uniweb/core/detail-url'
 import { resolveDefaultLocale } from '@uniweb/core/locale-config'
 import { createDefaultFetcher } from './default-fetcher.js'
@@ -60,16 +60,21 @@ import { createDefaultFetcher } from './default-fetcher.js'
 const isRefinement = (f) => f && typeof f === 'object' && f.refine === true
 
 /**
- * The page a route names — exact first, then the `[slug]` / `[...path]` templates, like
- * the SPA. Captured params are decoded the way `matchDynamicRoute` decodes them (a
+ * The page a route names — exact first, then the parametric pages, like the SPA.
+ * Captured params are decoded the way `matchDynamicRoute` decodes them (a
  * catch-all per segment), so the values are what the site's query is bound against.
+ *
+ * ⭐ A page is parametric when its ROUTE has a parameter — the test the SPA uses
+ * (`Website.getPage`). ⛔ This tested the payload's `isDynamic` flag until
+ * 2026-09-11, which our build sets only on a bracket folder: a page nested inside
+ * one (`/members/:slug/cv`) routed in the browser and was never found here.
  */
 export function findPageForRoute(content, route) {
   const pages = content?.pages || []
   const exact = pages.find((p) => p.route === route)
   if (exact) return { page: exact, params: {} }
   for (const page of pages) {
-    if (!page.isDynamic || !page.route) continue
+    if (!page.route || !isDynamicRoute(page.route)) continue
     const compiled = routePatternToRegex(page.route)
     const m = compiled?.regex ? compiled.regex.exec(route) : null
     if (m) {
@@ -85,20 +90,17 @@ export function findPageForRoute(content, route) {
 }
 
 /**
- * The route's variables and the delivery param for a matched template page — the same
- * binding the SPA makes in `Website._createDynamicPage`: `[slug]` binds the one capture
- * under the folder's own name; `[...path]` splits its capture into `path` / `dir` /
- * `slug` and delivers by `slug`, the record's handle.
+ * The page a page inherits from, by the one rule every lane uses (`parentRouteOf`):
+ * the declared `parent` when it names a page, else the route minus its last segment.
+ * ⛔ This read the declared field only until 2026-09-11. A payload that omits it —
+ * published payloads may — gave every page no parent here while the SPA inferred
+ * one, so `/members/alice` prefetched nothing: not the list, not the record
+ * (measured). The page was then filled by the browser's own request.
  */
-function routeBinding(page, params) {
-  const { catchAll } = routePatternToRegex(page.route)
-  if (catchAll && params[catchAll] !== undefined) {
-    const parts = splitPathCapture(params[catchAll])
-    const paramName = page.paramName || 'slug'
-    return { paramName, paramValue: parts.slug, variables: { ...params, ...parts } }
-  }
-  const paramName = page.paramName || Object.keys(params)[0]
-  return { paramName, paramValue: params[paramName], variables: { ...params } }
+function parentPageOf(page, pages) {
+  const byRoute = new Map(pages.filter((p) => p?.route).map((p) => [p.route, p]))
+  const route = parentRouteOf(page.route, { declared: page.parent ?? null, has: (r) => byRoute.has(r) })
+  return route ? byRoute.get(route) : null
 }
 
 /**
@@ -113,8 +115,11 @@ export function resolvePageFetchConfigs(content, route, { locale = null } = {}) 
   const { page, params } = findPageForRoute(content, route)
   if (!page) return []
   const pages = content?.pages || []
-  const parent = page.parent ? pages.find((p) => p.route === page.parent) : null
-  const binding = page.isDynamic && Object.keys(params).length ? routeBinding(page, params) : null
+  const parent = parentPageOf(page, pages)
+  // The route's binding — the SPA's (`routeBinding`, `@uniweb/core/route-match`).
+  const binding = isDynamicRoute(page.route) && Object.keys(params).length
+    ? routeBinding(page.route, params, page.paramName ?? null)
+    : null
   const options = {
     locale,
     defaultLocale: resolveDefaultLocale(content?.config) ?? null,
@@ -122,39 +127,42 @@ export function resolvePageFetchConfigs(content, route, { locale = null } = {}) 
     services: content?.config?.services ?? null,
     variables: binding?.variables ?? null,
   }
+  const siteFetch = content?.config?.fetch ?? null
+  // The route query: the key this page's URL names one record of, by the rule the
+  // entity store reads it with (`routeQuery`) — never a payload field.
+  const routeKey = binding
+    ? routeQuery({ page: page.fetch, parent: parent?.fetch, site: siteFetch, sections: sectionFetches(page.sections) })?.key ?? null
+    : null
+
   const out = new Map()
+  const put = (cfg) => {
+    const key = deriveCacheKey(cfg)
+    if (!out.has(key)) out.set(key, cfg)
+  }
   const add = (sources) => {
     for (const cfg of resolveFetchConfigs(sources, options).values()) {
-      const key = deriveCacheKey(cfg)
-      if (!out.has(key)) out.set(key, cfg)
+      put(cfg)
+      // ⭐ A parametric page is ABOUT one record, and on a lane with a per-record
+      // source (the records service, a `deferred:` query's per-record file) that
+      // record is a request of its own. Built for EVERY config the route key
+      // resolves to — a section re-declaring the route query asks its own record
+      // question — by the one rule the entity store uses (`buildDetailConfig`), so
+      // the question prefetched is the question the render asks.
+      if (routeKey && cfg.as === routeKey && cfg.detail && binding.paramValue !== undefined) {
+        const detailCfg = buildDetailConfig(cfg, { paramName: binding.paramName, paramValue: String(binding.paramValue) })
+        if (detailCfg) put(detailCfg)
+      }
     }
   }
   // The cascade a block sees: its own fetch (unless a refinement), page, parent, site.
-  add([page.fetch ?? null, parent?.fetch ?? null, content?.config?.fetch ?? null])
+  add([page.fetch ?? null, parent?.fetch ?? null, siteFetch])
   const walk = (sections) => {
     for (const s of sections || []) {
-      if (s?.fetch && !isRefinement(s.fetch)) add([s.fetch, page.fetch ?? null, parent?.fetch ?? null, content?.config?.fetch ?? null])
+      if (s?.fetch && !isRefinement(s.fetch)) add([s.fetch, page.fetch ?? null, parent?.fetch ?? null, siteFetch])
       if (s?.subsections) walk(s.subsections)
     }
   }
   walk(page.sections)
-
-  // ⭐ A template page is ABOUT one record, and the record is a fetch of its own.
-  // The list the page inherits is what the entity store matches the route param
-  // against; when that query has a per-record source (a live lane's record address,
-  // a `deferred:` query's per-record file), the record itself comes from a second
-  // request — which this helper never built, so a host prerendering a template page
-  // got the BRIEF and the body arrived after hydration as a client fetch. The
-  // detail config is built by the one rule the
-  // entity store uses (`buildDetailConfig`), keyed by the route's param.
-  if (binding && binding.paramValue !== undefined && page.parentSchema) {
-    const listCfg = [...out.values()].find((cfg) => cfg.as === page.parentSchema && cfg.detail)
-    const detailCfg = listCfg ? buildDetailConfig(listCfg, { paramName: binding.paramName, paramValue: String(binding.paramValue) }) : null
-    if (detailCfg) {
-      const key = deriveCacheKey(detailCfg)
-      if (!out.has(key)) out.set(key, detailCfg)
-    }
-  }
   return [...out.values()]
 }
 

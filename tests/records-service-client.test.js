@@ -82,12 +82,21 @@ describe('the door\'s vocabulary — what crosses as written and what is respell
     expect(calls[0].body.members.where).toEqual({ status: { not_in: ['draft'] }, or: [{ a: 1 }, { b: { in: [2] } }] })
   })
 
-  it('a top-level `path: { under }` — the file lane\'s folder branch — becomes the door\'s `scope`', async () => {
+  it('`scope` crosses as authored, and `where` is not respelled — `path: { under }` is retired (2026-09-11)', async () => {
     const { fetch, calls } = doorStub({ data: { members: [] } })
     const f = createDefaultFetcher({ fetch })
-    await f.resolve({ ...list, where: { path: { under: 'research' }, published: true } })
+    await f.resolve({ ...list, scope: 'research', where: { published: true } })
     expect(calls[0].body.members.scope).toBe('research')
     expect(calls[0].body.members.where).toEqual({ published: true })
+  })
+
+  it('the record of a parametric page crosses as `match`, beside an untouched `where`', async () => {
+    const { fetch, calls } = doorStub({ data: { members: [] } })
+    const f = createDefaultFetcher({ fetch })
+    await f.resolve({ ...list, where: { published: true }, match: { $name: 'ada' }, whole: true, limit: undefined })
+    expect(calls[0].body.members.match).toEqual({ $name: 'ada' })
+    expect(calls[0].body.members.where).toEqual({ published: true })
+    expect(calls[0].body.members.whole).toBe(true)
   })
 
   it('an authored `scope` wins, and a bare `sort` field is ascending', async () => {

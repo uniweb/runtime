@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createDefaultFetcher } from '../src/default-fetcher.js'
+import { FetcherDispatcher, DataStore } from '@uniweb/core'
 
 /**
  * Tests for the runtime's default fetcher — TWO lanes and no site-level
@@ -334,11 +335,51 @@ describe('createDefaultFetcher — the query is evaluated locally over what the 
     expect(result.data.map((r) => r.id)).toEqual([3, 2])
   })
 
-  it('the cache identity is the ADDRESS — a different where shares the entry', async () => {
+  it('⭐ the cache identity is the address AND the view — a different where is its own entry (2026-09-11)', async () => {
+    // Keyed by address alone, one file had ONE entry and whoever asked first
+    // decided what everyone got: an unfiltered view received a filtered answer.
     const f = createDefaultFetcher()
     const k1 = f.cacheKey({ url: 'https://api.example.com/x', where: { tenured: true } })
     const k2 = f.cacheKey({ url: 'https://api.example.com/x', where: { tenured: false } })
-    expect(k1).toBe(k2)
+    expect(k1).not.toBe(k2)
+  })
+})
+
+describe('views of one file — each its own answer, one read in flight (2026-09-11)', () => {
+  let fetchStub
+  beforeEach(() => {
+    fetchStub = stubFetch({ body: [
+      { slug: 'a', team: 'x', path: 'field' },
+      { slug: 'b', team: 'y', path: 'lab' },
+      { slug: 'c', team: 'x', path: 'field/2025' },
+    ] })
+  })
+  afterEach(() => fetchStub.restore())
+
+  it('through the dispatcher, three views get three answers from ONE request', async () => {
+    const d = new FetcherDispatcher({ foundation: null, dataStore: new DataStore(), defaultFetcher: createDefaultFetcher() })
+    const [filtered, whole, limited] = await Promise.all([
+      d.dispatch({ path: '/data/people.json', as: 'people', where: { team: 'x' } }, {}),
+      d.dispatch({ path: '/data/people.json', as: 'people' }, {}),
+      d.dispatch({ path: '/data/people.json', as: 'people', limit: 1 }, {}),
+    ])
+    expect(filtered.data.map((r) => r.slug)).toEqual(['a', 'c'])
+    expect(whole.data.map((r) => r.slug)).toEqual(['a', 'b', 'c'])
+    expect(limited.data.map((r) => r.slug)).toEqual(['a'])
+    expect(fetchStub.calls).toHaveLength(1)
+  })
+
+  it('a view asked later is not handed an earlier view\'s answer', async () => {
+    const d = new FetcherDispatcher({ foundation: null, dataStore: new DataStore(), defaultFetcher: createDefaultFetcher() })
+    await d.dispatch({ path: '/data/people.json', as: 'people', where: { team: 'x' } }, {})
+    const whole = await d.dispatch({ path: '/data/people.json', as: 'people' }, {})
+    expect(whole.data.map((r) => r.slug)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('`scope` is evaluated over each record\'s placement, at segment boundaries', async () => {
+    const f = createDefaultFetcher()
+    const res = await f.resolve({ path: '/data/people.json', as: 'people', scope: 'field' }, {})
+    expect(res.data.map((r) => r.slug)).toEqual(['a', 'c'])
   })
 })
 
@@ -468,10 +509,10 @@ describe('⛔ the retired site-level vocabulary is NOT read (2026-09-04)', () =>
     expect(result.data).toEqual({ data: { items: [3, 4] } })
   })
 
-  it('the cache key is the address alone — no style segment, no operator projection', () => {
+  it('the cache key is the address and its view — no style segment, no retired config', () => {
     const f = createDefaultFetcher({ config: RETIRED })
     const key = f.cacheKey({ url: 'https://api.example.com/x', where: { tenured: true }, limit: 5 })
-    expect(key).toBe(createDefaultFetcher().cacheKey({ url: 'https://api.example.com/x' }))
+    expect(key).toBe(createDefaultFetcher().cacheKey({ url: 'https://api.example.com/x', where: { tenured: true }, limit: 5 }))
     expect(key).not.toContain('style=')
   })
 })

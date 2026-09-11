@@ -52,6 +52,7 @@
 import {
   substitutePlaceholders,
   matchWhere,
+  applyScope,
   sortRecords,
   sortToWire,
   deriveCacheKey,
@@ -110,14 +111,34 @@ export function createDefaultFetcher({ basePath = '', dev = false, fetch: fetchI
     })
   }
 
+  // ⭐ VIEWS OF ONE FILE SHARE ONE READ IN FLIGHT. Each view — its own `scope`,
+  // `where`, `sort` or `limit` — is its own cache entry (`deriveCacheKey` hashes
+  // the view) and is cut from the read; views asked together (a page's sections,
+  // a host's prefetch) share one request. ⛔ Until 2026-09-11 the view was applied
+  // before the dispatcher stored the answer under a key that left the view out, so
+  // one file had ONE entry and whoever asked first decided what everyone got
+  // (measured). A settled read is not kept: a view asked later reads again (a
+  // static host's HTTP cache answers it), so dropping an entry and asking again
+  // still reaches the source. The read carries no caller's abort signal — several
+  // views may be waiting on it, and one navigating away must not cancel it for
+  // the others.
+  const reads = new Map()
+  const readOnce = (target, init) => {
+    const key = `${init.method} ${target} ${init.body ?? ''}`
+    let pending = reads.get(key)
+    if (!pending) {
+      pending = readResponse(doFetch, target, init).finally(() => reads.delete(key))
+      reads.set(key, pending)
+    }
+    return pending
+  }
+
   return {
     /**
-     * The cache identity is the request's ADDRESS — or, when asked of the
-     * records service, the QUESTION (`deriveCacheKey` hashes every operator of an address-less
-     * request). Operators evaluated here run over a shared cached value and
-     * must NOT split the cache: two pages declaring different `where:` clauses
-     * against the same path share one entry — the file is fetched once and
-     * each page filters its own copy.
+     * The cache identity is the request's ADDRESS and the view it takes of it —
+     * or, when asked of the records service, the QUESTION (`deriveCacheKey`).
+     * Two pages declaring different `where:` clauses against one path are two
+     * entries, each cut from a read of the file (`readOnce`, above).
      */
     cacheKey(request) {
       return deriveCacheKey(request)
@@ -150,7 +171,7 @@ export function createDefaultFetcher({ basePath = '', dev = false, fetch: fetchI
         return { data: [], error: 'No path, url or ask specified' }
       }
 
-      const init = { signal: ctx.signal, method }
+      const init = { method }
 
       if (method === 'POST') {
         // Substitute {paramName} placeholders in body strings using the
@@ -168,7 +189,8 @@ export function createDefaultFetcher({ basePath = '', dev = false, fetch: fetchI
       }
 
       try {
-        const response = await doFetch(target, init)
+        const response = await readOnce(target, init)
+        if (ctx.signal?.aborted) return { data: [], error: 'aborted' }
 
         // A per-request envelope (set by the object form of `detail:`) describes
         // this one response.
@@ -181,18 +203,13 @@ export function createDefaultFetcher({ basePath = '', dev = false, fetch: fetchI
           // from the parsed body; fall back to status text if the path is
           // missing or the body isn't JSON.
           let extracted
-          if (envelope.error) {
-            try {
-              const text = await response.text()
-              const body = safeParseJSON(text)
-              if (body !== undefined) {
-                const candidate = getNestedValue(body, envelope.error)
-                if (typeof candidate === 'string' && candidate.length) {
-                  extracted = candidate
-                }
+          if (envelope.error && typeof response.text === 'string') {
+            const body = safeParseJSON(response.text)
+            if (body !== undefined) {
+              const candidate = getNestedValue(body, envelope.error)
+              if (typeof candidate === 'string' && candidate.length) {
+                extracted = candidate
               }
-            } catch {
-              // Body not readable — fall through to status-text fallback.
             }
           }
           return {
@@ -201,18 +218,7 @@ export function createDefaultFetcher({ basePath = '', dev = false, fetch: fetchI
           }
         }
 
-        const contentType = response.headers.get('content-type') || ''
-        let data
-        if (contentType.includes('application/json')) {
-          data = await response.json()
-        } else {
-          const text = await response.text()
-          try {
-            data = JSON.parse(text)
-          } catch {
-            data = text
-          }
-        }
+        let data = response.body
 
         // Unwrap the response. Per-fetch `transform:` wins; otherwise the
         // envelope's `item` path on a single-record request, `list` on a list.
@@ -250,24 +256,26 @@ export function createDefaultFetcher({ basePath = '', dev = false, fetch: fetchI
 /**
  * One question of a batch, in the records service's own vocabulary
  * (the records contract, §2): `schema` required, `scope` a bare path, `sort`
- * one key spelled `date` / `-date`, `depth` brief or full. The where-object
- * crosses as authored except for the two spellings the language settled
- * differently from the evaluator's: `nin` is `not_in` there, and a top-level
- * `path: { under }` — the file lane's way of naming a folder branch — is
- * `scope`. Anything the service does not accept (`like`, a dotted path) is
- * sent as written and refused there by name: loud, never approximated.
+ * one key spelled `date` / `-date`, `whole` when the whole record is wanted,
+ * `match` on a parametric page's record. The where-object crosses as authored
+ * except for the one spelling the language settled differently from the
+ * evaluator's: `nin` is `not_in` there. Anything the service does not accept
+ * (`like`, a dotted path) is sent as written and refused there by name: loud,
+ * never approximated.
  */
 function toQuestion(request) {
   const q = { schema: request.schema }
-  let where = request.where && typeof request.where === 'object' ? request.where : null
-  let scope = typeof request.scope === 'string' && request.scope ? request.scope : null
-  if (where && !scope && where.path && typeof where.path === 'object' && typeof where.path.under === 'string' && where.path.under) {
-    const { path, ...rest } = where
-    scope = path.under
-    where = Object.keys(rest).length ? rest : null
-  }
+  const where = request.where && typeof request.where === 'object' ? request.where : null
+  // ⭐ `scope` crosses as authored. ⛔ A top-level `where.path.under` was respelled
+  // into it until 2026-09-11, when that form was retired in favour of `scope:`
+  // [Diego] — the build refuses it now, so there is nothing left to respell.
+  const scope = typeof request.scope === 'string' && request.scope ? request.scope : null
   if (scope) q.scope = scope
   if (where) q.where = renameOperators(where)
+  // ⭐ The record of a parametric page: the question unchanged plus `match` — one
+  // key and the URL's value, beside the author's `where`, never merged into it
+  // (`buildDetailConfig`; the records contract as we read it, §1d).
+  if (request.match && typeof request.match === 'object') q.match = request.match
   const sort = sortToWire(request.sort)
   if (sort) q.sort = sort
   if (typeof request.limit === 'number' && request.limit > 0) q.limit = request.limit
@@ -480,6 +488,33 @@ async function flushAsked(url, queue, doFetch) {
   }))
 }
 
+/**
+ * Read one response and parse its body — the part of a fetch every view of an
+ * address shares. A JSON body is parsed as JSON; anything else is tried as JSON
+ * and kept as text when it is not. A failed response keeps its text, so a view
+ * whose envelope names an error path can read a message out of it.
+ */
+async function readResponse(doFetch, target, init) {
+  const response = await doFetch(target, init)
+  if (!response.ok) {
+    let text = null
+    try {
+      text = await response.text()
+    } catch {
+      // Body not readable — the status line is all there is.
+    }
+    return { ok: false, status: response.status, statusText: response.statusText, text }
+  }
+  const contentType = response.headers.get('content-type') || ''
+  if (contentType.includes('application/json')) return { ok: true, body: await response.json() }
+  const text = await response.text()
+  try {
+    return { ok: true, body: JSON.parse(text) }
+  } catch {
+    return { ok: true, body: text }
+  }
+}
+
 /** Build a `meta` from the fields that are actually present, or `undefined`. */
 function withMeta(fields) {
   const out = {}
@@ -495,6 +530,10 @@ function withMeta(fields) {
 function applyOperators(data, request, { dev = false } = {}) {
   if (!Array.isArray(data)) return data
   let result = data
+  // `scope` first: it names the branch the rest of the query reads. On this lane
+  // it is evaluated over each record's placement (`path`), as the build did when it
+  // wrote the file — `scope: :dir` bound per page reaches here (2026-09-11).
+  if (typeof request.scope === 'string' && request.scope) result = applyScope(result, request.scope)
   if (request.where) result = matchWhere(request.where, result)
   if (request.sort) result = applySort(result, request.sort, dev)
   if (typeof request.limit === 'number' && request.limit > 0) result = result.slice(0, request.limit)

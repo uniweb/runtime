@@ -7,6 +7,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { resolvePageFetchConfigs, executeFetchConfigs, prefetchPageData, findPageForRoute } from '../src/prefetch.js'
 import { hydrateDataStore } from '../src/wire-foundation.js'
 import DataStore, { deriveCacheKey } from '@uniweb/core/datastore'
+import { Website } from '@uniweb/core'
 
 // A payload as a backend publishes it: the `records` service row and the query's Model ref,
 // one page with a query fetch, a [slug] child, and a section with its own remote fetch.
@@ -21,13 +22,13 @@ const CONTENT = {
   pages: [
     { route: '/team', parent: null, isDynamic: false, fetch: { query: 'members', path: '/data/members.json', as: 'people' },
       sections: [{ type: 'List', fetch: { url: 'https://api.example.com/news', as: 'news', prerender: false } }] },
-    { route: '/team/:slug', parent: '/team', isDynamic: true, paramName: 'slug', parentSchema: 'people', sections: [] },
+    { route: '/team/:slug', parent: '/team', isDynamic: true, paramName: 'slug', sections: [] },
   ],
 }
 
 // `routes` answers a URL by substring. A ask route's value is a FUNCTION of the
 // posted question map, answering per key the way the ask does: the record
-// question (narrowed by `$name`) gets the full record, any other the briefs.
+// question (the one carrying `match`) gets the full record, any other the briefs.
 function stubFetch(routes) {
   const calls = []
   const fetch = vi.fn(async (input, init) => {
@@ -44,7 +45,7 @@ const ASK = '/_records/_query/en'
 const askStub = ({ briefs = [], full = null }) => (questions) => {
   const data = {}, whole = {}
   for (const [key, q] of Object.entries(questions)) {
-    const isRecord = q.where && q.where.$name !== undefined
+    const isRecord = q.match && q.match.$name !== undefined
     data[key] = isRecord ? (full ? [full] : []) : briefs
     // Only keys delivered as WHOLE entities appear; a key's absence is the brief.
     if (isRecord) whole[key] = true
@@ -160,13 +161,13 @@ describe('what a prefetched entry says about depth', () => {
 describe('E2 — a template page prefetches ITS RECORD, not only the list', () => {
   it('builds the detail config for the matched param through the one shared rule', () => {
     const cfgs = resolvePageFetchConfigs(CONTENT, '/team/ada')
-    const detail = cfgs.find((c) => c.ask === ASK && c.where?.$name === 'ada')
+    const detail = cfgs.find((c) => c.ask === ASK && c.match?.$name === 'ada')
     expect(detail).toBeDefined()
     expect(detail.as).toBe('people')
     expect(detail.whole).toBe(true)
     expect(detail.dynamicContext).toEqual({ paramName: 'slug', paramValue: 'ada' })
     // and the list is still there, at brief depth
-    expect(cfgs.some((c) => c.ask === ASK && !c.where?.$name && c.whole === false)).toBe(true)
+    expect(cfgs.some((c) => c.ask === ASK && !c.match && c.whole === false)).toBe(true)
   })
 
   it('executes it, so the host hands the isolate the record in full', async () => {
@@ -176,7 +177,7 @@ describe('E2 — a template page prefetches ITS RECORD, not only the list', () =
     const fetched = await prefetchPageData({ content: CONTENT, route: '/team/ada', fetch })
     // one POST carries both questions
     expect(calls.filter((u) => u.endsWith('/site' + ASK))).toHaveLength(1)
-    const record = fetched.find((e) => e.config.where?.$name === 'ada')
+    const record = fetched.find((e) => e.config.match?.$name === 'ada')
     expect(record.outcome).toBe('fetched')
     expect(record.data).toEqual([{ $uuid: 'u1', $name: 'ada', bio: 'Full' }])
     expect(record.meta).toEqual({ whole: true })
@@ -192,4 +193,71 @@ describe('E2 — a template page prefetches ITS RECORD, not only the list', () =
     const noLane = { ...CONTENT, config: { ...CONTENT.config, services: { search: '/_search', submit: '/_submit' } } }
     expect(resolvePageFetchConfigs(noLane, '/team/ada').some((c) => c.dynamicContext)).toBe(false)
   })
+})
+
+describe('the parent is found by the one rule — a payload may omit `pages[].parent` (2026-09-11)', () => {
+  // ⛔ Measured before the rule: with no declared parent the prefetch resolved NO
+  // configs for `/team/ada`, while the SPA inferred `/team` and fetched the list and
+  // the record itself — the one browser request a cold parametric page made.
+  const noParent = {
+    ...CONTENT,
+    pages: CONTENT.pages.map(({ parent, ...page }) => page),
+  }
+
+  it('still prefetches the list and the record', () => {
+    const cfgs = resolvePageFetchConfigs(noParent, '/team/ada')
+    expect(cfgs.some((c) => c.as === 'people' && !c.match)).toBe(true)
+    expect(cfgs.some((c) => c.match?.$name === 'ada')).toBe(true)
+  })
+})
+
+describe('a page nested inside a parametric page is found and prefetched (2026-09-11)', () => {
+  const nested = {
+    ...CONTENT,
+    pages: [
+      ...CONTENT.pages.map((p) => (p.route === '/team/:slug' ? { ...p, fetch: { query: 'members', path: '/data/members.json', as: 'people' } } : p)),
+      { route: '/team/:slug/cv', parent: '/team/:slug', isDynamic: true, paramName: 'slug', sections: [] },
+    ],
+  }
+
+  it('matches /team/ada/cv and asks the record of its route query — its parent\'s', () => {
+    expect(findPageForRoute(nested, '/team/ada/cv').page.route).toBe('/team/:slug/cv')
+    const cfgs = resolvePageFetchConfigs(nested, '/team/ada/cv')
+    expect(cfgs.some((c) => c.match?.$name === 'ada')).toBe(true)
+  })
+
+  it('a nested page matches by its ROUTE, not a flag — the SPA\'s test', () => {
+    const unflagged = { ...nested, pages: nested.pages.map((p) => (p.route === '/team/:slug/cv' ? { ...p, isDynamic: false } : p)) }
+    expect(findPageForRoute(unflagged, '/team/ada/cv').page?.route).toBe('/team/:slug/cv')
+  })
+})
+
+describe('the prefetch asks exactly what the render will ask — parity with the entity store', () => {
+  // Every request the SPA's entity store makes for a page must be one the prefetch
+  // already resolved, key for key, or the landing page's answers go unused and the
+  // browser asks again. Measured through the real Website and EntityStore, with a
+  // default fetcher that only records the keys it is asked for.
+  async function renderKeys(content, route) {
+    const asked = new Set()
+    const recorder = { resolve: (req) => { asked.add(deriveCacheKey(req)); return Promise.resolve({ data: [] }) } }
+    const website = new Website({ content: JSON.parse(JSON.stringify(content)), defaultFetcher: recorder })
+    const page = website.getPage(route)
+    const sections = page._bodySections?.length ? page._bodySections : [{}]
+    for (const s of sections) {
+      const block = { fetch: s.fetch ?? null, page, website, dynamicContext: page.dynamicContext }
+      await website.entityStore.fetch(block, null)
+    }
+    return asked
+  }
+  const prefetchKeys = (content, route) => new Set(resolvePageFetchConfigs(content, route).map(deriveCacheKey))
+  const noParent = { ...CONTENT, pages: CONTENT.pages.map(({ parent, ...page }) => page) }
+
+  for (const [label, content] of [['with pages[].parent', CONTENT], ['without it', noParent]]) {
+    it(`covers every key the render asks on a parametric page — ${label}`, async () => {
+      const render = await renderKeys(content, '/team/ada')
+      const pre = prefetchKeys(content, '/team/ada')
+      expect(render.size).toBeGreaterThan(0)
+      for (const key of render) expect(pre.has(key), `render asked ${key}`).toBe(true)
+    })
+  }
 })

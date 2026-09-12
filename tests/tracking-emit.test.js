@@ -214,13 +214,28 @@ describe('hosted — the host supplies the endpoint, the site supplies the selec
     expect(t.arms('anything_at_all')).toBe(true)
   })
 
-  // Standalone-first, stated as a test: a site pointing at its own collector
-  // keeps emitting whether or not a host offers one.
-  it('prefers the site own endpoint when both tiers name one', () => {
+  // ⛔ **REVERSED 2026-09-10 — the HOST's offer wins.** This asserted the opposite
+  // until 2026-09-12, when it was found red. `resolveService` step 1: a host that
+  // returns an address is the authority on what a hosted site is given, and nothing
+  // the site declares overrides it — not its own address, not its off switch.
+  //
+  // ⚠️ **Why nothing caught it at the commit that changed the rule:** the rule lives
+  // in `@uniweb/core` (`resolveService`, core@d797170) and this suite is in
+  // `@uniweb/runtime`, a `workspace:*` sibling. The behaviour moved for every
+  // consumer at that commit while only THIS package's suite could see it, and that
+  // package was not the one being tested. A sibling's green suite proves nothing.
+  it("prefers the HOST's endpoint when both tiers name one", () => {
     const t = wire({
       services: { tracking: { endpoint: '/_a/e' } },
       tracking: { endpoint: 'https://plausible.io/api/event' }
     })
+    expect(t.endpoint).toBe('/_a/e')
+  })
+
+  // ⭐ CONTROL — and it is the half the reversal did NOT take away. Standalone-first:
+  // a site pointing at its own collector keeps emitting when no host offers one.
+  it("falls to the site's own endpoint when the host offers none", () => {
+    const t = wire({ tracking: { endpoint: 'https://plausible.io/api/event' } })
     expect(t.endpoint).toBe('https://plausible.io/api/event')
   })
 })

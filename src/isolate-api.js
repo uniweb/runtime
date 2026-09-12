@@ -139,10 +139,32 @@ export const ISOLATE_API = Object.freeze({
  * someone else is willing to pay is not an argument, it is an estimate — and it
  * should be stated as one, so the person holding the cost can overrule it.*
  *
- * ⇒ **Raise this when a runtime change makes an older one unable to speak to a
- * shipped peer.** Not for a feature, not for a fix — for an incompatibility.
+ * ⭐ **RELAXED 2026-09-12 [Diego] — and the paragraph above predicted exactly this
+ * shape.** It read: *"Raise this when a runtime change makes an older one unable to
+ * speak to a shipped peer. Not for a feature, not for a fix — for an
+ * incompatibility."* The ruling:
+ *
+ * > *"I don't mind raising the floor at this point so we don't need to be checking
+ * > all the time what a version supports … we can safely raise the floor while we
+ * > are not yet at 1.0.1+. The 0.x line is for active development … And new
+ * > runtimes don't break sites. They usually just do a better job."*
+ *
+ * ⇒ **While in 0.x, raising this is CHEAP and needs no incompatibility.** Its job
+ * shifts from *"below this it cannot work"* to *"below this we no longer reason
+ * about"* — which is precisely what lets a consumer stop feature-detecting.
+ *
+ * ⛔ **Two things the ruling does NOT relax, both mechanical:**
+ *   1. **Never name a version that does not exist yet.** The floor is stamped AFTER
+ *      the publish that creates the version, never in anticipation — the whole
+ *      reason `UNRELEASED` exists a few lines up.
+ *   2. **A raise is a CROSS-LANE event.** Backend reads this from the channel index
+ *      and refuses to serve a site below it, so the number moves for them when the
+ *      CHANNEL republishes — not when this constant changes.
+ *
+ * ⚖️ Revisit at 1.0: once sites are pinned in the field, *"it does not break
+ * sites"* stops being free, and this paragraph is the thing to re-argue.
  */
-export const WIRE_FLOOR = '0.18.0'
+export const WIRE_FLOOR = '0.20.3'
 
 /**
  * ⭐ **THE MINIMUM RUNTIME VERSION A SITE MAY BE PUBLISHED AT.** At or above it,

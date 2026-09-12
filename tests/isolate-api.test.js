@@ -85,17 +85,24 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
   // the implementation against itself and pass for any value; literals are what
   // make raising the floor a deliberate edit a reviewer sees. It is also the
   // number a publisher ratchets, so a silent move is the thing to prevent.
-  it('the floor is 0.18.0 — set by the WIRE, not by the newest export', () => {
-    expect(MIN_USABLE_RUNTIME).toBe('0.18.0')
+  it('the floor is 0.20.3 — set deliberately on the WIRE, not derived from the newest export', () => {
+    expect(MIN_USABLE_RUNTIME).toBe('0.20.3')
     expect(MIN_USABLE_RUNTIME).toMatch(/^\d+\.\d+\.\d+$/)
 
-    // ⭐ THE CASE THIS FILE COULD NOT EXPRESS UNTIL 2026-09-06. The floor is now
-    // set by a COMPATIBILITY BREAK rather than by an export: below 0.18.0 a
-    // runtime sends `depth` on every records question, the door refuses it as an
-    // unknown field, and every live-records fetch fails. Such a runtime exports
-    // every name in the map and still cannot be used — which is precisely what a
-    // floor derived from export presence alone cannot say.
-    expect(WIRE_FLOOR).toBe('0.18.0')
+    // ⭐ THE FLOOR IS SET ON THE WIRE, NOT DERIVED FROM THE EXPORT MAP — and the
+    // REASON changed on 2026-09-12 while the mechanism did not.
+    //
+    // It was 0.18.0 because of a COMPATIBILITY BREAK: below that, a runtime sends
+    // `depth` on every records question, the door refuses it as an unknown field,
+    // and every live-records fetch fails. Such a runtime exports every name in the
+    // map and still cannot be used — which a floor derived from export presence
+    // alone cannot say. That break is still real and still below this number.
+    //
+    // ⭐ It is now 0.20.3 for an additional reason [Diego, 2026-09-12]: while in
+    // 0.x, the floor may be raised simply so nobody has to check what a version
+    // supports. ⇒ A raise no longer implies an incompatibility at the new number,
+    // so do not read this literal as "0.20.3 broke something".
+    expect(WIRE_FLOOR).toBe('0.20.3')
     expect(ISOLATE_API.collectSiteRecords).toBe('0.17.0')
     expect(compareVersions(WIRE_FLOOR, ISOLATE_API.collectSiteRecords)).toBeGreaterThan(0)
 

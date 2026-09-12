@@ -19,7 +19,7 @@ import { renderToString } from 'react-dom/server'
 import { createUniweb, resolveDefaultLocale } from '@uniweb/core'
 import { sectionDomId } from '@uniweb/core/section-id'
 import { siteUrl, withOpacity } from './background-shared.js'
-import { routePatternToRegex } from '@uniweb/core/route-match'
+import { routePatternToRegex, isDynamicRoute } from '@uniweb/core/route-match'
 import { DEFAULT_ICON_BASE, iconUrl } from '@uniweb/core/icon-corpus'
 import { buildSectionOverrides, FONT_LINKS_MARKER } from '@uniweb/theming'
 import { prepareProps, getComponentMeta } from './prepare-props.js'
@@ -803,7 +803,13 @@ export function generate404Html({ baseHtml, website, siteContent }) {
   // than a second regex built here: this file used to build its own with
   // `:[^/]+`, which disagreed with core's `:(\w+)` on any param name carrying a
   // non-word character. See @uniweb/core/route-match for the whole story.
-  const dynamicTemplates = siteContent.pages?.filter((p) => p.isDynamic) || []
+  // ⛔ **ROUTE, NOT THE FLAG — a filter must not read absence as "not parametric".**
+  // This filtered on `p.isDynamic` alone. A producer that marks only the bracket
+  // page (or none at all) left every parametric route out of the list, so a cold
+  // hit on one showed the 404 body and never cleared #root for the SPA. The flag
+  // is a producer's claim; the `:` in the route is the thing itself, and every
+  // flagged page has one — so this is a superset and cannot lose a route.
+  const dynamicTemplates = siteContent.pages?.filter((p) => p.isDynamic || isDynamicRoute(p.route)) || []
   const routePatterns = dynamicTemplates.map((p) => routePatternToRegex(p.route).regex.source)
 
   let html = baseHtml

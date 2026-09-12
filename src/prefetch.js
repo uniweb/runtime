@@ -52,7 +52,7 @@
  */
 import { resolveFetchConfigs, routeQuery, sectionFetches } from '@uniweb/core/fetch-config'
 import { deriveCacheKey } from '@uniweb/core/datastore'
-import { routePatternToRegex, decodeRouteValue, isDynamicRoute, routeBinding, parentRouteOf } from '@uniweb/core/route-match'
+import { findPageForRoute, isDynamicRoute, routeBinding, parentRouteOf } from '@uniweb/core/route-match'
 import { buildDetailConfig } from '@uniweb/core/detail-url'
 import { resolveDefaultLocale } from '@uniweb/core/locale-config'
 import { createDefaultFetcher } from './default-fetcher.js'
@@ -60,34 +60,19 @@ import { createDefaultFetcher } from './default-fetcher.js'
 const isRefinement = (f) => f && typeof f === 'object' && f.refine === true
 
 /**
- * The page a route names — exact first, then the parametric pages, like the SPA.
- * Captured params are decoded the way `matchDynamicRoute` decodes them (a
- * catch-all per segment), so the values are what the site's query is bound against.
+ * ⭐ **RE-EXPORTED, NOT IMPLEMENTED HERE — the rule lives in `@uniweb/core/route-match`.**
  *
- * ⭐ A page is parametric when its ROUTE has a parameter — the test the SPA uses
- * (`Website.getPage`). ⛔ This tested the payload's `isDynamic` flag until
- * 2026-09-11, which our build sets only on a bracket folder: a page nested inside
- * one (`/members/:slug/cv`) routed in the browser and was never found here.
+ * This module carried its own copy until 2026-09-12, composed out of core's leaves,
+ * and it disagreed with the SPA: this copy compared raw route strings, while
+ * `Website#getPage` normalizes a trailing slash — so `/about/` prefetched nothing
+ * and then rendered fine, which is the shape that hides the split.
+ *
+ * ⇒ The leaves were importable and the RULE was not, which is what invites a caller
+ * to compose its own. Moving it into the leaf every caller already imports leaves one
+ * answer to *which page is this* and nowhere for a second to form. The export keeps
+ * its name here and on `@uniweb/runtime/ssr`, so the isolate API is unchanged.
  */
-export function findPageForRoute(content, route) {
-  const pages = content?.pages || []
-  const exact = pages.find((p) => p.route === route)
-  if (exact) return { page: exact, params: {} }
-  for (const page of pages) {
-    if (!page.route || !isDynamicRoute(page.route)) continue
-    const compiled = routePatternToRegex(page.route)
-    const m = compiled?.regex ? compiled.regex.exec(route) : null
-    if (m) {
-      const params = {}
-      ;(compiled.paramNames || []).forEach((n, i) => {
-        const raw = m[i + 1]
-        params[n] = n === compiled.catchAll ? raw.split('/').map(decodeRouteValue).join('/') : decodeRouteValue(raw)
-      })
-      return { page, params }
-    }
-  }
-  return { page: null, params: {} }
-}
+export { findPageForRoute }
 
 /**
  * The page a page inherits from, by the one rule every lane uses (`parentRouteOf`):

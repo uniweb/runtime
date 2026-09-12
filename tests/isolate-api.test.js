@@ -77,7 +77,7 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
     expect(
       UNRELEASED_EXPORTS,
       `after the next @uniweb/runtime publish, restamp these with the version it produced ` +
-        `and raise isolateApiFloor: ${UNRELEASED_EXPORTS.join(', ')}`,
+        `and raise MIN_USABLE_RUNTIME: ${UNRELEASED_EXPORTS.join(', ')}`,
     ).toBeInstanceOf(Array)
   })
 
@@ -85,8 +85,8 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
   // the implementation against itself and pass for any value; literals are what
   // make raising the floor a deliberate edit a reviewer sees. It is also the
   // number a publisher ratchets, so a silent move is the thing to prevent.
-  it('the floor is 0.20.3 — set deliberately on the WIRE, not derived from the newest export', () => {
-    expect(MIN_USABLE_RUNTIME).toBe('0.20.3')
+  it('the floor is 0.21.0 — set deliberately on the WIRE, not derived from the newest export', () => {
+    expect(MIN_USABLE_RUNTIME).toBe('0.21.0')
     expect(MIN_USABLE_RUNTIME).toMatch(/^\d+\.\d+\.\d+$/)
 
     // ⭐ THE FLOOR IS SET ON THE WIRE, NOT DERIVED FROM THE EXPORT MAP — and the
@@ -98,11 +98,11 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
     // map and still cannot be used — which a floor derived from export presence
     // alone cannot say. That break is still real and still below this number.
     //
-    // ⭐ It is now 0.20.3 for an additional reason [Diego, 2026-09-12]: while in
+    // ⭐ It is now 0.21.0 for an additional reason [Diego, 2026-09-12]: while in
     // 0.x, the floor may be raised simply so nobody has to check what a version
     // supports. ⇒ A raise no longer implies an incompatibility at the new number,
-    // so do not read this literal as "0.20.3 broke something".
-    expect(WIRE_FLOOR).toBe('0.20.3')
+    // so do not read this literal as "0.21.0 broke something".
+    expect(WIRE_FLOOR).toBe('0.21.0')
     expect(ISOLATE_API.collectSiteRecords).toBe('0.17.0')
     expect(compareVersions(WIRE_FLOOR, ISOLATE_API.collectSiteRecords)).toBeGreaterThan(0)
 

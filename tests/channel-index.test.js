@@ -702,21 +702,26 @@ describe('the rename to `minUsable` — 2026-09-06', () => {
   }
 
   it('emits ONE spelling — the dual emit ended when its reader confirmed', () => {
-    // `isolateApiFloor` rode beside this for one publish so a reader that had
-    // not moved would not silently lose the floor. The reader confirmed on
-    // 2026-09-07 that it reads `minUsable` and no longer reads the old key,
+    // An earlier key rode beside this for one publish so a reader that had not
+    // moved would not silently lose the floor. The reader confirmed on
+    // 2026-09-07 that it reads `minUsable` and no longer reads the older one,
     // which was the stated trigger.
+    // ⭐ Asserted by SHAPE rather than by naming the retired key: no floor-ish
+    // key other than `minUsable` may be emitted, whatever it might be called.
     const doc = JSON.parse(serializeIndex(withFloor()))
     expect(doc.minUsable).toBe('0.18.0')
-    expect(doc).not.toHaveProperty('isolateApiFloor')
+    expect(Object.keys(doc).filter((k) => /floor/i.test(k))).toEqual([])
   })
 
   // ⭐ THE OLD KEY IS NOT READ ANY MORE, and this pins that rather than leaving
   // its absence to inference. Both halves of the transition had their own
   // trigger and both fired: the emit stopped when the reader confirmed, the
   // parse stopped when the published index carried `minUsable`.
-  it('⛔ an index carrying ONLY the old key yields no floor — absent means none', () => {
-    const old = { schema: 1, name: '@uniweb/runtime', versions: {}, isolateApiFloor: '0.17.0' }
-    expect(parseIndex(old).minUsable).toBeNull()
+  it('⛔ only `minUsable` is read — absent means none', () => {
+    const noFloor = { schema: 1, name: '@uniweb/runtime', versions: {} }
+    expect(parseIndex(noFloor).minUsable).toBeNull()
+    // and a floor under any OTHER key is not read as one
+    const foreign = { schema: 1, name: '@uniweb/runtime', versions: {}, someLegacyFloor: '0.17.0' }
+    expect(parseIndex(foreign).minUsable).toBeNull()
   })
 })

@@ -404,10 +404,11 @@ export function parseIndex(json, { name } = {}) {
     // Carried through, not restated: the floor is a ratchet over every publish
     // (invariant 8), and dropping it on a rewrite would silently lower it.
     //
-    // ⭐ ONE SPELLING ON BOTH SIDES SINCE 2026-09-07. A back-compat read of
-    // `isolateApiFloor` lived here while the published index still carried only
-    // that key; the trigger written beside it was `has("minUsable")` on the live
-    // index, and the publish that rewrote it met that trigger.
+    // ⭐ ONE SPELLING ON BOTH SIDES SINCE 2026-09-07. A back-compat read of an
+    // earlier key lived here while the published index still carried only that
+    // key; the trigger written beside it was `has("minUsable")` on the live
+    // index, and the publish that rewrote it met that trigger. `minUsable` is
+    // now the only spelling read or written.
     minUsable: parseVersion(obj.minUsable) ? obj.minUsable : null,
     versions: { ...(obj.versions || {}) }
   }
@@ -642,11 +643,11 @@ export function serializeIndex(index) {
       latest: index.latest,
       // Omitted, never null, when no floor has been recorded: absent means none.
       //
-      // ⭐ ONE SPELLING AGAIN, 2026-09-07. `isolateApiFloor` rode beside this for
-      // one publish so a reader that had not moved would not silently lose the
-      // floor; **the reader confirmed it reads `minUsable` and no longer reads the
-      // old key**, which was the stated trigger, so the second line is gone. The
-      // unit of grace was that confirmation, and it arrived.
+      // ⭐ ONE SPELLING AGAIN, 2026-09-07. An earlier key rode beside this for one
+      // publish so a reader that had not moved would not silently lose the floor;
+      // **the reader confirmed it reads `minUsable` and no longer reads the older
+      // one**, which was the stated trigger, so the second line is gone. The unit
+      // of grace was that confirmation, and it arrived.
       ...(index.minUsable ? { minUsable: index.minUsable } : {}),
       versions
     },

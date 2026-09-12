@@ -164,7 +164,7 @@ export const ISOLATE_API = Object.freeze({
  * ⚖️ Revisit at 1.0: once sites are pinned in the field, *"it does not break
  * sites"* stops being free, and this paragraph is the thing to re-argue.
  */
-export const WIRE_FLOOR = '0.20.3'
+export const WIRE_FLOOR = '0.21.0'
 
 /**
  * ⭐ **THE MINIMUM RUNTIME VERSION A SITE MAY BE PUBLISHED AT.** At or above it,
@@ -172,13 +172,17 @@ export const WIRE_FLOOR = '0.20.3'
  * current records service; below it, a runtime **does not work** — not "is
  * unsupported".
  *
- * ⛔ **Named `ISOLATE_API_FLOOR` until 2026-09-06, and the name was wrong twice
- * over**: the API map is only one of its inputs, and "floor" said nothing about
- * what falls below it. *[Diego: "I wasn't convinced by `isolateApiFloor` when it
- * was introduced."]* ⭐ **`usable` is a claim of FACT, and it is chosen to resist
- * a drift** — raise this for an incompatibility, never for a feature, a fix or a
- * preference, and a name that says *usable* makes the wrong reason read wrong.
- * On the wire it is `minUsable`.
+ * ⛔ **The earlier name was wrong twice over, and was replaced 2026-09-06**: the
+ * API map is only one of its inputs, and "floor" said nothing about what falls
+ * below it. **[Diego, 2026-09-06]** was not convinced by it and said changing it
+ * was easy — which removed the only cost the argument for keeping it rested on.
+ * ⭐ **`usable` is a claim of FACT** — below it a runtime does not work, rather
+ * than merely being unsupported.
+ *
+ * ⚠️ **The drift that name was chosen to resist was RELAXED 2026-09-12** — see
+ * `WIRE_FLOOR` above: while pre-1.0 the floor may be raised simply so nobody has
+ * to check what a version supports, so a raise no longer implies a break at the
+ * new number. **On the wire it is `minUsable`, and that is the only spelling.**
  */
 export const MIN_USABLE_RUNTIME = [WIRE_FLOOR, ...Object.values(ISOLATE_API)]
   .filter((v) => v !== UNRELEASED)

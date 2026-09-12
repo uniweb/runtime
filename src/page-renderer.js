@@ -66,12 +66,24 @@ export function createPageRenderer({ website, shell }) {
    *   page: Object|null, error: {type: string, message: string}|null }}
    */
   function render(target, { inject = {} } = {}) {
-    const page = typeof target === 'string' ? resolvePage(website, target) : target
+    const resolved = typeof target === 'string' ? resolvePage(website, target) : target
 
     // ⛔ Not an error: nothing matched, which is a genuine 404 and the caller's to
     // turn into one — a build skips it, an isolate serves its 404 page with a 404
     // status. Returning `failed` here would make those indistinguishable.
-    if (!page) return { outcome: 'notFound', html: null, page: null, error: null }
+    if (!resolved) return { outcome: 'notFound', html: null, page: null, error: null }
+
+    // ⭐ **THE INDEX-CHILD PROMOTION APPLIES TO BOTH TARGET FORMS** — ruled
+    // 2026-09-12 [Diego]. A content-less folder with a designated `isIndex` child
+    // renders that child. `Website#getPage` already did this for a ROUTE on its
+    // exact-match branches, and nothing did it for an already-resolved Page, so the
+    // same page rendered differently depending on which form the caller happened to
+    // hold — silently, with no error on either path. `getRenderableSelf` is the one
+    // rule for it and now has exactly one caller: here.
+    // ⚠️ Guarded on the method rather than assumed: the documented target is a Page,
+    // but a caller handing in plain page data should degrade to "render what I gave
+    // you", not throw.
+    const page = typeof resolved.getRenderableSelf === 'function' ? resolved.getRenderableSelf() : resolved
 
     let result
     try {

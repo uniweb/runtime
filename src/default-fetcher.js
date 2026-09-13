@@ -257,11 +257,12 @@ export function createDefaultFetcher({ basePath = '', dev = false, fetch: fetchI
  * One question of a batch, in the records service's own vocabulary
  * (the records contract, §2): `schema` required, `scope` a bare path, `sort`
  * one key spelled `date` / `-date`, `whole` when the whole record is wanted,
- * `match` on a parametric page's record. The where-object crosses as authored
- * except for the one spelling the language settled differently from the
- * evaluator's: `nin` is `not_in` there. Anything the service does not accept
- * (`like`, a dotted path) is sent as written and refused there by name: loud,
- * never approximated.
+ * `match` on a parametric page's record. ⭐ The where-object crosses exactly as
+ * authored: the evaluator and the service speak one language (`@uniweb/core`'s where evaluator).
+ * ⛔ `nin` was respelled `not_in` here until 2026-09-13, when the evaluator took
+ * `not_in` as its only spelling. Anything the service does not answer (a dotted
+ * path, a retired operator) is sent as written and answered there: never
+ * approximated.
  */
 function toQuestion(request) {
   const q = { schema: request.schema }
@@ -271,7 +272,7 @@ function toQuestion(request) {
   // [Diego] — the build refuses it now, so there is nothing left to respell.
   const scope = typeof request.scope === 'string' && request.scope ? request.scope : null
   if (scope) q.scope = scope
-  if (where) q.where = renameOperators(where)
+  if (where) q.where = where
   // ⭐ The record of a parametric page: the question unchanged plus `match` — one
   // key and the URL's value, beside the author's `where`, never merged into it
   // (`buildDetailConfig`; the records contract as we read it, §1d).
@@ -290,17 +291,6 @@ function toQuestion(request) {
   // ⛔ `maxPages` does not cross either, for the same reason `exhaustive` does not:
   // both say how many times to ask, never what is being asked.
   return q
-}
-
-const OPERATOR_ALIAS = { nin: 'not_in' }
-function renameOperators(where) {
-  if (Array.isArray(where)) return where.map(renameOperators)
-  if (!where || typeof where !== 'object') return where
-  const out = {}
-  for (const [key, value] of Object.entries(where)) {
-    out[OPERATOR_ALIAS[key] ?? key] = value && typeof value === 'object' ? renameOperators(value) : value
-  }
-  return out
 }
 
 /**

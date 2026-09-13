@@ -75,11 +75,12 @@ describe('one question — the request map and the answer', () => {
 })
 
 describe('the door\'s vocabulary — what crosses as written and what is respelled', () => {
-  it('`nin` crosses as `not_in`; everything else as authored', async () => {
+  it('the where-object crosses exactly as authored — `not_in` included, and nothing is respelled', async () => {
     const { fetch, calls } = doorStub({ data: { members: [] } })
     const f = createDefaultFetcher({ fetch })
-    await f.resolve({ ...list, where: { status: { nin: ['draft'] }, or: [{ a: 1 }, { b: { in: [2] } }] } })
-    expect(calls[0].body.members.where).toEqual({ status: { not_in: ['draft'] }, or: [{ a: 1 }, { b: { in: [2] } }] })
+    const where = { status: { not_in: ['draft'] }, title: { starts_with: 'the' }, or: [{ a: 1 }, { b: { in: [2] } }] }
+    await f.resolve({ ...list, where })
+    expect(calls[0].body.members.where).toEqual(where)
   })
 
   it('`scope` crosses as authored, and `where` is not respelled — `path: { under }` is retired (2026-09-11)', async () => {

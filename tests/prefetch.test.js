@@ -260,10 +260,42 @@ describe('the prefetch asks exactly what the render will ask — parity with the
     pages: CONTENT.pages.map((p) => (p.route === '/team' ? { ...p, fetch: { ...p.fetch, limit: 2 }, sections: [] } : p)),
   }
 
-  for (const [label, content] of [['with pages[].parent', CONTENT], ['without it', noParent], ['on the compiled file, under a list limit', limited]]) {
+  // ⭐ `current:` (2026-09-13): each section under the route key asks its own view —
+  // the list one longer for `exclude`, the list as declared for `include`.
+  const people = { query: 'members', path: '/data/members.json', as: 'people' }
+  const withCurrent = (config) => ({
+    config,
+    pages: [
+      { route: '/team', parent: null, fetch: people, sections: [] },
+      { route: '/team/:slug', parent: '/team', isDynamic: true, paramName: 'slug', sections: [
+        { type: 'Profile' },
+        { type: 'Related', fetch: { ...people, current: 'exclude', limit: 2 } },
+        // a limit apart from Related's one-longer view, so neither key covers the other
+        { type: 'Pager', fetch: { ...people, current: 'include', limit: 5 } },
+      ] },
+    ],
+  })
+  // ⭐ a page nested inside the parametric page, whose route query sits two levels up
+  const nestedTwoUp = {
+    config: staticConfig,
+    pages: [
+      { route: '/team', parent: null, fetch: { ...people, limit: 2 }, sections: [] },
+      { route: '/team/:slug', parent: '/team', isDynamic: true, paramName: 'slug', sections: [] },
+      { route: '/team/:slug/cv', parent: '/team/:slug', isDynamic: true, paramName: 'slug', sections: [{ type: 'Cv' }] },
+    ],
+  }
+
+  for (const [label, content, route = '/team/ada'] of [
+    ['with pages[].parent', CONTENT],
+    ['without it', noParent],
+    ['on the compiled file, under a list limit', limited],
+    ['with current: exclude and include, on the compiled file', withCurrent(staticConfig)],
+    ['with current: exclude and include, on the records service', withCurrent(CONTENT.config)],
+    ['on a nested page whose route query is two levels up', nestedTwoUp, '/team/ada/cv'],
+  ]) {
     it(`covers every key the render asks on a parametric page — ${label}`, async () => {
-      const render = await renderKeys(content, '/team/ada')
-      const pre = prefetchKeys(content, '/team/ada')
+      const render = await renderKeys(content, route)
+      const pre = prefetchKeys(content, route)
       expect(render.size).toBeGreaterThan(0)
       for (const key of render) expect(pre.has(key), `render asked ${key}`).toBe(true)
     })

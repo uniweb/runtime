@@ -50,14 +50,12 @@
  * `{base}/…` from the payload, or the records service the host itself
  * published at `config.services.records`.
  */
-import { resolveFetchConfigs, routeQuery, routeSelection, sectionFetches } from '@uniweb/core/fetch-config'
+import { resolveFetchConfigs, pageRouteQuery, routeSelection, currentOf, othersView } from '@uniweb/core/fetch-config'
 import { deriveCacheKey } from '@uniweb/core/datastore'
 import { findPageForRoute, isDynamicRoute, routeBinding, parentRouteOf } from '@uniweb/core/route-match'
 import { buildDetailConfig } from '@uniweb/core/detail-url'
 import { resolveDefaultLocale } from '@uniweb/core/locale-config'
 import { createDefaultFetcher } from './default-fetcher.js'
-
-const isRefinement = (f) => f && typeof f === 'object' && f.refine === true
 
 /**
  * ⭐ **RE-EXPORTED, NOT IMPLEMENTED HERE — the rule lives in `@uniweb/core/route-match`.**
@@ -113,11 +111,22 @@ export function resolvePageFetchConfigs(content, route, { locale = null } = {}) 
     variables: binding?.variables ?? null,
   }
   const siteFetch = content?.config?.fetch ?? null
-  // The route query: the key this page's URL names one record of, by the rule the
-  // entity store reads it with (`routeQuery`) — never a payload field.
-  const routeKey = binding
-    ? routeQuery({ page: page.fetch, parent: parent?.fetch, site: siteFetch, sections: sectionFetches(page.sections) })?.key ?? null
+  // The route query: the key this page's URL names one record of, chosen at the page
+  // that captured its variable — by the rule the entity store reads it with
+  // (`pageRouteQuery`) — never a payload field.
+  const chosen = binding
+    ? pageRouteQuery(page, {
+        routeOf: (p) => p.route,
+        parentOf: (p) => parentPageOf(p, pages),
+        fetchOf: (p) => p.fetch ?? null,
+        sectionsOf: (p) => p.sections,
+        site: siteFetch,
+      })
     : null
+  const routeKey = chosen?.key ?? null
+  // A nested page's sections receive its capturing page's route binding, which the
+  // one-parent cascade may not reach — the entity store adds it the same way.
+  const routeSource = chosen?.nested ? chosen.config : null
 
   const out = new Map()
   const put = (cfg) => {
@@ -126,28 +135,38 @@ export function resolvePageFetchConfigs(content, route, { locale = null } = {}) 
   }
   const add = (sources) => {
     for (const cfg of resolveFetchConfigs(sources, options).values()) {
-      put(cfg)
+      const current = routeKey && cfg.as === routeKey ? currentOf(cfg) : null
+      if (current === 'exclude') {
+        // the list one longer, from which the render removes the page's record
+        put(othersView(cfg))
+        continue
+      }
+      if (current !== 'only') {
+        // any other key, or `current: include` — the list as the binding describes it
+        put(cfg)
+        continue
+      }
       // ⭐ A parametric page is ABOUT one record, and on a lane with a per-record
       // source (the records service, a `deferred:` query's per-record file) that
       // record is a request of its own. Built for EVERY config the route key
       // resolves to — a section re-declaring the route query asks its own record
       // question — by the one rule the entity store uses (`buildDetailConfig`), so
       // the question prefetched is the question the render asks.
-      if (routeKey && cfg.as === routeKey && cfg.detail && binding.paramValue !== undefined) {
+      if (cfg.detail && binding.paramValue !== undefined) {
         const detailCfg = buildDetailConfig(cfg, { paramName: binding.paramName, paramValue: String(binding.paramValue) })
         if (detailCfg) put(detailCfg)
       }
-      // ⭐ Off the records service the record is FOUND in the route query's whole
-      // selection — the list without its `limit` (`routeSelection`), which is what
-      // the entity store reads for it. The same config when there is no `limit`.
-      if (routeKey && cfg.as === routeKey && !cfg.ask) put(routeSelection(cfg))
+      // On the records service the list is asked beside the record; off it, the
+      // record is FOUND in the route query's whole selection — the list without its
+      // `limit` (`routeSelection`) — which is all the render reads for it.
+      put(cfg.ask ? cfg : routeSelection(cfg))
     }
   }
-  // The cascade a block sees: its own fetch (unless a refinement), page, parent, site.
-  add([page.fetch ?? null, parent?.fetch ?? null, siteFetch])
+  // The cascade a block sees: its own fetch, page, parent, a nested page's route binding, site.
+  add([page.fetch ?? null, parent?.fetch ?? null, routeSource, siteFetch])
   const walk = (sections) => {
     for (const s of sections || []) {
-      if (s?.fetch && !isRefinement(s.fetch)) add([s.fetch, page.fetch ?? null, parent?.fetch ?? null, siteFetch])
+      if (s?.fetch) add([s.fetch, page.fetch ?? null, parent?.fetch ?? null, routeSource, siteFetch])
       if (s?.subsections) walk(s.subsections)
     }
   }

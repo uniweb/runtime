@@ -50,7 +50,7 @@
  * `{base}/…` from the payload, or the records service the host itself
  * published at `config.services.records`.
  */
-import { resolveFetchConfigs, routeQuery, sectionFetches } from '@uniweb/core/fetch-config'
+import { resolveFetchConfigs, routeQuery, routeSelection, sectionFetches } from '@uniweb/core/fetch-config'
 import { deriveCacheKey } from '@uniweb/core/datastore'
 import { findPageForRoute, isDynamicRoute, routeBinding, parentRouteOf } from '@uniweb/core/route-match'
 import { buildDetailConfig } from '@uniweb/core/detail-url'
@@ -137,6 +137,10 @@ export function resolvePageFetchConfigs(content, route, { locale = null } = {}) 
         const detailCfg = buildDetailConfig(cfg, { paramName: binding.paramName, paramValue: String(binding.paramValue) })
         if (detailCfg) put(detailCfg)
       }
+      // ⭐ Off the records service the record is FOUND in the route query's whole
+      // selection — the list without its `limit` (`routeSelection`), which is what
+      // the entity store reads for it. The same config when there is no `limit`.
+      if (routeKey && cfg.as === routeKey && !cfg.ask) put(routeSelection(cfg))
     }
   }
   // The cascade a block sees: its own fetch (unless a refinement), page, parent, site.

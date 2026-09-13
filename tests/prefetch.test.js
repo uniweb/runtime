@@ -251,8 +251,16 @@ describe('the prefetch asks exactly what the render will ask — parity with the
   }
   const prefetchKeys = (content, route) => new Set(resolvePageFetchConfigs(content, route).map(deriveCacheKey))
   const noParent = { ...CONTENT, pages: CONTENT.pages.map(({ parent, ...page }) => page) }
+  // ⭐ The compiled-file lane under a list `limit`: the record is found in the route
+  // query's whole selection (`routeSelection`, 2026-09-13), which is a key of its own —
+  // prefetched, or the page's own record is asked again in the browser.
+  const { services, ...staticConfig } = CONTENT.config
+  const limited = {
+    config: staticConfig,
+    pages: CONTENT.pages.map((p) => (p.route === '/team' ? { ...p, fetch: { ...p.fetch, limit: 2 }, sections: [] } : p)),
+  }
 
-  for (const [label, content] of [['with pages[].parent', CONTENT], ['without it', noParent]]) {
+  for (const [label, content] of [['with pages[].parent', CONTENT], ['without it', noParent], ['on the compiled file, under a list limit', limited]]) {
     it(`covers every key the render asks on a parametric page — ${label}`, async () => {
       const render = await renderKeys(content, '/team/ada')
       const pre = prefetchKeys(content, '/team/ada')

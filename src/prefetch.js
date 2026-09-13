@@ -50,11 +50,12 @@
  * `{base}/…` from the payload, or the records service the host itself
  * published at `config.services.records`.
  */
-import { resolveFetchConfigs, pageRouteQuery, routeSelection, currentOf, othersView } from '@uniweb/core/fetch-config'
+import { resolveFetchConfigs, pageRouteQuery, routeSelection, currentOf, othersView, siteReaches } from '@uniweb/core/fetch-config'
 import { deriveCacheKey } from '@uniweb/core/datastore'
 import { findPageForRoute, isDynamicRoute, routeBinding, parentRouteOf } from '@uniweb/core/route-match'
 import { buildDetailConfig } from '@uniweb/core/detail-url'
 import { resolveDefaultLocale } from '@uniweb/core/locale-config'
+import { findLayoutEntry } from '@uniweb/core/layout-name'
 import { createDefaultFetcher } from './default-fetcher.js'
 
 /**
@@ -87,10 +88,35 @@ function parentPageOf(page, pages) {
 }
 
 /**
+ * The layout sections a page may render — every section of the layout areas it can
+ * use, subsections included. A page that names a layout uses that set (matched as the
+ * runtime matches it, `@uniweb/core/layout-name`) and nothing else; a page that names
+ * none uses its foundation's default layout, which a payload does not say, so every
+ * set's sections are included — a superset, which a prefetch can afford.
+ */
+function layoutSectionsFor(content, page) {
+  const sets = content?.layouts && typeof content.layouts === 'object' ? content.layouts : {}
+  const name = typeof page?.layout?.name === 'string' && page.layout.name ? page.layout.name : null
+  const named = name ? findLayoutEntry(sets, name) : undefined
+  const chosen = name ? (named ? [named] : []) : Object.values(sets)
+  const out = []
+  const walk = (sections) => {
+    for (const s of sections || []) {
+      if (!s || typeof s !== 'object') continue
+      out.push(s)
+      walk(s.subsections)
+    }
+  }
+  for (const set of chosen) for (const area of Object.values(set || {})) walk(area?.sections)
+  return out
+}
+
+/**
  * Every fetch config a page will need at render time, resolved once and de-duplicated by
- * cache key: the site-level fetch, the page's, its parent's, and each section's own
- * (including nested sections), each through `resolveFetchConfigs` — the same resolver the
- * entity store uses, so a host prefetches exactly what the render will ask for.
+ * cache key: the page's, its parent's, each section's own (including nested sections),
+ * its layout sections', and the site's where it reaches (`siteReaches`) — each through
+ * `resolveFetchConfigs`, the same resolver the entity store uses, so a host prefetches
+ * exactly what the render will ask for.
  *
  * @returns {Object[]} resolved fetch configs
  */
@@ -162,15 +188,20 @@ export function resolvePageFetchConfigs(content, route, { locale = null } = {}) 
       put(cfg.ask ? cfg : routeSelection(cfg))
     }
   }
-  // The cascade a block sees: its own fetch, page, parent, a nested page's route binding, site.
-  add([page.fetch ?? null, parent?.fetch ?? null, routeSource, siteFetch])
+  // The cascade a block sees: its own fetch, page, parent, a nested page's route
+  // binding, and the site's — which reaches a top-level page's sections only.
+  const siteForPage = siteReaches(parent) ? siteFetch : null
+  add([page.fetch ?? null, parent?.fetch ?? null, routeSource, siteForPage])
   const walk = (sections) => {
     for (const s of sections || []) {
-      if (s?.fetch) add([s.fetch, page.fetch ?? null, parent?.fetch ?? null, routeSource, siteFetch])
+      if (s?.fetch) add([s.fetch, page.fetch ?? null, parent?.fetch ?? null, routeSource, siteForPage])
       if (s?.subsections) walk(s.subsections)
     }
   }
   walk(page.sections)
+  // ⭐ Layout sections belong to the site: the site's binding reaches them on every
+  // page, beside each one's own fetch. A layout area has no parent page.
+  for (const s of layoutSectionsFor(content, page)) add([s.fetch ?? null, siteFetch])
   return [...out.values()]
 }
 

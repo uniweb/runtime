@@ -301,3 +301,40 @@ describe('the prefetch asks exactly what the render will ask — parity with the
     })
   }
 })
+
+describe('the site\'s binding is prefetched where it reaches — top-level pages and layout sections (ruled 2026-09-13)', () => {
+  const siteFetch = { query: 'nav', path: '/data/nav.json', as: 'nav' }
+  const content = (layouts = {}) => ({
+    config: { defaultLanguage: 'en', languages: ['en'], fetch: siteFetch },
+    pages: [
+      { route: '/about', parent: null, sections: [{ type: 'Text' }] },
+      { route: '/about/team', parent: '/about', sections: [{ type: 'Text' }] },
+    ],
+    layouts,
+  })
+  const asks = (c, route) => resolvePageFetchConfigs(c, route).map((cfg) => cfg.as)
+
+  it('a top-level page\'s sections — yes', () => {
+    expect(asks(content(), '/about')).toContain('nav')
+  })
+
+  it('⛔ a page under a page, with no layout sections — no', () => {
+    expect(asks(content(), '/about/team')).not.toContain('nav')
+  })
+
+  it('a page under a page still renders its layout sections, which the site\'s binding reaches — with their own fetches', () => {
+    const layouts = { default: { header: { route: '/layout/header', sections: [{ type: 'Header', fetch: { query: 'alerts', path: '/data/alerts.json', as: 'alerts' } }] } } }
+    expect(asks(content(layouts), '/about/team')).toEqual(expect.arrayContaining(['nav', 'alerts']))
+  })
+
+  it('a page that names a layout gets that layout\'s sections only', () => {
+    const layouts = {
+      default: { header: { sections: [{ type: 'H', fetch: { query: 'alerts', path: '/data/alerts.json', as: 'alerts' } }] } },
+      Docs: { header: { sections: [{ type: 'H', fetch: { query: 'toc', path: '/data/toc.json', as: 'toc' } }] } },
+    }
+    const c = content(layouts)
+    c.pages[1].layout = { name: 'docs' }
+    expect(asks(c, '/about/team')).toContain('toc')
+    expect(asks(c, '/about/team')).not.toContain('alerts')
+  })
+})

@@ -30,12 +30,13 @@
  * and drops a retired key from the payload, so an author's backend does not
  * silently stop being reached.
  *
- * Per-fetch, the request may still carry `method: 'POST'` + `body:` for a
- * backend that takes a query in a body (GraphQL, a search endpoint);
- * `{paramName}` placeholders in body strings are substituted from
- * `request.dynamicContext`, so a template page's detail query can reference
- * its route param. `transform:` and the object form of `detail:` (its own
- * `envelope`) stay per fetch too — they describe ONE response, not a backend.
+ * A request may carry `method: 'POST'` + `body:` for an endpoint that takes a
+ * query in a body (GraphQL, a search endpoint) — an external query's, or its
+ * `record:` request's — and `transform:`, a dot-path to the records in ONE
+ * response. `{paramName}` placeholders in body strings are substituted from
+ * `request.dynamicContext`, so a parametric page's record request can reference
+ * its route param. ⛔ `envelope` (the object form of `detail:`) is retired with
+ * it, 2026-09-13: a record request's own `transform` is `record.transform`.
  *
  * Exported from a subpath — `@uniweb/runtime/default-fetcher` — for
  * runtime-level callers (the editor's preview iframe, custom runtime
@@ -192,42 +193,16 @@ export function createDefaultFetcher({ basePath = '', dev = false, fetch: fetchI
         const response = await readOnce(target, init)
         if (ctx.signal?.aborted) return { data: [], error: 'aborted' }
 
-        // A per-request envelope (set by the object form of `detail:`) describes
-        // this one response.
-        const envelope = (request.envelope && typeof request.envelope === 'object')
-          ? request.envelope
-          : {}
-
         if (!response.ok) {
-          // If `envelope.error` names a path, try to extract a human message
-          // from the parsed body; fall back to status text if the path is
-          // missing or the body isn't JSON.
-          let extracted
-          if (envelope.error && typeof response.text === 'string') {
-            const body = safeParseJSON(response.text)
-            if (body !== undefined) {
-              const candidate = getNestedValue(body, envelope.error)
-              if (typeof candidate === 'string' && candidate.length) {
-                extracted = candidate
-              }
-            }
-          }
-          return {
-            data: [],
-            error: extracted ?? `HTTP ${response.status}: ${response.statusText}`,
-          }
+          return { data: [], error: `HTTP ${response.status}: ${response.statusText}` }
         }
 
         let data = response.body
 
-        // Unwrap the response. Per-fetch `transform:` wins; otherwise the
-        // envelope's `item` path on a single-record request, `list` on a list.
-        const isDetailRequest = !!request.dynamicContext
-        const effectiveTransform =
-          transform
-          || (isDetailRequest ? envelope.item : envelope.list)
-        if (effectiveTransform && data !== null && data !== undefined) {
-          data = getNestedValue(data, effectiveTransform)
+        // Unwrap the response: the request's own `transform:`, and nothing else — a
+        // record request carries its `record.transform`, never the list's.
+        if (transform && data !== null && data !== undefined) {
+          data = getNestedValue(data, transform)
         }
 
         // Evaluate the query locally. Only applies to array data
@@ -481,8 +456,8 @@ async function flushAsked(url, queue, doFetch) {
 /**
  * Read one response and parse its body — the part of a fetch every view of an
  * address shares. A JSON body is parsed as JSON; anything else is tried as JSON
- * and kept as text when it is not. A failed response keeps its text, so a view
- * whose envelope names an error path can read a message out of it.
+ * and kept as text when it is not. A failed response keeps its text, so a caller
+ * can read a message out of it (the records service's problem details).
  */
 async function readResponse(doFetch, target, init) {
   const response = await doFetch(target, init)

@@ -155,67 +155,45 @@ describe('createDefaultFetcher — basePath (subpath deploys)', () => {
 })
 
 
-describe('createDefaultFetcher — a per-request envelope (the object form of detail:)', () => {
-  // A per-request envelope describes ONE response — the record a template
-  // page asked for — not a backend. It is the only envelope the default
-  // fetcher reads besides the host's stamp: the site-level `fetcher.envelope`
-  // was retired 2026-09-04.
+describe('createDefaultFetcher — a response is unwrapped by the request\'s own `transform`, and nothing else', () => {
+  // ⛔ A per-request `envelope` (the object form of `detail:`) was retired on
+  // 2026-09-13: an external query's `record:` carries its own `transform`, and a
+  // record request built from it never inherits the list's (`buildDetailConfig`).
   let fetchStub
   beforeEach(() => { fetchStub = stubFetch({ body: {} }) })
   afterEach(() => fetchStub.restore())
 
-  it('envelope.item unwraps a detail response', async () => {
+  it('transform unwraps a list response', async () => {
+    fetchStub.setResponse({ body: { data: { items: [{ id: 1 }, { id: 2 }] } } })
+    const f = createDefaultFetcher()
+    const result = await f.resolve({ url: 'https://api.example.com/articles', transform: 'data.items' })
+    expect(result.data).toEqual([{ id: 1 }, { id: 2 }])
+  })
+
+  it('a record request\'s transform unwraps the record', async () => {
     fetchStub.setResponse({ body: { data: { article: { id: 42 } } } })
     const f = createDefaultFetcher()
     const result = await f.resolve({
       url: 'https://api.example.com/articles/42',
-      envelope: { list: 'data.items', item: 'data.article' },
-      dynamicContext: { paramName: 'slug', paramValue: '42', schema: 'articles' },
+      transform: 'data.article',
+      dynamicContext: { paramName: 'slug', paramValue: '42' },
     })
     expect(result.data).toEqual({ id: 42 })
   })
 
-  it('envelope.list unwraps a list response', async () => {
-    fetchStub.setResponse({ body: { data: { items: [{ id: 1 }, { id: 2 }] } } })
+  it('⛔ a stale envelope is not read — the response arrives as sent', async () => {
+    fetchStub.setResponse({ body: { data: { items: [3, 4] } } })
     const f = createDefaultFetcher()
-    const result = await f.resolve({ url: 'https://api.example.com/articles', envelope: { list: 'data.items' } })
-    expect(result.data).toEqual([{ id: 1 }, { id: 2 }])
+    const result = await f.resolve({ url: 'https://api.example.com/x', envelope: { list: 'data.items' } })
+    expect(result.data).toEqual({ data: { items: [3, 4] } })
   })
 
-  it('per-fetch transform wins over envelope.list', async () => {
-    fetchStub.setResponse({ body: { a: { b: [1, 2] }, data: { items: [3, 4] } } })
-    const f = createDefaultFetcher()
-    const result = await f.resolve({ url: 'https://api.example.com/x', transform: 'a.b', envelope: { list: 'data.items' } })
-    expect(result.data).toEqual([1, 2])
-  })
-
-  it('envelope.error extracts error text from a non-2xx body', async () => {
+  it('a non-2xx response reports its status', async () => {
     fetchStub.setResponse({ status: 404, body: { errors: [{ message: 'article not found' }] } })
     const f = createDefaultFetcher()
-    const result = await f.resolve({ url: 'https://api.example.com/x', envelope: { error: 'errors.0.message' } })
+    const result = await f.resolve({ url: 'https://api.example.com/x' })
     expect(result.data).toEqual([])
-    expect(result.error).toBe('article not found')
-  })
-
-  it('envelope.error falls back to status text when the path is missing', async () => {
-    fetchStub.setResponse({ status: 404, body: { other: 'shape' } })
-    const f = createDefaultFetcher()
-    const result = await f.resolve({ url: 'https://api.example.com/x', envelope: { error: 'errors.0.message' } })
     expect(result.error).toMatch(/^HTTP 404/)
-  })
-
-  it('envelope.error falls back when the body is not JSON', async () => {
-    fetchStub.setResponse({ status: 500, body: 'raw text', contentType: 'text/plain' })
-    const f = createDefaultFetcher()
-    const result = await f.resolve({ url: 'https://api.example.com/x', envelope: { error: 'errors.0.message' } })
-    expect(result.error).toMatch(/^HTTP 500/)
-  })
-
-  it('an empty envelope is a no-op', async () => {
-    fetchStub.setResponse({ body: [{ id: 1 }] })
-    const f = createDefaultFetcher()
-    const result = await f.resolve({ url: 'https://api.example.com/x', envelope: {} })
-    expect(result.data).toEqual([{ id: 1 }])
   })
 })
 
@@ -292,17 +270,18 @@ describe('createDefaultFetcher — method + body (POST)', () => {
     expect(fetchStub.calls[0].init.method).toBe('POST')
   })
 
-  it('a per-request envelope unwraps a POSTed detail response', async () => {
+  it('a POSTed record request — its body substituted from the route — unwraps by its own transform', async () => {
     fetchStub.setResponse({ body: { data: { article: { id: 7 } }, other: [] } })
     const f = createDefaultFetcher()
     const result = await f.resolve({
       url: 'https://api.example.com/x',
       method: 'POST',
-      body: { q: 'article' },
-      envelope: { item: 'data.article' },
-      dynamicContext: { paramName: 'slug', paramValue: '7', schema: 'articles' },
+      body: { variables: { slug: '{slug}' } },
+      transform: 'data.article',
+      dynamicContext: { paramName: 'slug', paramValue: '7' },
     })
     expect(result.data).toEqual({ id: 7 })
+    expect(JSON.parse(fetchStub.calls[0].init.body)).toEqual({ variables: { slug: '7' } })
   })
 })
 

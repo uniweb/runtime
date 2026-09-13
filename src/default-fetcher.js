@@ -26,7 +26,7 @@
  * foundation level… making the runtime+core lean."* A backend with its own
  * base, headers, wire or query language is a TRANSPORT — a named
  * `{ resolve, cacheKey? }` the foundation (or an extension) registers and
- * the site selects per schema in `fetcher.transports`. The build warns once
+ * the site selects per binding key (`as`) in `fetcher.transports`. The build warns once
  * and drops a retired key from the payload, so an author's backend does not
  * silently stop being reached.
  *

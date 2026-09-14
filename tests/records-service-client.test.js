@@ -230,6 +230,19 @@ describe("backend's shipped wire — quoted shapes", () => {
     expect(calls).toHaveLength(1)
   })
 
+  it('⭐ a key a source did not answer is marked partial, and says which source', async () => {
+    const unavailable = { source: 'portal-b', code: 'source_unavailable', detail: 'portal-b did not answer' }
+    const { fetch } = doorStub({
+      data: { members: [{ $uuid: 'u1' }] },
+      partial: { members: unavailable },
+    })
+    const f = createDefaultFetcher({ fetch })
+    const result = await f.resolve(list)
+    expect(result.data).toEqual([{ $uuid: 'u1' }])
+    expect(result.meta).toMatchObject({ partial: true, unavailable })
+    expect(result.error).toBeUndefined()
+  })
+
   it('neither a cursor nor a bound means the answer IS the whole population', async () => {
     const { fetch } = doorStub({ data: { members: [{ $uuid: 'u1' }] }, whole: {} })
     const f = createDefaultFetcher({ fetch })

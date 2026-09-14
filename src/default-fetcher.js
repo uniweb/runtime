@@ -368,6 +368,12 @@ async function flushAsked(url, queue, doFetch) {
   // Both absent when empty, never `{}` (the records contract §5).
   const cursors = parsed && typeof parsed.cursors === 'object' && parsed.cursors ? parsed.cursors : {}
   const limits = parsed && typeof parsed.limits === 'object' && parsed.limits ? parsed.limits : {}
+  // ⭐ `partial[key]` — `{ source, code, detail }`: a source of that key did not answer,
+  // and the key carries what the others returned (backend's records-query contract
+  // rev D, 2026-09-13). Unread, a degraded key looked complete. ⚠️ Since the same
+  // revision the service sends neither `errors` nor `limits` — an author's mistake
+  // answers `[]` — so those two reads are inert against it.
+  const degraded = parsed && typeof parsed.partial === 'object' && parsed.partial ? parsed.partial : {}
   queue.forEach((entry, i) => {
     const key = keys[i]
     // ⛔ A FAILURE MUST NOT DISCARD PAGES ALREADY COLLECTED. An exhaustive walk
@@ -433,7 +439,10 @@ async function flushAsked(url, queue, doFetch) {
       // both. ⛔ Named `truncated` when it shipped in 0.17.0 this morning; renamed
       // the same day, before any consumer adopted it, because "truncated" says
       // something was cut and this also means "there is more you did not ask for".
-      partial: (cursor || bound !== undefined) ? true : undefined,
+      //   · a source of the key did not answer (`partial[key]`), and `unavailable`
+      //     carries the service's own account of which one.
+      partial: (cursor || bound !== undefined || key in degraded) ? true : undefined,
+      unavailable: key in degraded ? degraded[key] : undefined,
       pages: entry.page && entry.page > 1 ? entry.page : undefined,
     })
     entry.resolve(meta ? { data: collected, meta } : { data: collected })

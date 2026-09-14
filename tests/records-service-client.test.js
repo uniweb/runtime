@@ -338,6 +338,31 @@ describe("backend's shipped wire — quoted shapes", () => {
   })
 })
 
+describe('⛔ a sort the client cannot respell never stops a batch', () => {
+  // An author's sort outside the language — two keys, a bad direction — is answered by the
+  // service ("ignored — the author's arrangement"), never refused. The client used to throw
+  // while composing the POST, before any request: every question of the page's batch then
+  // stayed pending forever, on either level of the question.
+  const answerEveryKey = (call) => ({ data: Object.fromEntries(Object.keys(call.body).map((k) => [k, []])) })
+
+  it('a bad sort at either level is sent as written, and every question in its batch is answered', async () => {
+    const { fetch, calls } = doorStub(answerEveryKey)
+    const f = createDefaultFetcher({ fetch })
+    const results = await Promise.all([
+      f.resolve({ ...list, as: 'fine' }),
+      f.resolve({ ...list, as: 'top', sort: 'date desc, title' }),
+      f.resolve({ ...list, as: 'narrowed', narrow: { sort: 'date sideways', limit: 3 } }),
+    ])
+    expect(results.map((r) => r.error)).toEqual([undefined, undefined, undefined])
+    expect(results.map((r) => r.data)).toEqual([[], [], []])
+    expect(calls).toHaveLength(1)
+    expect(calls[0].body.top.sort).toBe('date desc, title')
+    expect(calls[0].body.narrowed.narrow).toEqual({ sort: 'date sideways', limit: 3 })
+    // CONTROL — a sort in the language is still respelled
+    expect(calls[0].body.fine.sort).toBe('-name')
+  })
+})
+
 describe('⛔ a ask with no Model ref refuses before any request', () => {
   it('says which query and why, and makes no request', async () => {
     const { fetch } = doorStub({ data: {} })

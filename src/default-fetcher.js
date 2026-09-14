@@ -261,7 +261,7 @@ function toQuestion(request) {
   const scope = typeof request.scope === 'string' && request.scope ? request.scope : null
   if (scope) q.scope = scope
   if (where) q.where = where
-  const sort = sortToWire(request.sort)
+  const sort = wireSort(request.sort)
   if (sort) q.sort = sort
   if (typeof request.limit === 'number' && request.limit > 0) q.limit = request.limit
   // ⛔ ONLY WHEN TRUE. The brief is the default and absent means the brief, so
@@ -293,11 +293,27 @@ function toNarrow(narrow) {
   const n = {}
   if (narrow.where && typeof narrow.where === 'object') n.where = narrow.where
   if (narrow.match && typeof narrow.match === 'object') n.match = narrow.match
-  const sort = sortToWire(narrow.sort)
+  const sort = wireSort(narrow.sort)
   if (sort) n.sort = sort
   if (typeof narrow.cursor === 'string' && narrow.cursor) n.cursor = narrow.cursor
   if (typeof narrow.limit === 'number' && narrow.limit > 0) n.limit = narrow.limit
   return Object.keys(n).length > 0 ? n : null
+}
+
+/**
+ * A `sort` in the service's spelling — `date` / `-date` — or, for one outside the
+ * language, the author's text AS WRITTEN, which the service answers by its own rule
+ * (ignored: the author's arrangement). ⛔ Never a throw: this runs while a page's whole
+ * batch is being composed, before any request, and until 2026-09-14 a sort `parseSort`
+ * refuses — two keys, a bad direction — threw here and left every question of the batch
+ * pending forever.
+ */
+function wireSort(sort) {
+  try {
+    return sortToWire(sort)
+  } catch {
+    return typeof sort === 'string' && sort.trim() ? sort : null
+  }
 }
 
 /**

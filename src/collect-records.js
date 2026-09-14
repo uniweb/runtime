@@ -71,8 +71,8 @@ import { createDefaultFetcher } from './default-fetcher.js'
  *   request per query; the bound holds should a service page anyway.
  * @returns {Promise<{records: Object, errors: Object|null, meta: Object}>}
  *   `records` is keyed by query NAME, each a flat array; `errors` is keyed the
- *   same and is null when nothing failed; `meta[name]` carries
- *   `{ depth, pages, partial?, bound? }`.
+ *   same and is null when nothing failed; `meta[name]`, when there is anything to
+ *   say, carries `{ whole?, pages?, partial?, unavailable? }`.
  *
  *   ⭐ **`partial` means NOT THE WHOLE POPULATION**, and a key can be in BOTH
  *   `records` and `errors`: a walk that failed or was aborted with pages already

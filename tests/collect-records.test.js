@@ -83,15 +83,16 @@ describe('collectSiteRecords', () => {
   })
 
   it('reports a per-key failure without losing the keys that answered', async () => {
+    // A key the service did not answer is the per-key failure left since its rev D,
+    // which answers an author's mistake with `[]` rather than an error.
     const { fetch } = stub([{
       data: { members: [{ $uuid: 'u1' }] },
       whole: {},
-      errors: { posts: { code: 'schema_not_found', detail: 'no Model @std/article' } },
     }])
     const out = await collectSiteRecords(CONTENT, { locale: 'en', fetch })
     expect(out.records.members).toEqual([{ $uuid: 'u1' }])
     expect(out.records).not.toHaveProperty('posts')
-    expect(out.errors.posts).toBe('no Model @std/article')
+    expect(out.errors.posts).toMatch(/answered without the key "posts"/)
   })
 
   // ⛔ Each of these is an ordinary state of a site, not a fault. A static site's

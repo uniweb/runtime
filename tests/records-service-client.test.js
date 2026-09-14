@@ -43,15 +43,18 @@ describe('one question — the request map and the answer', () => {
     expect(result.meta).toEqual({ whole: true })
   })
 
-  it('a key in `errors` is an error, and its data is NOT `[]`', async () => {
-    const { fetch } = doorStub({ data: {}, errors: { members: 'sort field "name" is not in the brief' } })
+  // ⛔ Since backend's records-query contract rev D (2026-09-13) the service sends no
+  // `errors` map: an author's mistake answers `[]` for its key. The client stopped
+  // reading one on 2026-09-14, so a stray map changes nothing.
+  it('an `errors` map is not read — a key\'s answer is its `data`', async () => {
+    const { fetch } = doorStub({ data: { members: [] }, errors: { members: 'ignored' } })
     const f = createDefaultFetcher({ fetch })
     const result = await f.resolve(list)
-    expect(result.error).toMatch(/not in the brief/)
-    expect(result.data).toBeNull()
+    expect(result.data).toEqual([])
+    expect(result.error).toBeUndefined()
   })
 
-  it('a key absent from BOTH data and errors is a protocol violation, reported as an error', async () => {
+  it('a key absent from data is a protocol violation, reported as an error', async () => {
     const { fetch } = doorStub({ data: { other: [] } })
     const f = createDefaultFetcher({ fetch })
     const result = await f.resolve(list)
@@ -107,12 +110,12 @@ describe('the door\'s vocabulary — what crosses as written and what is respell
     expect(calls[0].body.members).toEqual({ schema: '@std/person', scope: 'team', sort: 'name', limit: 20 })
   })
 
-  it('what the ask does not accept is sent as written, to be refused there by name — never approximated', async () => {
-    const { fetch, calls } = doorStub({ data: {}, errors: { members: 'unknown operator "like"' } })
+  it('what the language does not have is sent as written, and answered there — never approximated', async () => {
+    const { fetch, calls } = doorStub({ data: { members: [] } })
     const f = createDefaultFetcher({ fetch })
     const result = await f.resolve({ ...list, where: { name: { like: 'A*' } } })
     expect(calls[0].body.members.where).toEqual({ name: { like: 'A*' } })
-    expect(result.error).toMatch(/like/)
+    expect(result.data).toEqual([])
   })
 })
 
@@ -169,18 +172,6 @@ function problemStub(status, problem) {
 }
 
 describe("backend's shipped wire — quoted shapes", () => {
-  it('a per-key error is `{ code, detail }`: `detail` is the message, `code` rides beside it', async () => {
-    const { fetch } = doorStub({
-      data: { ok: [] }, whole: {},
-      errors: { members: { code: 'schema_not_found', detail: 'no Model named `@nope/x`' } },
-    })
-    const f = createDefaultFetcher({ fetch })
-    const result = await f.resolve(list)
-    expect(result.data).toBeNull()
-    expect(result.error).toBe('no Model named `@nope/x`')
-    expect(result.code).toBe('schema_not_found')
-  })
-
   it('a whole-request refusal surfaces the problem body\'s `detail` on every key of the batch', async () => {
     const { fetch } = problemStub(400, { status: 400, title: 'Bad Request', detail: 'query "members": unknown operator `like`' })
     const f = createDefaultFetcher({ fetch })
@@ -190,44 +181,32 @@ describe("backend's shipped wire — quoted shapes", () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
-  // ⭐ REVERSED 2026-09-06 [Diego]. This test used to assert `cursors` and
-  // `limits` were "received and ignored". They are read now, because the service
-  // bounds every answer at 100 and a cursor is how it says there is more: the old
-  // behaviour rendered 100 of 500 with nothing to distinguish that from the end
-  // of the data.
-  it('a page render REPORTS a bounded answer — it does not page', async () => {
+  // ⭐ REVERSED 2026-09-06 [Diego]. This test used to assert `cursors` were
+  // "received and ignored". They are read now, because a cursor is how the service
+  // says more records remain: the old behaviour rendered part of a list with nothing
+  // to distinguish it from the end of the data.
+  it('a page render REPORTS an answer with more to come — it does not page', async () => {
     const { fetch, calls } = doorStub({
       data: { members: [{ $uuid: 'u1', $name: 'ada', name: 'Ada Lovelace' }] },
       whole: {},
       cursors: { members: 'opaque' },
-      limits: { members: 100 },
     })
     const f = createDefaultFetcher({ fetch })
     const result = await f.resolve(list)
     expect(result.data).toEqual([{ $uuid: 'u1', $name: 'ada', name: 'Ada Lovelace' }])
-    expect(result.meta).toEqual({ whole: false, bound: 100, partial: true })
+    expect(result.meta).toEqual({ whole: false, partial: true })
     expect(result.error).toBeUndefined()
     // ⛔ ONE request: nothing pages in front of paint.
     expect(calls).toHaveLength(1)
     expect(calls[0].body.members).not.toHaveProperty('cursor')
   })
 
-  // ⚠️ THE `limits` HALF OF `partial` HAD NO TEST OF ITS OWN. The case above
-  // carries a cursor AND a bound, so `partial: (cursor || bound !== undefined)`
-  // would have passed with the second half deleted. This is the branch that only
-  // `limits` can set: the service clamped an author's `limit` and offered no next
-  // page, so the answer is complete for what was asked and NOT the whole
-  // population — which is exactly what the flag means.
-  it('a bound with NO cursor still marks the answer partial', async () => {
-    const { fetch, calls } = doorStub({
-      data: { members: [{ $uuid: 'u1' }] },
-      whole: {},
-      limits: { members: 100 },
-    })
+  // ⛔ The service sends no `limits` map since rev D; a stray one changes nothing.
+  it('a `limits` map is not read — no cursor means nothing more remains', async () => {
+    const { fetch } = doorStub({ data: { members: [{ $uuid: 'u1' }] }, whole: {}, limits: { members: 100 } })
     const f = createDefaultFetcher({ fetch })
     const result = await f.resolve(list)
-    expect(result.meta).toEqual({ whole: false, bound: 100, partial: true })
-    expect(calls).toHaveLength(1)
+    expect(result.meta).toEqual({ whole: false })
   })
 
   it('⭐ a key a source did not answer is marked partial, and says which source', async () => {
@@ -243,7 +222,7 @@ describe("backend's shipped wire — quoted shapes", () => {
     expect(result.error).toBeUndefined()
   })
 
-  it('neither a cursor nor a bound means the answer IS the whole population', async () => {
+  it('no cursor and no partial source means the answer IS the whole population', async () => {
     const { fetch } = doorStub({ data: { members: [{ $uuid: 'u1' }] }, whole: {} })
     const f = createDefaultFetcher({ fetch })
     const result = await f.resolve(list)

@@ -271,27 +271,28 @@ function toQuestion(request) {
 /**
  * Send one batch to the records service and hand each question its own answer.
  *
- * The response is `{ data, depths?, errors?, cursors?, limits? }` (contract §5):
- * `data` answers exactly the keys sent, `[]` when nothing matched; a key that
- * ERRORED is absent from `data` and present in `errors`; `depths` says what was
- * actually served, which the record index files rather than what was asked for.
- * A key missing from both is a protocol violation and is reported as an error,
- * never as silence.
+ * The response is `{ data, whole?, cursors?, partial? }` (backend's records-query
+ * contract rev D, 2026-09-13), each map absent when empty: `data` answers exactly the
+ * keys sent — `[]` when nothing matched, and `[]` too for a question an author got
+ * wrong, since the service answers a mistake rather than refusing it; `whole[key]` says
+ * a key was served as whole records; `cursors[key]` that more records remain under the
+ * question's `limit`; `partial[key]` that a source of the key did not answer. A key
+ * missing from `data` is a protocol violation and is reported as an error, never as
+ * silence. ⛔ `errors` and `limits` are not read: the service stopped sending them in
+ * the same revision, and this client read both until 2026-09-14.
  *
- * ⭐ `cursors` AND `limits` ARE READ — 2026-09-06 [Diego], reversing the ruling
- * that had them "received and IGNORED, because framework has no paging concept."
- * ⛔ **That ruling described our client and was silently wrong about our USERS:**
- * the service bounds every answer at 100 (the records contract §4.2/§5), and a
- * `cursors` entry is how it says there is more. Discarding both meant a hosted
- * list of 500 rendered 100 — no error, no warning, no way for an author to tell
- * a bound from the end of the data. **The silent class, on a visitor's page.**
+ * ⭐ `cursors` ARE READ — 2026-09-06 [Diego], reversing the ruling that had them
+ * "received and IGNORED, because framework has no paging concept." ⛔ **That ruling
+ * described our client and was silently wrong about our USERS:** a `cursors` entry is
+ * how the service says there is more, and discarding it meant a hosted list could
+ * render part of its records with no way for an author to tell that from the end of
+ * the data. **The silent class, on a visitor's page.**
  *
  * Two behaviours, deliberately not one:
  *
- *   - **a page render REPORTS** — `meta.partial` and `meta.bound` ride the
- *     answer, and nothing pages automatically. Auto-paging here would put
- *     unbounded round trips in front of paint for a section that may only show
- *     ten rows.
+ *   - **a page render REPORTS** — `meta.partial` rides the answer, and nothing pages
+ *     automatically. Auto-paging here would put unbounded round trips in front of
+ *     paint for a section that may only show ten rows.
  *   - **an exhaustive caller PAGES** — `request.exhaustive` follows `cursors`
  *     until the service stops issuing them. `collectSiteRecords` is the caller
  *     that wants it (a corpus is not a page), and `maxPages` bounds the loop so
@@ -360,19 +361,13 @@ async function flushAsked(url, queue, doFetch) {
     return
   }
   const data = parsed && typeof parsed.data === 'object' && parsed.data ? parsed.data : {}
-  const errors = parsed && typeof parsed.errors === 'object' && parsed.errors ? parsed.errors : {}
   // ⭐ `whole[key]` is present only for keys delivered as WHOLE entities — so a
   // key's ABSENCE is the brief, and a key present that never asked is the
   // brief-less Model saying so. Absent entirely when every key is briefs.
   const wholes = parsed && typeof parsed.whole === 'object' && parsed.whole ? parsed.whole : {}
-  // Both absent when empty, never `{}` (the records contract §5).
   const cursors = parsed && typeof parsed.cursors === 'object' && parsed.cursors ? parsed.cursors : {}
-  const limits = parsed && typeof parsed.limits === 'object' && parsed.limits ? parsed.limits : {}
   // ⭐ `partial[key]` — `{ source, code, detail }`: a source of that key did not answer,
-  // and the key carries what the others returned (backend's records-query contract
-  // rev D, 2026-09-13). Unread, a degraded key looked complete. ⚠️ Since the same
-  // revision the service sends neither `errors` nor `limits` — an author's mistake
-  // answers `[]` — so those two reads are inert against it.
+  // and the key carries what the others returned. Unread, a degraded key looked complete.
   const degraded = parsed && typeof parsed.partial === 'object' && parsed.partial ? parsed.partial : {}
   queue.forEach((entry, i) => {
     const key = keys[i]
@@ -381,21 +376,11 @@ async function flushAsked(url, queue, doFetch) {
     // corpus would rather have them marked partial than lose the key — losing it
     // is indistinguishable from "this query has no records".
     const held = Array.isArray(entry.collected) && entry.collected.length ? entry.collected : null
-    if (key in errors) {
-      // A per-key error is `{ code, detail }` — `schema_not_found`,
-      // `field_not_in_brief`, `scope_not_found`… The sentence is `detail`; `code`
-      // rides beside it for a reader that wants to branch on it.
-      const e = errors[key]
-      const detail = typeof e === 'string' ? e : (e?.detail || e?.message || JSON.stringify(e))
-      const out = held
-        ? { data: held, error: detail, meta: withMeta({ partial: true, pages: entry.page }) }
-        : { data: null, error: detail }
-      if (e && typeof e === 'object' && typeof e.code === 'string') out.code = e.code
-      entry.resolve(out)
-      return
-    }
     if (!(key in data)) {
-      entry.resolve({ data: null, error: `the records service answered without the key "${key}"` })
+      const error = `the records service answered without the key "${key}"`
+      entry.resolve(held
+        ? { data: held, error, meta: withMeta({ partial: true, pages: entry.page }) }
+        : { data: null, error })
       return
     }
     const whole = typeof wholes[key] === 'boolean'
@@ -403,7 +388,6 @@ async function flushAsked(url, queue, doFetch) {
       : (typeof entry.request.whole === 'boolean' ? entry.request.whole : undefined)
 
     const cursor = typeof cursors[key] === 'string' && cursors[key] ? cursors[key] : null
-    const bound = typeof limits[key] === 'number' ? limits[key] : undefined
     const rows = Array.isArray(data[key]) ? data[key] : data[key]
 
     // An exhaustive caller collects the page and asks for the next one.
@@ -414,34 +398,29 @@ async function flushAsked(url, queue, doFetch) {
         ? entry.request.maxPages
         : DEFAULT_MAX_PAGES
       if (page <= cap) {
-        pending.set(entry, { cursor, collected: acc, page, whole, bound })
+        pending.set(entry, { cursor, collected: acc, page, whole })
         return
       }
       // The caller's own bound, not the service's: report rather than spin.
-      entry.resolve({ data: acc, meta: withMeta({ whole, bound, partial: true, pages: cap }) })
+      entry.resolve({ data: acc, meta: withMeta({ whole, partial: true, pages: cap }) })
       return
     }
 
     const collected = entry.collected ? entry.collected.concat(Array.isArray(rows) ? rows : []) : rows
     const meta = withMeta({
       whole,
-      bound,
       // ⭐ ONE FLAG, MEANING **NOT THE WHOLE POPULATION** — asked for by name, so
-      // a caller has one boolean to branch on rather than three signals to
+      // a caller has one boolean to branch on rather than several signals to
       // combine. It is set in every case that means it:
       //   · a cursor came back and this caller does not page (a page render);
       //   · a cursor came back and the caller's `maxPages` stopped the walk;
       //   · the walk failed or aborted with pages already in hand;
-      //   · the service reported it BOUNDED the answer and offered no cursor.
-      // ⚠️ The last is why `limits` is read at all: a cursor is the signal for a
-      // query that declared no `limit`, and `limits` is the signal for one whose
-      // author limit was clamped (the records contract §5). Neither alone covers
-      // both. ⛔ Named `truncated` when it shipped in 0.17.0 this morning; renamed
-      // the same day, before any consumer adopted it, because "truncated" says
-      // something was cut and this also means "there is more you did not ask for".
       //   · a source of the key did not answer (`partial[key]`), and `unavailable`
       //     carries the service's own account of which one.
-      partial: (cursor || bound !== undefined || key in degraded) ? true : undefined,
+      // ⛔ Named `truncated` when it shipped in 0.17.0; renamed the same day, before
+      // any consumer adopted it, because "truncated" says something was cut and this
+      // also means "there is more you did not ask for".
+      partial: (cursor || key in degraded) ? true : undefined,
       unavailable: key in degraded ? degraded[key] : undefined,
       pages: entry.page && entry.page > 1 ? entry.page : undefined,
     })

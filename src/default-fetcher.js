@@ -209,7 +209,7 @@ export function createDefaultFetcher({ basePath = '', dev = false, fetch: fetchI
         // (filtering/sorting/limiting a single record doesn't make sense).
         // For non-arrays, operators are ignored — the source returned what
         // it returned.
-        data = applyOperators(data, request, { dev })
+        data = applyOperators(data, request, { dev, locale: sortLocale(request, ctx) })
 
         // ⭐ Say whether WHOLE records were delivered, so the record index can
         // file them — what the config asked for, echoed: briefs when the query
@@ -497,11 +497,23 @@ function withMeta(fields) {
 }
 
 /**
+ * The locale a list's texts are collated in: the page's (ruled 2026-09-14 [Diego]).
+ * A request asked in a locale carries it; otherwise the caller's — the website's
+ * active locale in the browser, the locale a host's prerender renders.
+ */
+function sortLocale(request, ctx) {
+  if (typeof request?.locale === 'string' && request.locale) return request.locale
+  if (typeof ctx?.locale === 'string' && ctx.locale) return ctx.locale
+  const active = ctx?.website?.getActiveLocale?.()
+  return typeof active === 'string' && active ? active : null
+}
+
+/**
  * Evaluate the query over what the source returned — the ONE evaluator,
  * `@uniweb/core`'s, so the browser orders and filters exactly as the build
  * did when it materialized `/data/<name>.json`.
  */
-function applyOperators(data, request, { dev = false } = {}) {
+function applyOperators(data, request, { dev = false, locale = null } = {}) {
   if (!Array.isArray(data)) return data
   let result = data
   // `scope` first: it names the branch the rest of the query reads. On this lane
@@ -509,7 +521,7 @@ function applyOperators(data, request, { dev = false } = {}) {
   // wrote the file — `scope: :dir` bound per page reaches here (2026-09-11).
   if (typeof request.scope === 'string' && request.scope) result = applyScope(result, request.scope)
   if (request.where) result = matchWhere(request.where, result)
-  if (request.sort) result = applySort(result, request.sort, dev)
+  if (request.sort) result = applySort(result, request.sort, dev, locale)
   if (typeof request.limit === 'number' && request.limit > 0) result = result.slice(0, request.limit)
   return result
 }
@@ -522,9 +534,9 @@ function applyOperators(data, request, { dev = false } = {}) {
  * logged once — a wrong order is not worth a broken page for a visitor.
  */
 const warnedBadSorts = new Set()
-function applySort(items, sortExpr, dev) {
+function applySort(items, sortExpr, dev, locale) {
   try {
-    return sortRecords(items, sortExpr)
+    return sortRecords(items, sortExpr, { locale })
   } catch (err) {
     if (dev) throw err
     const key = String(sortExpr)

@@ -376,10 +376,20 @@ describe('createDefaultFetcher — the fallback sort is the ONE evaluator, singl
   })
   afterEach(() => fetchStub.restore())
 
-  it('orders strings the way the build does — localeCompare, so case does not scatter them', async () => {
+  it('orders strings the way the build does — collated, so case does not scatter them', async () => {
     const f = createDefaultFetcher()
     const result = await f.resolve({ url: 'https://api.example.com/x', sort: 'name' })
     expect(result.data.map((r) => r.name)).toEqual(['apple', 'Banana', 'cherry'])
+  })
+
+  it("⭐ collates texts in the page's locale — the caller's, else the website's active locale", async () => {
+    fetchStub.setResponse({ body: [{ w: 'ä' }, { w: 'z' }] })
+    const f = createDefaultFetcher()
+    const request = { url: 'https://api.example.com/x', sort: 'w' }
+    const sv = await f.resolve(request, { locale: 'sv' })
+    expect(sv.data.map((r) => r.w)).toEqual(['z', 'ä'])
+    const de = await f.resolve(request, { website: { getActiveLocale: () => 'de' } })
+    expect(de.data.map((r) => r.w)).toEqual(['ä', 'z'])
   })
 
   it("accepts the service's `-field` spelling", async () => {

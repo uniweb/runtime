@@ -216,7 +216,7 @@ export function resolvePageFetchConfigs(content, route, { locale = null } = {}) 
  * @param {boolean} [opts.dev]
  * @returns {Promise<Array<{ config: Object, outcome: 'fetched'|'failed'|'skipped', data: any, error?: string }>>}
  */
-export async function executeFetchConfigs(configs, { content, fetch = null, dev = false, prerender = 'always' } = {}) {
+export async function executeFetchConfigs(configs, { content, fetch = null, dev = false, prerender = 'always', locale = null } = {}) {
   if (prerender !== 'author' && prerender !== 'always') {
     throw new Error(`executeFetchConfigs: prerender must be 'author' or 'always', got ${JSON.stringify(prerender)}`)
   }
@@ -225,7 +225,8 @@ export async function executeFetchConfigs(configs, { content, fetch = null, dev 
     dev,
     fetch,
   })
-  const ctx = { website: null }
+  // The page's locale, which a list's texts are collated in when the runtime sorts it.
+  const ctx = { website: null, locale: locale ?? content?.config?.activeLocale ?? resolveDefaultLocale(content?.config) ?? null }
   // Dispatched together, not one after another: the records service batches the
   // requests issued in one tick into one POST, and a page's configs are
   // independent of each other. Order is preserved in the result.
@@ -244,5 +245,5 @@ export async function executeFetchConfigs(configs, { content, fetch = null, dev 
 /** Resolve and execute in one call: what a host passes the isolate as `fetchedData`. */
 export async function prefetchPageData({ content, route, locale = null, fetch = null, dev = false, prerender = 'always' }) {
   const configs = resolvePageFetchConfigs(content, route, { locale })
-  return executeFetchConfigs(configs, { content, fetch, dev, prerender })
+  return executeFetchConfigs(configs, { content, fetch, dev, prerender, locale })
 }

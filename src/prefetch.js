@@ -50,7 +50,7 @@
  * `{base}/…` from the payload, or the records service the host itself
  * published at `config.services.records`.
  */
-import { resolveFetchConfigs, pageRouteQuery, routeSelection, currentFor, othersView, siteReaches } from '@uniweb/core/fetch-config'
+import { resolveFetchConfigs, fetchEntries, pageRouteQuery, routeSelection, currentFor, othersView, siteReaches } from '@uniweb/core/fetch-config'
 import { deriveCacheKey } from '@uniweb/core/datastore'
 import { findPageForRoute, isDynamicRoute, routeBinding, parentRouteOf } from '@uniweb/core/route-match'
 import { buildDetailConfig } from '@uniweb/core/detail-url'
@@ -158,8 +158,13 @@ export function resolvePageFetchConfigs(content, route, { locale = null } = {}) 
     const key = deriveCacheKey(cfg)
     if (!out.has(key)) out.set(key, cfg)
   }
+  // ⭐ EVERY fetch of every level, each resolved on its own — not the first per key. A section
+  // receives the keys its component declares, and two fetches of one `as` at two levels can
+  // fill two of them (`fillDeclaredKeys`, 2026-09-14), which a prefetch holding no
+  // component's meta cannot rule out. A superset, which a prefetch can afford.
   const add = (sources) => {
-    for (const cfg of resolveFetchConfigs(sources, options).values()) {
+    const resolved = sources.flatMap((source) => fetchEntries(source).map((entry) => resolveFetchConfigs([entry], options).get(entry.as)))
+    for (const cfg of resolved.filter(Boolean)) {
       // how the fetch uses the page's record — by the query it names, as the entity store asks
       const current = currentFor(cfg, chosen)
       if (current === 'exclude') {

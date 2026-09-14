@@ -237,7 +237,13 @@ describe('the prefetch asks exactly what the render will ask — parity with the
   // already resolved, key for key, or the landing page's answers go unused and the
   // browser asks again. Measured through the real Website and EntityStore, with a
   // default fetcher that only records the keys it is asked for.
-  async function renderKeys(content, route) {
+  // A section receives the keys its component declares (2026-09-14). `EVERY` declares each
+  // key these payloads bind, so every fetch fills its own; `BY_SCHEMA` declares keys no
+  // fetch is named after, so the route query fills them by schema — the render asks the
+  // same questions either way, since a key never renames the fetch that fills it.
+  const EVERY = { data: { people: null, news: null, related: null, card: null, highlights: null } }
+  const BY_SCHEMA = { data: { profile: '@std/person', others: '@std/person' } }
+  async function renderKeys(content, route, meta = EVERY) {
     const asked = new Set()
     const recorder = { resolve: (req) => { asked.add(deriveCacheKey(req)); return Promise.resolve({ data: [] }) } }
     const website = new Website({ content: JSON.parse(JSON.stringify(content)), defaultFetcher: recorder })
@@ -245,7 +251,7 @@ describe('the prefetch asks exactly what the render will ask — parity with the
     const sections = page._bodySections?.length ? page._bodySections : [{}]
     for (const s of sections) {
       const block = { fetch: s.fetch ?? null, page, website, dynamicContext: page.dynamicContext }
-      await website.entityStore.fetch(block, null)
+      await website.entityStore.fetch(block, meta)
     }
     return asked
   }
@@ -290,6 +296,16 @@ describe('the prefetch asks exactly what the render will ask — parity with the
       ] },
     ],
   })
+  // ⭐ two fetches of one `as` at two levels, each filling a key of its own by schema — the
+  // render asks both, so a prefetch that kept the first per key misses the second
+  const shadowed = {
+    config: staticConfig,
+    pages: [
+      { route: '/team', parent: null, fetch: { ...people, limit: 3 }, sections: [] },
+      { route: '/team/all', parent: '/team', fetch: { ...people, limit: 1 }, sections: [{ type: 'Two' }] },
+    ],
+  }
+  const TWO = { data: { first: '@std/person', second: '@std/person' } }
   // ⭐ a page nested inside the parametric page, whose route query sits two levels up
   const nestedTwoUp = {
     config: staticConfig,
@@ -306,7 +322,7 @@ describe('the prefetch asks exactly what the render will ask — parity with the
     pages: CONTENT.pages.map((p) => (p.route === '/team' ? { ...p, fetch: { ...p.fetch, where: { featured: true }, limit: 2 }, sections: [] } : p)),
   })
 
-  for (const [label, content, route = '/team/ada'] of [
+  for (const [label, content, route = '/team/ada', meta = EVERY] of [
     ['with pages[].parent', CONTENT],
     ['without it', noParent],
     ['on the compiled file, under a list limit', limited],
@@ -317,9 +333,12 @@ describe('the prefetch asks exactly what the render will ask — parity with the
     ['on a nested page whose route query is two levels up', nestedTwoUp, '/team/ada/cv'],
     ['with current: by query under other keys, on the compiled file', byQuery(staticConfig)],
     ['with current: by query under other keys, on the records service', byQuery(CONTENT.config)],
+    ['with keys filled by schema, on the compiled file', withCurrent(staticConfig), '/team/ada', BY_SCHEMA],
+    ['with keys filled by schema, on the records service', withCurrent(CONTENT.config), '/team/ada', BY_SCHEMA],
+    ['with one `as` at two levels filling two keys', shadowed, '/team/all', TWO],
   ]) {
     it(`covers every key the render asks on a parametric page — ${label}`, async () => {
-      const render = await renderKeys(content, route)
+      const render = await renderKeys(content, route, meta)
       const pre = prefetchKeys(content, route)
       expect(render.size).toBeGreaterThan(0)
       for (const key of render) expect(pre.has(key), `render asked ${key}`).toBe(true)

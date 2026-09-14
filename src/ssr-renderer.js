@@ -231,8 +231,8 @@ export function renderBlock(block, { as = 'section' } = {}) {
     }, `Component not found: ${block.type}`)
   }
 
-  // Resolve inherited entity data synchronously (SSG has no async).
-  // EntityStore walks page/site hierarchy to find data matching meta.inheritData.
+  // Resolve entity data synchronously (SSG has no async): EntityStore fills the keys
+  // the component declares (`meta.data`) from the fetches that reach the block.
   const meta = getComponentMeta(block.type)
   const entityStore = block.website?.entityStore
   let entityData = null

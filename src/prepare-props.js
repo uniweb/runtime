@@ -313,27 +313,54 @@ export function applyDefaults(params, defaults) {
 }
 
 /**
- * Merge entity data onto a block's parsedContent.data.
+ * ⭐ `content.data` HOLDS THE KEYS THE COMPONENT DECLARES, AND NOTHING ELSE — ruled 2026-09-14
+ * [Diego]. Every key in its `meta.js` `data:` and its foundation's `main.js` `data:`
+ * (`website.declaredKeys`), each filled, in order, from:
  *
- * Section-level data already on the block (from prerender fetches via
- * blockData.parsedContent.data in the Block constructor) takes priority;
- * entity data only fills missing keys. Mutates `block.parsedContent.data`
- * in place so the vanilla JS layer holds the assembled data and
- * subsequent reads see the same shape.
+ *   1. what the section holds under that key (`block.heldData`) — a tagged data block, or
+ *      its own fetch's answer a static build prerendered into it;
+ *   2. what the entity store delivered for it — the fetch that fills it (`fillDeclaredKeys`);
+ *   3. `null` — nothing fills it, or its fetch is still out (`block.dataLoading`) or failed
+ *      (`block.dataError[key]`). ⭐ Never `[]`, which is an answer with no records.
+ *
+ * A tagged data block under a key the component does not declare is left out, and said so
+ * in dev (`warnUndeclaredBlocks`); it stays in `content.sequence`. The data object is
+ * rebuilt on each render from those sources, never from the last render's.
+ *
+ * ⛔ Until 2026-09-14 this merged every delivered key into what the section held, so a
+ * section received every fetch that reached it and every tagged block it had.
  */
-function mergeEntityData(block, entityData) {
-  if (!entityData) return
-  const current = block.parsedContent.data || {}
-  let changed = false
-  const merged = { ...current }
-  for (const key of Object.keys(entityData)) {
-    if (merged[key] === undefined) {
-      merged[key] = entityData[key]
-      changed = true
-    }
+function assembleData(block, meta, entityData) {
+  const declared = block.website?.declaredKeys ? block.website.declaredKeys(meta) : []
+  const held = block.heldData || {}
+  const data = {}
+  for (const [key] of declared) {
+    if (held[key] !== undefined) data[key] = held[key]
+    else if (entityData && entityData[key] !== undefined) data[key] = entityData[key]
+    else data[key] = null
   }
-  if (changed) {
-    block.parsedContent.data = merged
+  warnUndeclaredBlocks(block, declared)
+  block.parsedContent.data = data
+}
+
+/**
+ * Say once, in dev, that a tagged data block did not reach its section's component — its
+ * key is not declared. The block is still in `content.sequence`, where a component that
+ * renders the sequence finds it.
+ */
+const warnedBlocks = new Set()
+function warnUndeclaredBlocks(block, declared) {
+  if (!block.website?.entityStore?.dev) return
+  const keys = new Set(declared.map(([key]) => key))
+  for (const item of block.parsedContent?.sequence || []) {
+    if (item?.type !== 'dataBlock' || typeof item.tag !== 'string' || keys.has(item.tag)) continue
+    const memo = `${block.type}::${item.tag}`
+    if (warnedBlocks.has(memo)) continue
+    warnedBlocks.add(memo)
+    console.warn(
+      `[uniweb] ${block.type}: the \`${item.tag}\` data block is not in content.data — ${block.type} does not ` +
+        `declare \`${item.tag}\` in its meta.js \`data:\`. It stays in content.sequence.`
+    )
   }
 }
 
@@ -434,8 +461,9 @@ function runPropsHandler(content, params, block) {
  * renderers (`BlockRenderer.jsx` CSR and `ssr-renderer.js` SSG) share
  * the same code path:
  *
- *   1. Merge entity data (resolved by EntityStore) onto
- *      `block.parsedContent.data`.
+ *   1. Assemble `block.parsedContent.data` from the keys the component
+ *      declares: what the section holds, else what EntityStore delivered,
+ *      else `null` (`assembleData`).
  *   2. Run the foundation data handler (if registered) to filter or
  *      reshape the assembled data.
  *   3. Run the foundation content handler (if registered) on the
@@ -456,10 +484,10 @@ function runPropsHandler(content, params, block) {
  * @returns {Object} Prepared props: { content, params }
  */
 export function prepareProps(block, meta, entityData = null) {
-  mergeEntityData(block, entityData)
+  assembleData(block, meta, entityData)
   // ⭐ A list the section held before the store answered — its own fetch, prerendered
   // into its content by a static build — gets its records' `$route` by the store's rule,
-  // which it outranked in the merge above (2026-09-14).
+  // which the store did not deliver it by (2026-09-14).
   block.website?.entityStore?.linkOwnRecords?.(block)
   runDataHandler(block)
   runContentHandler(block)

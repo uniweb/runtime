@@ -112,64 +112,6 @@ export function createDefaultFetcher({ basePath = '', dev = false, fetch: fetchI
     })
   }
 
-  // ⭐ THE ANSWERS SERVICE — the host's cache of the records service's answers.
-  //
-  // One question per request, posted ALONE as the body — the exact question the batch
-  // above would carry under its key — and the service's answer back, verbatim, under
-  // one key the host derives from the question. So nothing is batched and nothing is
-  // keyed here: two bindings that ask the same question share the host's answer.
-  //
-  // ⛔ An exhaustive walk (`collectSiteRecords`) is not sent: it pages with cursors, and
-  // an index is not a visitor. And when the answers service itself refuses — it says
-  // so with `X-Uniweb-Error` — or its address is not served (404/405, a host that has
-  // not deployed it), the question goes to the records service as before: a cache that
-  // is absent costs a request, never a page. The records service's own non-`200`, which
-  // the answers service passes through, is that service's answer and is reported.
-  const askAnswers = async (request, ctx) => {
-    if (typeof request.schema !== 'string' || !request.schema) return askRecords(request, ctx)
-    const url = resolveServiceUrl(request.answers, pathPrefix)
-    let response
-    try {
-      response = await doFetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(toQuestion(request)),
-      })
-    } catch (error) {
-      return { data: null, error: error?.name === 'AbortError' ? 'aborted' : (error?.message || String(error)) }
-    }
-    if (!response.ok) {
-      const refusedByCache = Boolean(response.headers?.get?.('X-Uniweb-Error')) ||
-        response.status === 404 || response.status === 405
-      if (refusedByCache) {
-        if (dev) {
-          console.warn(`[default-fetcher] the answers service at ${url} answered ${response.status}; asking the records service directly.`)
-        }
-        return askRecords(request, ctx)
-      }
-      return { data: null, error: await problemError(response) }
-    }
-    let parsed
-    try {
-      parsed = await response.json()
-    } catch (error) {
-      return { data: null, error: error?.message || String(error) }
-    }
-    const data = parsed && typeof parsed.data === 'object' && parsed.data ? parsed.data : {}
-    const keys = Object.keys(data)
-    if (keys.length !== 1) {
-      return { data: null, error: `the answers service answered ${keys.length} keys; it answers one question under one key` }
-    }
-    const key = keys[0]
-    const whole = typeof mapOf(parsed.whole)[key] === 'boolean'
-      ? mapOf(parsed.whole)[key]
-      : (typeof request.whole === 'boolean' ? request.whole : undefined)
-    const cursor = typeof mapOf(parsed.cursors)[key] === 'string' && mapOf(parsed.cursors)[key] ? mapOf(parsed.cursors)[key] : null
-    const degraded = mapOf(parsed.partial)
-    const meta = answerMeta({ whole, cursor, unavailable: key in degraded ? degraded[key] : undefined })
-    return meta ? { data: data[key], meta } : { data: data[key] }
-  }
-
   // ⭐ VIEWS OF ONE FILE SHARE ONE READ IN FLIGHT. Each view — its own `scope`,
   // `where`, `sort` or `limit` — is its own cache entry (`deriveCacheKey` hashes
   // the view) and is cut from the read; views asked together (a page's sections,
@@ -205,9 +147,7 @@ export function createDefaultFetcher({ basePath = '', dev = false, fetch: fetchI
 
     async resolve(request, ctx = {}) {
       if (!request) return { data: null }
-      if (request.ask) {
-        return request.answers && !request.exhaustive ? askAnswers(request, ctx) : askRecords(request, ctx)
-      }
+      if (request.ask) return askRecords(request, ctx)
       const { path, url, transform, body: rawBody } = request
 
       // Normalize method. Only GET and POST are supported by the default
@@ -395,7 +335,14 @@ async function flushAsked(url, queue, doFetch) {
       // binding key, a non-BCP-47 locale segment…). Surface that sentence on every
       // key of the batch rather than the bare status: the author reads
       // `block.dataError` and the status alone says nothing they can act on.
-      const error = await problemError(response)
+      let detail = null
+      try {
+        const problem = safeParseJSON(await response.text())
+        if (problem && typeof problem.detail === 'string' && problem.detail) detail = problem.detail
+      } catch { /* an unreadable body falls back to the status line */ }
+      const error = detail
+        ? `HTTP ${response.status}: ${detail}`
+        : `HTTP ${response.status}: ${response.statusText}`
       for (const entry of queue) entry.resolve({ data: null, error })
       return
     }
@@ -460,9 +407,20 @@ async function flushAsked(url, queue, doFetch) {
     }
 
     const collected = entry.collected ? entry.collected.concat(Array.isArray(rows) ? rows : []) : rows
-    const meta = answerMeta({
+    const meta = withMeta({
       whole,
-      cursor,
+      // ⭐ ONE FLAG, MEANING **NOT THE WHOLE POPULATION** — asked for by name, so
+      // a caller has one boolean to branch on rather than several signals to
+      // combine. It is set in every case that means it:
+      //   · a cursor came back and this caller does not page (a page render);
+      //   · a cursor came back and the caller's `maxPages` stopped the walk;
+      //   · the walk failed or aborted with pages already in hand;
+      //   · a source of the key did not answer (`partial[key]`), and `unavailable`
+      //     carries the service's own account of which one.
+      // ⛔ Named `truncated` when it shipped in 0.17.0; renamed the same day, before
+      // any consumer adopted it, because "truncated" says something was cut and this
+      // also means "there is more you did not ask for".
+      partial: (cursor || key in degraded) ? true : undefined,
       unavailable: key in degraded ? degraded[key] : undefined,
       pages: entry.page && entry.page > 1 ? entry.page : undefined,
     })
@@ -511,45 +469,6 @@ async function readResponse(doFetch, target, init) {
 }
 
 /** Build a `meta` from the fields that are actually present, or `undefined`. */
-/**
- * The meta of one key's answer, from the records service or its cache.
- *
- * ⭐ `partial` — ONE FLAG, MEANING **NOT THE WHOLE POPULATION** — asked for by name, so a
- * caller has one boolean to branch on rather than several signals to combine. It is set in
- * every case that means it:
- *   · a cursor came back and this caller does not page (a page render);
- *   · a cursor came back and the caller's `maxPages` stopped the walk (set by the caller);
- *   · the walk failed or aborted with pages already in hand (set by the caller);
- *   · a source of the key did not answer (`partial[key]`), and `unavailable` carries the
- *     service's own account of which one.
- * ⛔ Named `truncated` when it shipped in 0.17.0; renamed the same day, before any consumer
- * adopted it, because "truncated" says something was cut and this also means "there is more
- * you did not ask for".
- */
-function answerMeta({ whole, cursor = null, unavailable, pages }) {
-  return withMeta({
-    whole,
-    partial: (cursor || unavailable !== undefined) ? true : undefined,
-    unavailable,
-    pages,
-  })
-}
-
-/** An envelope map (`whole`, `cursors`, `partial`), or `{}` when absent. */
-function mapOf(value) {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
-}
-
-/** A failed answer's message — the problem body's `detail` when it has one, else the status line. */
-async function problemError(response) {
-  let detail = null
-  try {
-    const problem = safeParseJSON(await response.text())
-    if (problem && typeof problem.detail === 'string' && problem.detail) detail = problem.detail
-  } catch { /* an unreadable body falls back to the status line */ }
-  return detail ? `HTTP ${response.status}: ${detail}` : `HTTP ${response.status}: ${response.statusText}`
-}
-
 function withMeta(fields) {
   const out = {}
   for (const [k, v] of Object.entries(fields)) if (v !== undefined) out[k] = v

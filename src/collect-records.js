@@ -57,11 +57,12 @@ import { createDefaultFetcher } from './default-fetcher.js'
  * @param {Function} options.fetch - the transport, `(url, init) => Response`
  * @param {AbortSignal} [options.signal]
  * @param {string[]} [options.only] - restrict to these query names
- * @param {'brief'|'full'} [options.depth='brief'] - what to ask for. `brief` is
- *   what a list shows; **`full` is what an index wants** — a brief index cannot
- *   match body text the record's own detail page displays, and a reader who
+ * @param {boolean} [options.whole=false] - what to ask for. `false` is the brief a
+ *   list shows; **`true` — whole records — is what an index wants**: a brief index
+ *   cannot match body text the record's own detail page displays, and a reader who
  *   finds a word on the page and not in search meets the inconsistency two
  *   rankings would produce. The cost is the caller's and is bounded by `maxPages`.
+ *   An external query is never collected — it has no records service to ask.
  * @param {number} [options.maxPages] - the caller's own bound on the walk. The
  *   default is a bound, not a target; a caller that knows its per-request budget
  *   passes its own.

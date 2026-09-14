@@ -275,6 +275,21 @@ describe('the prefetch asks exactly what the render will ask — parity with the
       ] },
     ],
   })
+  // ⭐ `current:` follows the query, not the key (2026-09-14): a section's own fetch of the
+  // route query under a key of its own, and one of another query — each asks its own view
+  const featured = { query: 'featured', path: '/data/featured.json', as: 'highlights' }
+  const byQuery = (config) => ({
+    config: { ...config, queries: { ...config.queries, featured: { name: 'featured', schema: '@std/person' } } },
+    pages: [
+      { route: '/team', parent: null, fetch: people, sections: [] },
+      { route: '/team/:slug', parent: '/team', isDynamic: true, paramName: 'slug', sections: [
+        { type: 'Profile' },
+        { type: 'Related', fetch: { ...people, as: 'related', current: 'exclude', limit: 2 } },
+        { type: 'Card', fetch: { ...people, as: 'card' } },
+        { type: 'Highlights', fetch: { ...featured, current: 'exclude', limit: 3 } },
+      ] },
+    ],
+  })
   // ⭐ a page nested inside the parametric page, whose route query sits two levels up
   const nestedTwoUp = {
     config: staticConfig,
@@ -300,6 +315,8 @@ describe('the prefetch asks exactly what the render will ask — parity with the
     ['with current: exclude and include, on the compiled file', withCurrent(staticConfig)],
     ['with current: exclude and include, on the records service', withCurrent(CONTENT.config)],
     ['on a nested page whose route query is two levels up', nestedTwoUp, '/team/ada/cv'],
+    ['with current: by query under other keys, on the compiled file', byQuery(staticConfig)],
+    ['with current: by query under other keys, on the records service', byQuery(CONTENT.config)],
   ]) {
     it(`covers every key the render asks on a parametric page — ${label}`, async () => {
       const render = await renderKeys(content, route)

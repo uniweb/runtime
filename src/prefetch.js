@@ -50,7 +50,7 @@
  * `{base}/…` from the payload, or the records service the host itself
  * published at `config.services.records`.
  */
-import { resolveFetchConfigs, pageRouteQuery, routeSelection, currentOf, othersView, siteReaches } from '@uniweb/core/fetch-config'
+import { resolveFetchConfigs, pageRouteQuery, routeSelection, currentFor, othersView, siteReaches } from '@uniweb/core/fetch-config'
 import { deriveCacheKey } from '@uniweb/core/datastore'
 import { findPageForRoute, isDynamicRoute, routeBinding, parentRouteOf } from '@uniweb/core/route-match'
 import { buildDetailConfig } from '@uniweb/core/detail-url'
@@ -149,7 +149,6 @@ export function resolvePageFetchConfigs(content, route, { locale = null } = {}) 
         site: siteFetch,
       })
     : null
-  const routeKey = chosen?.key ?? null
   // A nested page's sections receive its capturing page's route binding, which the
   // one-parent cascade may not reach — the entity store adds it the same way.
   const routeSource = chosen?.nested ? chosen.config : null
@@ -161,21 +160,22 @@ export function resolvePageFetchConfigs(content, route, { locale = null } = {}) 
   }
   const add = (sources) => {
     for (const cfg of resolveFetchConfigs(sources, options).values()) {
-      const current = routeKey && cfg.as === routeKey ? currentOf(cfg) : null
+      // how the fetch uses the page's record — by the query it names, as the entity store asks
+      const current = currentFor(cfg, chosen)
       if (current === 'exclude') {
         // the list one longer, from which the render removes the page's record
         put(othersView(cfg))
         continue
       }
       if (current !== 'only') {
-        // any other key, or `current: include` — the list as the binding describes it
+        // no part for the page's record, or `current: include` — the list as the fetch describes it
         put(cfg)
         continue
       }
       // ⭐ A parametric page is ABOUT one record, and on a lane with a per-record
       // source (the records service, a `deferred:` query's per-record file) that
-      // record is a request of its own. Built for EVERY config the route key
-      // resolves to by the one rule the entity store uses (`buildDetailConfig`), so
+      // record is a request of its own. Built for EVERY config that takes the page's
+      // record, by the one rule the entity store uses (`buildDetailConfig`), so
       // the question prefetched is the question the render asks — and since that
       // question drops a fetch's own narrowing, sections that narrow differently ask
       // one record question between them.
@@ -183,8 +183,8 @@ export function resolvePageFetchConfigs(content, route, { locale = null } = {}) 
         const detailCfg = buildDetailConfig(cfg, { paramName: binding.paramName, paramValue: String(binding.paramValue) })
         if (detailCfg) put(detailCfg)
       }
-      // ⭐ On the records service the record question checks the route query's set on
-      // its own, so nothing else is asked. Off it, the record is FOUND in the set —
+      // ⭐ On the records service the record question checks the query's set on its
+      // own, so nothing else is asked. Off it, the record is FOUND in the set —
       // the query as saved, without the fetch's `narrow` (`routeSelection`) — which is
       // all the render reads for it. ⛔ Until 2026-09-14 the service's list was asked
       // beside the record, and the page embedded the whole set to show one record.

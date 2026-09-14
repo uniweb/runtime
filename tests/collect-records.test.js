@@ -54,15 +54,20 @@ describe('collectSiteRecords', () => {
     expect(calls[0].body.members).toMatchObject({ schema: '@std/person', scope: 'team', sort: '-name' })
     // ⛔ absence IS the brief — `whole: false` would be noise on every list question
     expect(calls[0].body.members).not.toHaveProperty('whole')
-    // ⛔ `limit: 5` is on the saved query and is NOT sent: it is the list page's
-    // presentation, and the corpus wants the population its detail pages reach.
-    expect(calls[0].body.posts).toMatchObject({ schema: '@std/article' })
-    expect(calls[0].body.posts).not.toHaveProperty('limit')
+    // ⭐ `limit: 5` is on the saved query and IS sent: a query's `limit` is part of its
+    // set, and the set is the population its pages reach (ruled 2026-09-14). ⛔ It was
+    // dropped until then, when every record matching `scope` + `where` had a page.
+    expect(calls[0].body.posts).toEqual({ schema: '@std/article', limit: 5 })
+    // the query as saved, with nothing narrowed — so the service answers the set whole
+    expect(calls[0].body.members).not.toHaveProperty('narrow')
+    expect(calls[0].body.posts).not.toHaveProperty('narrow')
     expect(out.records.members).toEqual([{ $uuid: 'u1', $name: 'ada' }])
     expect(out.errors).toBeNull()
   })
 
-  it('pages to exhaustion — a corpus is not a page', async () => {
+  it('still follows a cursor to exhaustion, should a service page a whole set — the cursor inside `narrow`', async () => {
+    // A question with no `narrow` is answered whole, with no cursor; the walk is bounded
+    // and still honours one, so a corpus is never silently cut.
     const { fetch, calls } = stub([
       { data: { members: [{ $uuid: 'u1' }], posts: [] }, whole: {}, cursors: { members: 'c1' } },
       { data: { members: [{ $uuid: 'u2' }] }, whole: {} },
@@ -72,7 +77,9 @@ describe('collectSiteRecords', () => {
 
     expect(out.records.members).toEqual([{ $uuid: 'u1' }, { $uuid: 'u2' }])
     expect(calls).toHaveLength(2)
-    expect(calls[1].body.members.cursor).toBe('c1')
+    const { narrow, ...top } = calls[1].body.members
+    expect(narrow).toEqual({ cursor: 'c1' })
+    expect(top).toEqual(calls[0].body.members)
     expect(out.meta.members.pages).toBe(2)
   })
 

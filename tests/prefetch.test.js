@@ -28,7 +28,7 @@ const CONTENT = {
 
 // `routes` answers a URL by substring. A ask route's value is a FUNCTION of the
 // posted question map, answering per key the way the ask does: the record
-// question (the one carrying `match`) gets the full record, any other the briefs.
+// question (the one carrying `narrow.match`) gets the full record, any other the briefs.
 function stubFetch(routes) {
   const calls = []
   const fetch = vi.fn(async (input, init) => {
@@ -45,7 +45,7 @@ const ASK = '/_records/_query/en'
 const askStub = ({ briefs = [], full = null }) => (questions) => {
   const data = {}, whole = {}
   for (const [key, q] of Object.entries(questions)) {
-    const isRecord = q.match && q.match.$name !== undefined
+    const isRecord = q.narrow?.match?.$name !== undefined
     data[key] = isRecord ? (full ? [full] : []) : briefs
     // Only keys delivered as WHOLE entities appear; a key's absence is the brief.
     if (isRecord) whole[key] = true
@@ -158,16 +158,17 @@ describe('what a prefetched entry says about depth', () => {
   })
 })
 
-describe('E2 — a template page prefetches ITS RECORD, not only the list', () => {
+describe('E2 — a template page prefetches ITS RECORD', () => {
   it('builds the detail config for the matched param through the one shared rule', () => {
     const cfgs = resolvePageFetchConfigs(CONTENT, '/team/ada')
-    const detail = cfgs.find((c) => c.ask === ASK && c.match?.$name === 'ada')
+    const detail = cfgs.find((c) => c.ask === ASK && c.narrow?.match?.$name === 'ada')
     expect(detail).toBeDefined()
     expect(detail.as).toBe('people')
     expect(detail.whole).toBe(true)
     expect(detail.dynamicContext).toEqual({ paramName: 'slug', paramValue: 'ada' })
-    // and the list is still there, at brief depth
-    expect(cfgs.some((c) => c.ask === ASK && !c.match && c.whole === false)).toBe(true)
+    // ⭐ and no list beside it: the record question checks the route query's set on its
+    // own, so the page does not embed the whole set to show one record (2026-09-14)
+    expect(cfgs.some((c) => c.ask === ASK && !c.narrow?.match)).toBe(false)
   })
 
   it('executes it, so the host hands the isolate the record in full', async () => {
@@ -175,9 +176,9 @@ describe('E2 — a template page prefetches ITS RECORD, not only the list', () =
       [ASK]: askStub({ briefs: [{ $uuid: 'u1', $name: 'ada' }], full: { $uuid: 'u1', $name: 'ada', bio: 'Full' } }),
     })
     const fetched = await prefetchPageData({ content: CONTENT, route: '/team/ada', fetch })
-    // one POST carries both questions
+    // one POST
     expect(calls.filter((u) => u.endsWith('/site' + ASK))).toHaveLength(1)
-    const record = fetched.find((e) => e.config.match?.$name === 'ada')
+    const record = fetched.find((e) => e.config.narrow?.match?.$name === 'ada')
     expect(record.outcome).toBe('fetched')
     expect(record.data).toEqual([{ $uuid: 'u1', $name: 'ada', bio: 'Full' }])
     expect(record.meta).toEqual({ whole: true })
@@ -204,10 +205,9 @@ describe('the parent is found by the one rule — a payload may omit `pages[].pa
     pages: CONTENT.pages.map(({ parent, ...page }) => page),
   }
 
-  it('still prefetches the list and the record', () => {
+  it('still prefetches the record', () => {
     const cfgs = resolvePageFetchConfigs(noParent, '/team/ada')
-    expect(cfgs.some((c) => c.as === 'people' && !c.match)).toBe(true)
-    expect(cfgs.some((c) => c.match?.$name === 'ada')).toBe(true)
+    expect(cfgs.some((c) => c.as === 'people' && c.narrow?.match?.$name === 'ada')).toBe(true)
   })
 })
 
@@ -223,7 +223,7 @@ describe('a page nested inside a parametric page is found and prefetched (2026-0
   it('matches /team/ada/cv and asks the record of its route query — its parent\'s', () => {
     expect(findPageForRoute(nested, '/team/ada/cv').page.route).toBe('/team/:slug/cv')
     const cfgs = resolvePageFetchConfigs(nested, '/team/ada/cv')
-    expect(cfgs.some((c) => c.match?.$name === 'ada')).toBe(true)
+    expect(cfgs.some((c) => c.narrow?.match?.$name === 'ada')).toBe(true)
   })
 
   it('a nested page matches by its ROUTE, not a flag — the SPA\'s test', () => {
@@ -285,10 +285,18 @@ describe('the prefetch asks exactly what the render will ask — parity with the
     ],
   }
 
+  // ⭐ a query with its own `limit` — its set — under a list that narrows it (2026-09-14)
+  const underSet = (config) => ({
+    config: { ...config, queries: { members: { name: 'members', schema: '@std/person', sort: '-name', limit: 10 } } },
+    pages: CONTENT.pages.map((p) => (p.route === '/team' ? { ...p, fetch: { ...p.fetch, where: { featured: true }, limit: 2 }, sections: [] } : p)),
+  })
+
   for (const [label, content, route = '/team/ada'] of [
     ['with pages[].parent', CONTENT],
     ['without it', noParent],
     ['on the compiled file, under a list limit', limited],
+    ['on the compiled file, under a query limit and a narrowing list', underSet(staticConfig)],
+    ['on the records service, under a query limit and a narrowing list', underSet(CONTENT.config)],
     ['with current: exclude and include, on the compiled file', withCurrent(staticConfig)],
     ['with current: exclude and include, on the records service', withCurrent(CONTENT.config)],
     ['on a nested page whose route query is two levels up', nestedTwoUp, '/team/ada/cv'],

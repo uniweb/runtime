@@ -19,8 +19,10 @@ function doorStub(answer) {
   return { fetch, calls }
 }
 
+// A resolved config: the query as saved at the top level — its set — and, for the
+// record of a parametric page, `narrow.match` beside it (`buildDetailConfig`).
 const list = { ask: '/_records/ask/en', query: 'members', schema: '@std/person', as: 'members', where: { published: true }, sort: 'name desc', limit: 20, whole: false, locale: 'en' }
-const record = { ask: '/_records/ask/en', query: 'members', schema: '@std/person', as: 'members', where: { published: true, $name: 'ada' }, whole: true, locale: 'en', dynamicContext: { paramName: 'slug', paramValue: 'ada' } }
+const record = { ask: '/_records/ask/en', query: 'members', schema: '@std/person', as: 'members', where: { published: true }, sort: 'name desc', limit: 20, narrow: { match: { $name: 'ada' } }, whole: true, locale: 'en', dynamicContext: { paramName: 'slug', paramValue: 'ada' } }
 
 describe('one question — the request map and the answer', () => {
   it('POSTs the question map to the ask under the site base, in the door\'s vocabulary', async () => {
@@ -94,13 +96,38 @@ describe('the door\'s vocabulary — what crosses as written and what is respell
     expect(calls[0].body.members.where).toEqual({ published: true })
   })
 
-  it('the record of a parametric page crosses as `match`, beside an untouched `where`', async () => {
+  it('a page\'s narrowing crosses as `narrow`, beside the query as saved (2026-09-14)', async () => {
+    // ⛔ Until then the page's where joined the query's with `and`, and its sort and limit
+    // replaced the query's, in one flat question.
     const { fetch, calls } = doorStub({ data: { members: [] } })
     const f = createDefaultFetcher({ fetch })
-    await f.resolve({ ...list, where: { published: true }, match: { $name: 'ada' }, whole: true, limit: undefined })
-    expect(calls[0].body.members.match).toEqual({ $name: 'ada' })
-    expect(calls[0].body.members.where).toEqual({ published: true })
-    expect(calls[0].body.members.whole).toBe(true)
+    await f.resolve({ ...list, narrow: { where: { featured: true }, sort: 'date desc', limit: 3 } })
+    expect(calls[0].body.members).toEqual({
+      schema: '@std/person', where: { published: true }, sort: '-name', limit: 20,
+      narrow: { where: { featured: true }, sort: '-date', limit: 3 },
+    })
+  })
+
+  it('the record of a parametric page crosses as `narrow.match` — the set as saved beside it, never a top-level `match`', async () => {
+    const { fetch, calls } = doorStub({ data: { members: [] } })
+    const f = createDefaultFetcher({ fetch })
+    await f.resolve(record)
+    expect(calls[0].body.members).toEqual({
+      schema: '@std/person', where: { published: true }, sort: '-name', limit: 20, whole: true,
+      narrow: { match: { $name: 'ada' } },
+    })
+  })
+
+  it('⛔ `narrow` carries only what the service takes inside it — and one with nothing left is not sent', async () => {
+    const { fetch, calls } = doorStub({ data: { members: [] } })
+    const f = createDefaultFetcher({ fetch })
+    // `scope` belongs to the query, a count of 0 cuts nothing: the service would refuse the first
+    await f.resolve({ ...list, narrow: { scope: 'lab', limit: 0, whole: true } })
+    expect(calls[0].body.members).not.toHaveProperty('narrow')
+    // and a stale top-level `match` or `cursor` never crosses there
+    await f.resolve({ ...list, match: { $name: 'ada' }, cursor: 'c' })
+    expect(calls[1].body.members).not.toHaveProperty('match')
+    expect(calls[1].body.members).not.toHaveProperty('cursor')
   })
 
   it('an authored `scope` wins, and a bare `sort` field is ascending', async () => {
@@ -129,7 +156,7 @@ describe('A6 — the misses of one tick ride one POST, and each gets its own ans
     const [a, b] = await Promise.all([f.resolve(list), f.resolve(record)])
     expect(calls).toHaveLength(1)
     expect(Object.keys(calls[0].body)).toEqual(['members', 'members#2'])
-    expect(calls[0].body['members#2']).toEqual({ schema: '@std/person', where: { published: true, $name: 'ada' }, whole: true })
+    expect(calls[0].body['members#2']).toEqual({ schema: '@std/person', where: { published: true }, sort: '-name', limit: 20, whole: true, narrow: { match: { $name: 'ada' } } })
     expect(a).toEqual({ data: [{ $uuid: 'u1', $name: 'ada' }], meta: { whole: false } })
     expect(b).toEqual({ data: [{ $uuid: 'u1', $name: 'ada', bio: 'Full' }], meta: { whole: true } })
   })
@@ -186,19 +213,20 @@ describe("backend's shipped wire — quoted shapes", () => {
   // says more records remain: the old behaviour rendered part of a list with nothing
   // to distinguish it from the end of the data.
   it('a page render REPORTS an answer with more to come — it does not page', async () => {
+    // A cursor comes back only when the page's `narrow.limit` stopped short of the set.
     const { fetch, calls } = doorStub({
       data: { members: [{ $uuid: 'u1', $name: 'ada', name: 'Ada Lovelace' }] },
       whole: {},
       cursors: { members: 'opaque' },
     })
     const f = createDefaultFetcher({ fetch })
-    const result = await f.resolve(list)
+    const result = await f.resolve({ ...list, narrow: { limit: 1 } })
     expect(result.data).toEqual([{ $uuid: 'u1', $name: 'ada', name: 'Ada Lovelace' }])
     expect(result.meta).toEqual({ whole: false, partial: true })
     expect(result.error).toBeUndefined()
     // ⛔ ONE request: nothing pages in front of paint.
     expect(calls).toHaveLength(1)
-    expect(calls[0].body.members).not.toHaveProperty('cursor')
+    expect(calls[0].body.members.narrow).toEqual({ limit: 1 })
   })
 
   // ⛔ The service sends no `limits` map since rev D; a stray one changes nothing.
@@ -244,13 +272,17 @@ describe("backend's shipped wire — quoted shapes", () => {
       return { ok: true, status: 200, json: async () => page }
     })
     const f = createDefaultFetcher({ fetch })
-    const result = await f.resolve({ ...list, exhaustive: true })
+    const result = await f.resolve({ ...list, narrow: { limit: 1 }, exhaustive: true })
 
     expect(result.data).toEqual([{ $uuid: 'u1' }, { $uuid: 'u2' }, { $uuid: 'u3' }])
     expect(calls).toHaveLength(3)
-    expect(calls[0].body.members).not.toHaveProperty('cursor')
-    expect(calls[1].body.members.cursor).toBe('c1')
-    expect(calls[2].body.members.cursor).toBe('c2')
+    // ⭐ the cursor rides inside `narrow`, and nothing else in the question changes —
+    // the service resumes only the question a cursor came from (2026-09-14)
+    const { narrow: first, ...top } = calls[0].body.members
+    expect(first).toEqual({ limit: 1 })
+    expect(calls[1].body.members).toEqual({ ...top, narrow: { limit: 1, cursor: 'c1' } })
+    expect(calls[2].body.members).toEqual({ ...top, narrow: { limit: 1, cursor: 'c2' } })
+    for (const call of calls) expect(call.body.members).not.toHaveProperty('cursor')
     // Exhausted, so nothing is partial; the page count rides for a caller
     // that wants to know it cost three round trips.
     expect(result.meta.partial).toBeUndefined()
@@ -284,17 +316,19 @@ describe("backend's shipped wire — quoted shapes", () => {
     const { fetch, calls } = doorStub(answer)
     const f = createDefaultFetcher({ fetch })
     const ask = '/_records/_query/en'
+    // The same three questions in the two-level shape (2026-09-14): a list, the top one of
+    // the set by rank — a narrowing, so its cursor says more remain — and one record.
     const [staff, top, ada] = await Promise.all([
       f.resolve({ ask, query: 'staff', schema: '@std/person', as: 'staff', scope: 'members', where: { featured: true }, locale: 'en' }),
-      f.resolve({ ask, query: 'top', schema: '@std/person', as: 'top', scope: 'members', sort: '-rank', limit: 1, locale: 'en' }),
-      f.resolve({ ask, query: 'ada', schema: '@std/person', as: 'ada', where: { $name: 'ada' }, whole: true, locale: 'en' }),
+      f.resolve({ ask, query: 'top', schema: '@std/person', as: 'top', scope: 'members', narrow: { sort: '-rank', limit: 1 }, locale: 'en' }),
+      f.resolve({ ask, query: 'ada', schema: '@std/person', as: 'ada', narrow: { match: { $name: 'ada' } }, whole: true, locale: 'en' }),
     ])
     expect(calls).toHaveLength(1)
     expect(calls[0].url).toBe('/_records/_query/en')
     expect(calls[0].body).toEqual({
       staff: { schema: '@std/person', scope: 'members', where: { featured: true } },
-      top: { schema: '@std/person', scope: 'members', sort: '-rank', limit: 1 },
-      ada: { schema: '@std/person', where: { $name: 'ada' }, whole: true },
+      top: { schema: '@std/person', scope: 'members', narrow: { sort: '-rank', limit: 1 } },
+      ada: { schema: '@std/person', whole: true, narrow: { match: { $name: 'ada' } } },
     })
     expect(staff.data).toEqual(answer.data.staff)
     // `top` carried a cursor, so its answer is reported as not the whole population.

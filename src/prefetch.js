@@ -175,17 +175,20 @@ export function resolvePageFetchConfigs(content, route, { locale = null } = {}) 
       // ⭐ A parametric page is ABOUT one record, and on a lane with a per-record
       // source (the records service, a `deferred:` query's per-record file) that
       // record is a request of its own. Built for EVERY config the route key
-      // resolves to — a section re-declaring the route query asks its own record
-      // question — by the one rule the entity store uses (`buildDetailConfig`), so
-      // the question prefetched is the question the render asks.
+      // resolves to by the one rule the entity store uses (`buildDetailConfig`), so
+      // the question prefetched is the question the render asks — and since that
+      // question drops a fetch's own narrowing, sections that narrow differently ask
+      // one record question between them.
       if (cfg.detail && binding.paramValue !== undefined) {
         const detailCfg = buildDetailConfig(cfg, { paramName: binding.paramName, paramValue: String(binding.paramValue) })
         if (detailCfg) put(detailCfg)
       }
-      // On the records service the list is asked beside the record; off it, the
-      // record is FOUND in the route query's whole selection — the list without its
-      // `limit` (`routeSelection`) — which is all the render reads for it.
-      put(cfg.ask ? cfg : routeSelection(cfg))
+      // ⭐ On the records service the record question checks the route query's set on
+      // its own, so nothing else is asked. Off it, the record is FOUND in the set —
+      // the query as saved, without the fetch's `narrow` (`routeSelection`) — which is
+      // all the render reads for it. ⛔ Until 2026-09-14 the service's list was asked
+      // beside the record, and the page embedded the whole set to show one record.
+      if (!cfg.ask) put(routeSelection(cfg))
     }
   }
   // The cascade a block sees: its own fetch, page, parent, a nested page's route

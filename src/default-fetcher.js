@@ -15,10 +15,11 @@
  *     question the page asked, answered per key (the records contract, as this
  *     client reads it).
  *
- * `where:` / `sort:` / `limit:` are evaluated HERE, locally, over what the
- * first lane returns — with `@uniweb/core`'s one evaluator, the same the build
- * uses to materialize a file — and at the source when asked. Nothing decides
- * that per site: the LANE decides.
+ * A query's set — `scope:` / `where:` / `sort:` / `limit:` — and the `narrow`
+ * a fetch takes of it are evaluated HERE, locally, over what the first lane
+ * returns — with `@uniweb/core`'s one evaluator (`evaluateQuery`), the same the
+ * build uses — and at the source when asked. Nothing decides that per site: the
+ * LANE decides.
  *
  * ⛔ RETIRED 2026-09-04 [Diego]: `fetcher.baseUrl`, `headers`, `envelope`,
  * `supports`, `request.style` / `request.rename` and the `json-body`
@@ -52,8 +53,7 @@
 
 import {
   substitutePlaceholders,
-  matchWhere,
-  applyScope,
+  evaluateQuery,
   sortRecords,
   sortToWire,
   deriveCacheKey,
@@ -230,14 +230,27 @@ export function createDefaultFetcher({ basePath = '', dev = false, fetch: fetchI
 
 /**
  * One question of a batch, in the records service's own vocabulary
- * (the records contract, §2): `schema` required, `scope` a bare path, `sort`
- * one key spelled `date` / `-date`, `whole` when the whole record is wanted,
- * `match` on a parametric page's record. ⭐ The where-object crosses exactly as
- * authored: the evaluator and the service speak one language (`@uniweb/core`'s where evaluator).
- * ⛔ `nin` was respelled `not_in` here until 2026-09-13, when the evaluator took
- * `not_in` as its only spelling. Anything the service does not answer (a dotted
- * path, a retired operator) is sent as written and answered there: never
- * approximated.
+ * (the records contract, §2).
+ * ⭐ TWO LEVELS, ruled 2026-09-14 [Diego]:
+ *
+ *   - **the top level is the query as saved** — `schema` (required), `scope` a bare
+ *     path, `where`, `sort` one key spelled `date` / `-date`, `limit` — and `whole`
+ *     when the whole record is wanted. Its records are the set, and the top level is
+ *     the same on every question about it;
+ *   - **`narrow`** — how this page takes less than the set: `where`, `match` (a
+ *     parametric page's record), `sort`, `cursor` (to resume a previous answer) and
+ *     `limit`. Absent when the question asks for the set as it is.
+ *
+ * ⛔ Until 2026-09-14 the two were one flat question — the page's `where` joined the
+ * query's, its `sort` and `limit` replaced the query's — and `match` and `cursor` sat
+ * at the top level, where the service no longer takes them. There is no fallback:
+ * the service answers an unknown or misplaced field with a `400` for the request.
+ *
+ * ⭐ A where-object crosses exactly as authored: the evaluator and the service speak
+ * one language (`@uniweb/core`'s where evaluator). ⛔ `nin` was respelled `not_in`
+ * here until 2026-09-13, when the evaluator took `not_in` as its only spelling.
+ * Anything the service does not answer (a retired operator) is sent as written and
+ * answered there: never approximated.
  */
 function toQuestion(request) {
   const q = { schema: request.schema }
@@ -248,24 +261,43 @@ function toQuestion(request) {
   const scope = typeof request.scope === 'string' && request.scope ? request.scope : null
   if (scope) q.scope = scope
   if (where) q.where = where
-  // ⭐ The record of a parametric page: the question unchanged plus `match` — one
-  // key and the URL's value, beside the author's `where`, never merged into it
-  // (`buildDetailConfig`; the records contract as we read it, §1d).
-  if (request.match && typeof request.match === 'object') q.match = request.match
   const sort = sortToWire(request.sort)
   if (sort) q.sort = sort
   if (typeof request.limit === 'number' && request.limit > 0) q.limit = request.limit
   // ⛔ ONLY WHEN TRUE. The brief is the default and absent means the brief, so
   // sending `whole: false` would be noise on every list question the client makes.
   if (request.whole === true) q.whole = true
-  // ⭐ `cursor` is the ONLY field here that is not the author's: it is opaque and
-  // it comes from a previous answer's `cursors` (the records contract §2). ⛔ And
-  // `exhaustive` deliberately does NOT cross — it is a client instruction about
-  // how many times to ask, not part of the question being asked.
-  if (typeof request.cursor === 'string' && request.cursor) q.cursor = request.cursor
-  // ⛔ `maxPages` does not cross either, for the same reason `exhaustive` does not:
-  // both say how many times to ask, never what is being asked.
+  const narrow = toNarrow(request.narrow)
+  if (narrow) q.narrow = narrow
+  // ⛔ `exhaustive` and `maxPages` deliberately do NOT cross — they are client
+  // instructions about how many times to ask, never part of what is being asked.
   return q
+}
+
+/**
+ * A question's `narrow`, with only the fields the service takes inside it — any other
+ * is a `400` for the whole request there — or `null` when nothing is left.
+ *
+ *   - `where` crosses as authored;
+ *   - `match` — the record of a parametric page: one key and the URL's value, beside
+ *     the author's `where`, never merged into it (`buildDetailConfig`);
+ *   - `sort` in the service's spelling;
+ *   - ⭐ `cursor` — the ONLY field in a question that is not the author's: opaque, from a
+ *     previous answer's `cursors`, sent back on the same question and nothing else
+ *     changed. A cursor is a narrowing like the rest, so the top level stays the query as
+ *     saved on every page;
+ *   - `limit`, when it cuts.
+ */
+function toNarrow(narrow) {
+  if (!narrow || typeof narrow !== 'object') return null
+  const n = {}
+  if (narrow.where && typeof narrow.where === 'object') n.where = narrow.where
+  if (narrow.match && typeof narrow.match === 'object') n.match = narrow.match
+  const sort = sortToWire(narrow.sort)
+  if (sort) n.sort = sort
+  if (typeof narrow.cursor === 'string' && narrow.cursor) n.cursor = narrow.cursor
+  if (typeof narrow.limit === 'number' && narrow.limit > 0) n.limit = narrow.limit
+  return Object.keys(n).length > 0 ? n : null
 }
 
 /**
@@ -275,8 +307,9 @@ function toQuestion(request) {
  * contract rev D, 2026-09-13), each map absent when empty: `data` answers exactly the
  * keys sent — `[]` when nothing matched, and `[]` too for a question an author got
  * wrong, since the service answers a mistake rather than refusing it; `whole[key]` says
- * a key was served as whole records; `cursors[key]` that more records remain under the
- * question's `limit`; `partial[key]` that a source of the key did not answer. A key
+ * a key was served as whole records; `cursors[key]` that more records remain past the
+ * question's `narrow.limit` — a query's own `limit` defines the set and never produces
+ * one; `partial[key]` that a source of the key did not answer. A key
  * missing from `data` is a protocol violation and is reported as an error, never as
  * silence. ⛔ `errors` and `limits` are not read: the service stopped sending them in
  * the same revision, and this client read both until 2026-09-14.
@@ -430,10 +463,13 @@ async function flushAsked(url, queue, doFetch) {
   if (pending.size === 0) return
   // Re-ask each unfinished key on its own — the cursor is per key, so a batch
   // would have to correlate several independent positions through one body.
+  // ⭐ The cursor rides inside `narrow` and NOTHING ELSE in the question changes: the
+  // service resumes only the question a cursor came from, and answers a cursor sent
+  // with anything else changed with a `400`.
   await Promise.all([...pending].map(([entry, state]) => {
     const next = {
       ...entry,
-      request: { ...entry.request, cursor: state.cursor },
+      request: { ...entry.request, narrow: { ...(entry.request.narrow || {}), cursor: state.cursor } },
       collected: state.collected,
       page: state.page,
     }
@@ -489,20 +525,16 @@ function sortLocale(request, ctx) {
 
 /**
  * Evaluate the query over what the source returned — the ONE evaluator,
- * `@uniweb/core`'s, so the browser orders and filters exactly as the build
- * did when it materialized `/data/<name>.json`.
+ * `@uniweb/core`'s `evaluateQuery`, so the browser orders and filters exactly as
+ * the build does: the query's set first (`scope` over each record's placement,
+ * `where`, `sort`, `limit`), then the fetch's `narrow` of it. Only the sort is this
+ * lane's own, for what it does with a bad `sort:` in production.
  */
 function applyOperators(data, request, { dev = false, locale = null } = {}) {
-  if (!Array.isArray(data)) return data
-  let result = data
-  // `scope` first: it names the branch the rest of the query reads. On this lane
-  // it is evaluated over each record's placement (`path`), as the build did when it
-  // wrote the file — `scope: :dir` bound per page reaches here (2026-09-11).
-  if (typeof request.scope === 'string' && request.scope) result = applyScope(result, request.scope)
-  if (request.where) result = matchWhere(request.where, result)
-  if (request.sort) result = applySort(result, request.sort, dev, locale)
-  if (typeof request.limit === 'number' && request.limit > 0) result = result.slice(0, request.limit)
-  return result
+  return evaluateQuery(data, request, {
+    locale,
+    sort: (items, sortExpr, options) => applySort(items, sortExpr, dev, options.locale),
+  })
 }
 
 /**

@@ -15,19 +15,21 @@
  * page render uses**, applying each saved query's own `scope` and `where` — and
  * asks through the same client.
  *
- * ## ⛔ `limit` IS DROPPED, and it is the one place a corpus must diverge
+ * ## ⭐ Each query is asked AS SAVED — its `limit` included
  *
- * A saved query's `limit` is the LIST PAGE's presentation: `limit: 20` means the
- * page shows twenty. **Its detail pages still exist for every record matching
- * `scope` + `where`** — so a corpus that honoured `limit` would index twenty and
- * miss every page beyond them, which is worse than indexing nothing because the
- * gap is invisible.
+ * A query defines its SET: the records its `scope` and `where` select, in its
+ * `sort`, up to its `limit` (ruled 2026-09-14 [Diego]). A parametric page has a URL
+ * for each record of its route query's set and no other, so the set is exactly the
+ * population a site's pages reach — a field note older than a query's 100 most recent
+ * has no page to index. Asked with no `narrow`, the service answers the set whole in
+ * one answer, so a walk has nothing to page; it still follows a cursor if one ever
+ * comes back, bounded by `maxPages`.
  *
- * ⚠️ **This shipped wrong in 0.17.0 and was found by the consumer, not by us**
- * (2026-09-06): the config was passed through unchanged, `limit` crossed as the
- * question's own, and the corpus was capped. The claim that this surface met
- * "the population its detail pages can reach" was made *"read charitably"* — a
- * phrase doing work that one `sed` would have done better.
+ * ⛔ **Until 2026-09-14 this dropped the query's `limit`**, on the rule it replaced — a
+ * `limit` was the list page's presentation and every record matching `scope` + `where`
+ * had a page — which was right under that rule. ⚠️ And that rule's own history: the
+ * first version, in 0.17.0, passed `limit` through while claiming the corpus was the
+ * population detail pages reach, and the consumer found it (2026-09-06).
  *
  * ## What the caller supplies
  *
@@ -61,11 +63,12 @@ import { createDefaultFetcher } from './default-fetcher.js'
  *   list shows; **`true` — whole records — is what an index wants**: a brief index
  *   cannot match body text the record's own detail page displays, and a reader who
  *   finds a word on the page and not in search meets the inconsistency two
- *   rankings would produce. The cost is the caller's and is bounded by `maxPages`.
- *   An external query is never collected — it has no records service to ask.
- * @param {number} [options.maxPages] - the caller's own bound on the walk. The
- *   default is a bound, not a target; a caller that knows its per-request budget
- *   passes its own.
+ *   rankings would produce. The cost is the caller's, and bounded by each query's
+ *   own `limit`. An external query is never collected — it has no records service
+ *   to ask.
+ * @param {number} [options.maxPages] - the caller's own bound on a walk that pages. A
+ *   question with no `narrow` is answered whole with no cursor, so today's walk is one
+ *   request per query; the bound holds should a service page anyway.
  * @returns {Promise<{records: Object, errors: Object|null, meta: Object}>}
  *   `records` is keyed by query NAME, each a flat array; `errors` is keyed the
  *   same and is null when nothing failed; `meta[name]` carries
@@ -110,9 +113,8 @@ export async function collectSiteRecords(
     // `path` has no live lane, and reading that file is the caller's business,
     // not ours — it is in the site's own URL space and they already serve it.
     if (!cfg.ask) return
-    // `limit` is the list page's, never the corpus's — see the header.
-    const { limit, ...population } = cfg
-    const asked = { ...population, whole, exhaustive: true }
+    // The query as saved — the set its pages reach, its `limit` included; see the header.
+    const asked = { ...cfg, whole, exhaustive: true }
     if (typeof maxPages === 'number' && maxPages > 0) asked.maxPages = maxPages
 
     const result = await fetcher.resolve(asked, { signal })

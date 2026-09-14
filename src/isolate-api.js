@@ -164,7 +164,16 @@ export const ISOLATE_API = Object.freeze({
  * ⚖️ Revisit at 1.0: once sites are pinned in the field, *"it does not break
  * sites"* stops being free, and this paragraph is the thing to re-argue.
  */
-export const WIRE_FLOOR = '0.21.0'
+/*
+ * ⭐ **0.25.0, raised 2026-09-14 [Diego: "you can raise minUsable now to latest"]** — and
+ * it is also an incompatibility floor again: 0.25.0 is the first runtime that asks the
+ * records service with `narrow` — the query as saved at the top, the fetch's `where`,
+ * `sort`, `limit`, `match` and `cursor` inside `narrow`. Every earlier one sends a
+ * top-level `match` or `cursor`, which the service refuses with a whole-request `400`
+ * since it took `narrow`. It also carries declared-key delivery and `$route`, so a host
+ * at the floor may rely on both.
+ */
+export const WIRE_FLOOR = '0.25.0'
 
 /**
  * ⭐ **THE MINIMUM RUNTIME VERSION A SITE MAY BE PUBLISHED AT.** At or above it,

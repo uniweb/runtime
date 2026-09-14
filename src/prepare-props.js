@@ -457,6 +457,10 @@ function runPropsHandler(content, params, block) {
  */
 export function prepareProps(block, meta, entityData = null) {
   mergeEntityData(block, entityData)
+  // ⭐ A list the section held before the store answered — its own fetch, prerendered
+  // into its content by a static build — gets its records' `$route` by the store's rule,
+  // which it outranked in the merge above (2026-09-14).
+  block.website?.entityStore?.linkOwnRecords?.(block)
   runDataHandler(block)
   runContentHandler(block)
 

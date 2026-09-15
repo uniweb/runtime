@@ -32,6 +32,7 @@ import {
 } from './wire-foundation.js'
 import { resolveLayoutTransitions, resolveLayoutLayers, areaWrapperStyle } from './area-wrappers.js'
 import { renderAppearanceBootScript } from './appearance.js'
+import { documentTitle } from './document-title.js'
 
 // Re-export L2 helpers so the public `@uniweb/runtime/ssr` surface
 // carries everything an SSR consumer needs from one entry point.
@@ -728,12 +729,15 @@ export function injectPageContent(html, renderedContent, page, options = {}) {
     `<div id="root">${renderedContent}</div>`
   )
 
-  // Update page title (use getTitle() so isIndex pages inherit parent title)
-  const pageTitle = page.getTitle?.() || page.title
-  if (pageTitle) {
+  // Update the document title — by the rule the SPA sets `document.title` with
+  // (`documentTitle`: `<page> | <site>`), so the title a crawler reads here is the one a
+  // visitor keeps once the bundle loads. ⛔ Until 2026-09-14 this wrote the page title
+  // alone. getTitle() so isIndex pages inherit their parent's title.
+  const title = documentTitle(page.getTitle?.() || page.title, page.website?.name)
+  if (title) {
     result = result.replace(
       /<title>.*?<\/title>/,
-      `<title>${escapeHtml(pageTitle)}</title>`
+      `<title>${escapeHtml(title)}</title>`
     )
   }
 

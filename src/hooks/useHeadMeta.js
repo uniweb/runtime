@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useRef } from 'react'
+import { documentTitle } from '../document-title.js'
 
 /**
  * Meta tag definitions for easy management
@@ -103,13 +104,9 @@ function setMetaContent(key, content) {
  * @param {string} meta.og.url - OG URL
  * @param {Object} options - Hook options
  * @param {string} options.siteName - Site name for title suffix
- * @param {string} options.titleSeparator - Separator between page title and site name
  */
 export function useHeadMeta(meta, options = {}) {
-  const {
-    siteName = '',
-    titleSeparator = ' | '
-  } = options
+  const { siteName = '' } = options
 
   // Track created elements for cleanup
   const createdElements = useRef([])
@@ -117,13 +114,10 @@ export function useHeadMeta(meta, options = {}) {
   useEffect(() => {
     if (!meta) return
 
-    // Update document title
-    if (meta.title) {
-      const fullTitle = siteName
-        ? `${meta.title}${titleSeparator}${siteName}`
-        : meta.title
-      document.title = fullTitle
-    }
+    // Update document title — by the rule the prerendered `<title>` is written with
+    // (`documentTitle`), so a prerendered page keeps its title when the bundle loads.
+    const fullTitle = documentTitle(meta.title, siteName)
+    if (fullTitle) document.title = fullTitle
 
     // Update meta description
     setMetaContent('description', meta.description || null)
@@ -180,8 +174,7 @@ export function useHeadMeta(meta, options = {}) {
     meta?.og?.description,
     meta?.og?.image,
     meta?.og?.url,
-    siteName,
-    titleSeparator
+    siteName
   ])
 }
 

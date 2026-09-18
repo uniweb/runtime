@@ -463,8 +463,19 @@ export function initPrerender(content, foundation, extensionsOrOptions, maybeOpt
   const website = uniweb.activeWebsite
   uniweb.routingComponents = {
     useLocation: () => {
-      const route = website?.activePage?.route || ''
-      return { pathname: '/' + route, search: '', hash: '', state: null, key: 'default' }
+      // ⛔ `activePage.route` IS ALREADY ROOT-RELATIVE — `/`, `/about`. This used to
+      // return `'/' + route`, so every prerendered page reported a pathname with a
+      // doubled leading slash: `//` on the homepage, `//about` elsewhere.
+      //
+      // It failed silently for as long as it existed, because nothing in the
+      // runtime reads pathname — a FOUNDATION does. Measured 2026-09-18: a language
+      // switcher passing `useLocation().pathname` to `getLocaleUrl` emitted
+      // `href="//"`, which a browser resolves as a PROTOCOL-RELATIVE url (host
+      // empty), not as the site root. The SPA was unaffected, so it reproduced only
+      // in the built output.
+      const route = website?.activePage?.route || '/'
+      const pathname = route.startsWith('/') ? route : `/${route}`
+      return { pathname, search: '', hash: '', state: null, key: 'default' }
     },
     useParams: () => ({}),
     useNavigate: () => () => {},

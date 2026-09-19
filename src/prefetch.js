@@ -31,13 +31,17 @@
  *                permissive default because the build and browser lanes call it in-process.
  *   - `prerender`  whether a fetch is tried — `'always'` (default) tries every config; `'author'`
  *                honours the author's `prerender: false`. ⛔ The default is `'always'` because this
- *                entry has exactly one kind of caller: an isolate rendering per request, where the
- *                flag means nothing and always prerendering is the product ([Diego, 2026-07-28 and
- *                2026-09-03]: "`prerender: false` is not for the isolate"). The build lane, which
- *                bakes static artifacts and does honour the flag, uses its own executor
- *                (`build/src/prerender.js`) and never calls this. `'author'` is the explicit opt-in
- *                for a caller that bakes; omitting the option must not silently reproduce the
- *                2026-07-28 outcome — prefetch a no-op on a live-data template, page still 200.
+ *                entry has exactly one kind of caller: an isolate prerendering the page a visit
+ *                starts on, where the flag means nothing and always prerendering is the product
+ *                ([Diego, 2026-07-28 and 2026-09-03]: "`prerender: false` is not for the isolate").
+ *                ⚠️ That page ONLY: the site is a SPA, and every page after it renders in the
+ *                browser with data the entity store fetches, never through this. (Until 2026-09-19
+ *                this said "an isolate rendering per request", which read as "every page".)
+ *                The build lane, which bakes static artifacts and does honour the flag, uses its
+ *                own executor (`build/src/prerender.js`) and never calls this. `'author'` is the
+ *                explicit opt-in for a caller that bakes; omitting the option must not silently
+ *                reproduce the 2026-07-28 outcome — prefetch a no-op on a live-data template,
+ *                page still 200.
  *   - returns    one entry per DECLARED config, `{ config, outcome, data, meta?, error? }`, keyed
  *                downstream by `deriveCacheKey(config)`. `outcome` is `fetched`, `failed`
  *                (transport or HTTP error, `error` says which) or `skipped` (the author

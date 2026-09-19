@@ -7,9 +7,10 @@
  *
  *   - `@uniweb/build`'s `prerender.js` — `renderPage` → classify → `injectPageContent`,
  *     once per page in its loop.
- *   - an SSR isolate rendering per request — `resolvePage` → `renderPage` →
- *     `injectPageContent`, and it wrote the route lookup three times in three files
- *     before `resolvePage` was exported at all (see that function's header).
+ *   - an SSR isolate prerendering the page a visit starts on (the SPA renders every
+ *     page after it) — `resolvePage` → `renderPage` → `injectPageContent`, and it wrote
+ *     the route lookup three times in three files before `resolvePage` was exported at
+ *     all (see that function's header).
  *
  * Two unlike callers is what makes the interface honest: a build bakes files and an
  * isolate answers a request, so anything only one of them needs stayed out.

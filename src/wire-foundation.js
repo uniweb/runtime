@@ -148,14 +148,18 @@ export function sliceContentForLocale(content, locale) {
  * fetched data so the dispatcher's first probe hits the cache instead
  * of refetching.
  *
- * The cache key MUST go through `deriveCacheKey(entry.config)` and the
- * value MUST be wrapped as `{ data }` — otherwise the dispatcher's
- * lookup at `_dataStore.get(deriveCacheKey(request))` misses every
- * time and `cached.data` reads `undefined`. Three call sites used to
- * inline this loop independently (browser SPA, Node SSG, and a server-side
- * renderer); one of the three was using the wrong shape, silently killing
- * prefetched-data reuse wherever it ran. This helper is the one canonical
- * implementation.
+ * The value MUST be wrapped as `{ data }`, or `cached.data` reads `undefined`. Three call sites
+ * used to inline this loop independently (browser SPA, Node SSG, and a server-side renderer); one
+ * of the three used the wrong shape, silently killing prefetched-data reuse wherever it ran. This
+ * helper is the one canonical implementation.
+ *
+ * ⭐ **The KEY is the dispatcher's, not ours** (`fetcher.hydrate`). ⛔ This filed every entry under
+ * `deriveCacheKey(entry.config)` until 2026-09-20, which is right for every request the framework's
+ * own fetcher answers and wrong for one the site routes to a transport that declares its own
+ * `cacheKey` — the documented case being a request whose identity depends on state its address does
+ * not carry. Measured: such an entry landed where no `peek` looks, so every prerendered page of that
+ * site rendered empty and the browser refetched it, with no error anywhere. One derivation, one
+ * home — the dispatcher's, which is where selection happens.
  *
  * @param {import('@uniweb/core').Website} website
  * @param {Array<{config: Object, data: any}>} fetchedData
@@ -163,12 +167,18 @@ export function sliceContentForLocale(content, locale) {
 export function hydrateDataStore(website, fetchedData) {
   if (!website?.dataStore || !fetchedData?.length) return
   for (const entry of fetchedData) {
-    // A `prefetchPageData` list carries every declared config with an `outcome`; only what was
-    // actually fetched enters the store. A list without outcomes (the SSG lane's) is all fetched.
+    // A data step's list carries every declared config with an `outcome`; only what was actually
+    // fetched enters the store. A list without outcomes (the SSG lane's) is all fetched.
     if (entry.outcome && entry.outcome !== 'fetched') continue
     // `meta` (the depth the records were fetched at) rides along, so the store
     // files them in its record index exactly as a runtime fetch would.
-    website.dataStore.set(deriveCacheKey(entry.config), entry.meta ? { data: entry.data, meta: entry.meta } : { data: entry.data })
+    const value = entry.meta ? { data: entry.data, meta: entry.meta } : { data: entry.data }
+    if (typeof website.fetcher?.hydrate === 'function') {
+      website.fetcher.hydrate(entry.config, value, { website })
+    } else {
+      // A graph with no dispatcher — a stub in a test, or a caller assembling one by hand.
+      website.dataStore.set(deriveCacheKey(entry.config), value)
+    }
   }
 }
 

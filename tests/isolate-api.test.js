@@ -85,17 +85,20 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
   // the implementation against itself and pass for any value; literals are what
   // make raising the floor a deliberate edit a reviewer sees. It is also the
   // number a publisher ratchets, so a silent move is the thing to prevent.
-  it('the floor is 0.26.6 — the newest stamp, which has overtaken the WIRE floor', () => {
-    expect(MIN_USABLE_RUNTIME).toBe('0.26.6')
+  it('the floor is 0.27.0 — the WIRE, raised as a baseline once the surface settled', () => {
+    expect(MIN_USABLE_RUNTIME).toBe('0.27.0')
     expect(MIN_USABLE_RUNTIME).toMatch(/^\d+\.\d+\.\d+$/)
 
-    // ⭐ 2026-09-19 — WHY THIS NUMBER MOVED, and it is the first time an export has moved it.
-    // `loadPageData` shipped in 0.26.6 (verified from the published tarball, not from a version
-    // number), and step 3 of `isolate-api.js`'s sequence restamps an `UNRELEASED` export with the
-    // version that published it. That necessarily lifts the floor: a floor BELOW the newest stamp
-    // would promise a host an export the floor's own version does not contain, which is the one
-    // direction the floor exists to prevent. ⇒ The wire reason below is unchanged and still sits
-    // underneath; what changed is that the export map now leads it.
+    // ⭐ 2026-09-20 — WHY IT MOVED, and it is a BASELINE raise, not an incompatibility:
+    // [Diego] *"we can raise minVersion to 0.27.0 to have a round and clean baseline"*, which the
+    // 2026-09-12 ruling allows while in 0.x. What makes 0.27.0 a clean line: it is the first
+    // runtime whose isolate API is ONLY the current surface — the payload-only prefetch was
+    // deleted in it, after the one host that called it confirmed the switch.
+    //
+    // ⚠️ AND IT TOOK THE LEAD BACK FROM THE EXPORT MAP. `loadPageData`'s stamp (0.26.6) led this
+    // number for one day — the first time an export ever did — and the wire leads again. Which
+    // input is larger has changed three times; neither one is "the" floor.
+    //
     // ⚠️ Backend ratchets this number from the channel index, so it reaches published sites at the
     // NEXT channel publish, not at this commit.
 
@@ -115,12 +118,14 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
     // ⭐ 0.25.0 (2026-09-14) is both: raised on Diego's word after the publish, and the
     // first runtime that asks the records service with `narrow` — every earlier one
     // sends a top-level `match` or `cursor`, which the service now refuses.
-    expect(WIRE_FLOOR).toBe('0.25.0')
+    expect(WIRE_FLOOR).toBe('0.27.0')
     expect(ISOLATE_API.collectSiteRecords).toBe('0.17.0')
     expect(compareVersions(WIRE_FLOOR, ISOLATE_API.collectSiteRecords)).toBeGreaterThan(0)
-    // the render's data step, and the first export ever to sit above the wire floor
+    // the render's data step — it led the floor for one day (0.26.6) and now sits under the wire
     expect(ISOLATE_API.loadPageData).toBe('0.26.6')
-    expect(compareVersions(ISOLATE_API.loadPageData, WIRE_FLOOR)).toBeGreaterThan(0)
+    expect(compareVersions(WIRE_FLOOR, ISOLATE_API.loadPageData)).toBeGreaterThan(0)
+    // ⛔ and the floor names a PUBLISHED version: 0.27.0 is on npm and on the channel (2026-09-20)
+    expect(compareVersions(WIRE_FLOOR, MIN_USABLE_RUNTIME)).toBe(0)
 
     // the composed render entry, which was the floor until 0.17.0
     expect(ISOLATE_API.prefetchAndHydrate).toBe('0.14.2')

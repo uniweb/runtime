@@ -164,15 +164,29 @@ export const ISOLATE_API = Object.freeze({
  * sites"* stops being free, and this paragraph is the thing to re-argue.
  */
 /*
- * ⭐ **0.25.0, raised 2026-09-14 [Diego: "you can raise minUsable now to latest"]** — and
- * it is also an incompatibility floor again: 0.25.0 is the first runtime that asks the
- * records service with `narrow` — the query as saved at the top, the fetch's `where`,
- * `sort`, `limit`, `match` and `cursor` inside `narrow`. Every earlier one sends a
- * top-level `match` or `cursor`, which the service refuses with a whole-request `400`
- * since it took `narrow`. It also carries declared-key delivery and `$route`, so a host
- * at the floor may rely on both.
+ * ⭐ **0.27.0, raised 2026-09-20 [Diego: "we can raise minVersion to 0.27.0 to have a round
+ * and clean baseline"]** — a BASELINE raise, which the 2026-09-12 ruling allows while in 0.x, and
+ * it is not an incompatibility: a runtime between 0.25.0 and 0.27.0 works, and a host at 0.26.6
+ * has every name the map promises.
+ *
+ * ⭐ What makes 0.27.0 a clean line rather than an arbitrary one: it is the first runtime whose
+ * isolate API is ONLY the current surface. The payload-only prefetch — `prefetchPageData`,
+ * `resolvePageFetchConfigs`, `executeFetchConfigs` — was deleted in it, once the one host that
+ * called them confirmed the switch to `loadPageData`. Below this line the map and the artifact
+ * differ in what they offer; at or above it they do not.
+ *
+ * ⚠️ **It also takes the lead back from the export map.** `loadPageData`'s stamp (`0.26.6`) led
+ * `MIN_USABLE_RUNTIME` for one day — the first time an export ever did — and the wire leads again
+ * from here. Which input is larger has changed three times; neither is "the" floor.
+ *
+ * ⛔ **Previously 0.25.0, raised 2026-09-14 [Diego: "you can raise minUsable now to latest"]** —
+ * that one WAS also an incompatibility floor: 0.25.0 is the first runtime that asks the records
+ * service with `narrow` — the query as saved at the top, the fetch's `where`, `sort`, `limit`,
+ * `match` and `cursor` inside `narrow`. Every earlier one sends a top-level `match` or `cursor`,
+ * which the service refuses with a whole-request `400` since it took `narrow`. It also carries
+ * declared-key delivery and `$route`. That break is still real and still below this number.
  */
-export const WIRE_FLOOR = '0.25.0'
+export const WIRE_FLOOR = '0.27.0'
 
 /**
  * ⭐ **THE MINIMUM RUNTIME VERSION A SITE MAY BE PUBLISHED AT.** At or above it,

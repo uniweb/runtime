@@ -83,6 +83,14 @@ export async function loadPageData({ website, route, fetch, dev = false, locale 
   // and it is that child's data the page needs.
   const page = typeof resolved.getRenderableSelf === 'function' ? resolved.getRenderableSelf() : resolved
 
+  // ⛔ A real Page, not page data. `createPageRenderer` tolerates plain data because rendering it
+  // still produces a page; here the same tolerance would walk raw sections, find no blocks and no
+  // graph behind them, and fetch NOTHING — a clean run, an empty page, no error anywhere. That is
+  // the failure this whole step exists to end, so it is refused.
+  if (typeof page.getBodyBlocks !== 'function') {
+    throw new Error('loadPageData: `route` must be a route or a Page from this Website — page data is not enough to say what its render reads.')
+  }
+
   // A cache of this request's own: the graph's belongs to whatever it is rendering, and a page's
   // data is asked fresh per request. The site's transports still apply (`dispatcherFor`).
   const dispatcher = website.dispatcherFor({

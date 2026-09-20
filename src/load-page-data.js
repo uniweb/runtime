@@ -61,10 +61,16 @@ function blocksOf(page) {
  *   the data of another, and nothing to see it.
  * @param {'always'|'author'} [options.prerender] - `'always'` asks for everything, which is what an
  *   isolate rendering a visit's first page wants; `'author'` honours `prerender: false`.
+ * @param {Object} [options.cache] - a `DataStore` to answer from and fill, shared across calls.
+ *   ⭐ For a caller that runs the step for MANY pages of one site — a static build — where every
+ *   page asks for the site's and its parent's data and reading each address once is the difference
+ *   between N reads and N×M. ⛔ Not for a host serving requests: there a page's data is asked
+ *   fresh, and the default (a cache per call) is what does that. A shared cache changes nothing
+ *   about what is ASKED or returned — every request is still recorded, hit or miss.
  * @returns {Promise<Array<{ config: Object, outcome: 'fetched'|'failed'|'skipped', data: *, meta?: Object, error?: string }>>}
  *   one entry per request the render will make, keyed downstream by `deriveCacheKey(config)`
  */
-export async function loadPageData({ website, route, fetch, dev = false, locale = null, prerender = 'always' }) {
+export async function loadPageData({ website, route, fetch, dev = false, locale = null, prerender = 'always', cache = null }) {
   if (prerender !== 'author' && prerender !== 'always') {
     throw new Error(`loadPageData: prerender must be 'author' or 'always', got ${JSON.stringify(prerender)}`)
   }
@@ -91,10 +97,11 @@ export async function loadPageData({ website, route, fetch, dev = false, locale 
     throw new Error('loadPageData: `route` must be a route or a Page from this Website — page data is not enough to say what its render reads.')
   }
 
-  // A cache of this request's own: the graph's belongs to whatever it is rendering, and a page's
-  // data is asked fresh per request. The site's transports still apply (`dispatcherFor`).
+  // A cache of this call's own unless the caller shares one: the graph's belongs to whatever it is
+  // rendering, and a page's data is asked fresh per request. The site's transports still apply
+  // (`dispatcherFor`).
   const dispatcher = website.dispatcherFor({
-    dataStore: new DataStore(),
+    dataStore: cache ?? new DataStore(),
     defaultFetcher: createDefaultFetcher({ basePath: website.config?.base || '', dev, fetch }),
   })
 

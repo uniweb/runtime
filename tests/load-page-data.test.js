@@ -258,6 +258,24 @@ describe('the step asks for what the render reads', () => {
     expect(page.title).toBe('B')
   })
 
+  it('⭐ a shared cache reads each address once, and every page still reports every request it made', async () => {
+    // What a static build needs: N pages of one site, each asking for the site's and its parent's
+    // data. ⛔ The entries must stay complete even when an answer came from the cache — a caller
+    // embedding them per page would otherwise ship a page that asks the browser for what the build
+    // already had.
+    const website = initPrerender(site(), foundation, []).activeWebsite
+    const { fetch, asked } = transport()
+    const cache = new DataStore()
+
+    const list = await loadPageData({ website, route: '/posts', fetch, cache })
+    const record = await loadPageData({ website, route: '/posts/b', fetch, cache })
+
+    expect(asked.filter((url) => url.includes('/data/posts.json'))).toHaveLength(1)
+    expect(list.some((e) => e.config.as === 'posts')).toBe(true)
+    expect(record.some((e) => e.config.as === 'posts')).toBe(true)
+    expect(record.every((e) => e.outcome === 'fetched')).toBe(true)
+  })
+
   it('CONTROL — an unknown route asks for nothing', async () => {
     const { entries, asked } = await serve('/nope')
     expect(entries).toEqual([])

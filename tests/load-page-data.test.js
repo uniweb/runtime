@@ -108,7 +108,10 @@ function transport() {
   const asked = []
   const fetch = vi.fn(async (url) => {
     asked.push(String(url))
-    const body = String(url).includes('/data/posts.json') ? POSTS
+    // The service answers an envelope keyed by the question's key, and says which keys came whole.
+    const body = String(url).includes('/_records/')
+      ? { data: { posts: [{ $uuid: 'u1', $name: 'b', slug: 'b', title: 'B', body: 'Full' }] }, whole: { posts: true } }
+      : String(url).includes('/data/posts.json') ? POSTS
       : String(url).includes('/data/items.json') ? ITEMS
       : String(url).includes('/data/items/seven.json') ? { ...ITEMS[0], body: 'Full' }
       : String(url).includes('/data/menu.json') ? [{ label: 'Home' }]
@@ -235,6 +238,24 @@ describe('the step asks for what the render reads', () => {
     expect(siteTransport.resolve).toHaveBeenCalled()
     // and the framework default never fetched the menu itself
     expect(asked.some((url) => url.includes('/data/menu.json'))).toBe(false)
+  })
+
+  it('⭐ on a records service the page’s record is ONE question, and the page names itself from its answer', async () => {
+    // The lane a hosted site is served on: no compiled file, a question door instead. The record is
+    // the query's set narrowed by the route's handle, so it is one question and no list beside it.
+    const hosted = site({
+      config: {
+        services: { records: '/_records/ask/{locale}' },
+        queries: { posts: { schema: '@/post', sort: 'title', limit: 20 } },
+      },
+    })
+    const { entries, asked, page, statuses } = await serve('/posts/b', hosted)
+
+    expect(asked.filter((url) => url.includes('/_records/'))).toHaveLength(1)
+    expect(asked.some((url) => url.includes('/data/posts.json'))).toBe(false) // no list beside it
+    expect(entries.every((e) => e.outcome === 'fetched')).toBe(true)
+    expect(statuses.every((s) => s.status !== 'pending')).toBe(true)
+    expect(page.title).toBe('B')
   })
 
   it('CONTROL — an unknown route asks for nothing', async () => {

@@ -32,7 +32,7 @@
  */
 import { resolvePage, renderPage, classifyRenderError, injectPageContent } from './ssr-renderer.js'
 import { hydrateDataStore } from './wire-foundation.js'
-import { prefetchPageData } from './prefetch.js'
+import { loadPageData } from './load-page-data.js'
 
 /**
  * A renderer bound to one initialized Website and one shell.
@@ -122,6 +122,14 @@ export function createPageRenderer({ website, shell }) {
  * them to tell "nothing was tried" from "everything tried failed", which is a
  * different cache decision.
  *
+ * ⭐ **Since 2026-09-19 it asks what the RENDER will read, block by block** (`loadPageData`),
+ * on the Website it is handed: the keys each component declares, the layout the page actually
+ * draws, and the transport the site chose for a key. `content` is no longer read — the graph
+ * carries everything — and stays in the signature for callers that pass it.
+ * ⛔ `prefetchPageData` works from the payload alone and cannot know any of those; it asks for
+ * every fetch on every level instead, and still gets four cases wrong
+ * (`kb/framework/plans/what-a-page-needs.md` §0). Prefer this entry.
+ *
  * ⛔ The build lane does NOT call this: it hydrates every collection once, before
  * its page loop, from its own executor that honours the author's `prerender:` flag.
  * That difference is why this is a named isolate helper and not a step inside
@@ -165,7 +173,7 @@ export async function prefetchAndHydrate({ website, content, route, locale = nul
       'To use the ambient fetch deliberately, pass `fetch: globalThis.fetch`.'
     )
   }
-  const fetched = await prefetchPageData({ content, route, locale, fetch, dev, prerender })
+  const fetched = await loadPageData({ website, route, fetch, dev, prerender })
   hydrateDataStore(website, fetched)
   return fetched
 }

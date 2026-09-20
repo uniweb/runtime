@@ -14,6 +14,22 @@ vi.mock('../src/ssr-renderer.js', () => ({
     shell.replace('<!--SLOT-->', `${content}|${page.route}|${opts.sectionOverrideCSS || ''}|${opts.extra || ''}`),
 }))
 
+// The data step stands in for the same reason: what it asks a page's render to be fetched is its
+// own subject (`load-page-data.test.js`, against a real Website and foundation). Here it only has
+// to answer, so that this file tests the join — the guards, the hydration, the outcomes.
+vi.mock('../src/load-page-data.js', () => ({
+  loadPageData: async ({ route, fetch }) => {
+    if (route === '/nope') return []
+    const config = { path: '/data/team.json', as: 'team' }
+    try {
+      await fetch('/data/team.json')
+      return [{ config, outcome: 'fetched', data: [{ id: 1 }] }]
+    } catch (err) {
+      return [{ config, outcome: 'failed', data: null, error: err.message }]
+    }
+  },
+}))
+
 const { createPageRenderer, prefetchAndHydrate } = await import('../src/page-renderer.js')
 
 const SHELL = '<!DOCTYPE html><html><body><div id="root"><!--SLOT--></div></body></html>'

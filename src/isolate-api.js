@@ -102,6 +102,8 @@ export const ISOLATE_API = Object.freeze({
   resolvePageFetchConfigs: '0.14.1',
   executeFetchConfigs: '0.14.1',
   prefetchPageData: '0.14.1',
+  // the render's data step — the same question asked off the graph the render uses
+  loadPageData: UNRELEASED,
   // the composed render entry
   createPageRenderer: '0.14.2',
   prefetchAndHydrate: '0.14.2',

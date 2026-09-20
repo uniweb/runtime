@@ -56,8 +56,18 @@ export {
   generate404Html,
 } from './ssr-renderer.js'
 
-// Server-side prefetch — the runtime executing a page's fetches for a host, so an isolate
-// receives `fetchedData` computed by our fetcher and the host carries no copy of it.
+// ⭐ The render's data step — what the page a visit starts on will read, asked block by block on
+// the Website the isolate renders with, so the keys a component declares, the layout the page
+// draws and the transport a key is routed to are all known. A host that hydrates through its own
+// door calls this and hydrates the list itself; `prefetchAndHydrate` is the same step plus the
+// hydration.
+export { loadPageData } from './load-page-data.js'
+
+// Server-side prefetch from the PAYLOAD ALONE — the entry that predates the step above. It cannot
+// know a component's declared keys, a page's layout or a site's transports, so it asks for every
+// fetch on every level and still gets four cases wrong
+// (`kb/framework/plans/what-a-page-needs.md` §0). ⛔ Kept for callers that have no Website to hand;
+// prefer `loadPageData`.
 // [Diego, 2026-09-03]: the backend sets the records service; the fetch comes from the runtime.
 export {
   findPageForRoute,

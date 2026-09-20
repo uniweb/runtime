@@ -63,18 +63,16 @@ export {
 // hydration.
 export { loadPageData } from './load-page-data.js'
 
-// Server-side prefetch from the PAYLOAD ALONE — the entry that predates the step above. It cannot
-// know a component's declared keys, a page's layout or a site's transports, so it asks for every
-// fetch on every level and still gets four cases wrong
-// (`kb/framework/plans/what-a-page-needs.md` §0). ⛔ Kept for callers that have no Website to hand;
-// prefer `loadPageData`.
-// [Diego, 2026-09-03]: the backend sets the records service; the fetch comes from the runtime.
-export {
-  findPageForRoute,
-  resolvePageFetchConfigs,
-  executeFetchConfigs,
-  prefetchPageData,
-} from './prefetch.js'
+// Which page a route names — the rule, not a copy of it (`@uniweb/core/route-match`). A host
+// resolving a route before it asks us anything imports this rather than comparing strings: the
+// SPA normalizes a trailing slash, and a copy that did not made `/about/` prefetch nothing and
+// then render fine (2026-09-12).
+// ⛔ `prefetchPageData`, `resolvePageFetchConfigs` and `executeFetchConfigs` are GONE (2026-09-20).
+// They worked from the payload alone, which cannot say which keys a component declares, which
+// layout a page draws, or which transport a key is routed to — four measured cases wrong
+// (`kb/framework/plans/what-a-page-needs.md` §0). `loadPageData` above is the step that replaced
+// them, and the one host that called them confirmed the switch before they went.
+export { findPageForRoute } from '@uniweb/core/route-match'
 
 // The composed render entry — resolve, render, inject, as one call. Built because
 // framework itself had two callers of this unshared sequence (the build's prerender

@@ -125,8 +125,13 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
     // the composed render entry, which was the floor until 0.17.0
     expect(ISOLATE_API.prefetchAndHydrate).toBe('0.14.2')
     expect(ISOLATE_API.createPageRenderer).toBe('0.14.2')
-    // and the entry a host feature-detects today shipped one version earlier
-    expect(ISOLATE_API.prefetchPageData).toBe('0.14.1')
+    // ⛔ And the entry a host used to feature-detect is GONE (2026-09-20): `prefetchPageData`,
+    // `resolvePageFetchConfigs` and `executeFetchConfigs` worked from the payload alone, the one
+    // host that called them confirmed the switch to `loadPageData`, and a name that no longer
+    // exists must not be stamped — the map would promise it.
+    expect(ISOLATE_API.prefetchPageData).toBeUndefined()
+    expect(ISOLATE_API.resolvePageFetchConfigs).toBeUndefined()
+    expect(ISOLATE_API.executeFetchConfigs).toBeUndefined()
   })
 
   it('the built artifact exports the same set — the isolate loads dist/ssr.js, not the source', async () => {

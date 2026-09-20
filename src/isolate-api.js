@@ -97,11 +97,8 @@ export const ISOLATE_API = Object.freeze({
   renderAppearanceBootScript: '0.8.30',
   // page resolution
   resolvePage: '0.9.5',
-  // server-side prefetch — the runtime executing a page's fetches for a host
+  // which page a route names
   findPageForRoute: '0.14.1',
-  resolvePageFetchConfigs: '0.14.1',
-  executeFetchConfigs: '0.14.1',
-  prefetchPageData: '0.14.1',
   // the render's data step — the same question asked off the graph the render uses
   loadPageData: '0.26.6',
   // the composed render entry

@@ -85,9 +85,19 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
   // the implementation against itself and pass for any value; literals are what
   // make raising the floor a deliberate edit a reviewer sees. It is also the
   // number a publisher ratchets, so a silent move is the thing to prevent.
-  it('the floor is 0.25.0 — set deliberately on the WIRE, not derived from the newest export', () => {
-    expect(MIN_USABLE_RUNTIME).toBe('0.25.0')
+  it('the floor is 0.26.6 — the newest stamp, which has overtaken the WIRE floor', () => {
+    expect(MIN_USABLE_RUNTIME).toBe('0.26.6')
     expect(MIN_USABLE_RUNTIME).toMatch(/^\d+\.\d+\.\d+$/)
+
+    // ⭐ 2026-09-19 — WHY THIS NUMBER MOVED, and it is the first time an export has moved it.
+    // `loadPageData` shipped in 0.26.6 (verified from the published tarball, not from a version
+    // number), and step 3 of `isolate-api.js`'s sequence restamps an `UNRELEASED` export with the
+    // version that published it. That necessarily lifts the floor: a floor BELOW the newest stamp
+    // would promise a host an export the floor's own version does not contain, which is the one
+    // direction the floor exists to prevent. ⇒ The wire reason below is unchanged and still sits
+    // underneath; what changed is that the export map now leads it.
+    // ⚠️ Backend ratchets this number from the channel index, so it reaches published sites at the
+    // NEXT channel publish, not at this commit.
 
     // ⭐ THE FLOOR IS SET ON THE WIRE, NOT DERIVED FROM THE EXPORT MAP — and the
     // REASON changed on 2026-09-12 while the mechanism did not.
@@ -108,6 +118,9 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
     expect(WIRE_FLOOR).toBe('0.25.0')
     expect(ISOLATE_API.collectSiteRecords).toBe('0.17.0')
     expect(compareVersions(WIRE_FLOOR, ISOLATE_API.collectSiteRecords)).toBeGreaterThan(0)
+    // the render's data step, and the first export ever to sit above the wire floor
+    expect(ISOLATE_API.loadPageData).toBe('0.26.6')
+    expect(compareVersions(ISOLATE_API.loadPageData, WIRE_FLOOR)).toBeGreaterThan(0)
 
     // the composed render entry, which was the floor until 0.17.0
     expect(ISOLATE_API.prefetchAndHydrate).toBe('0.14.2')

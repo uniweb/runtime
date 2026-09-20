@@ -242,4 +242,18 @@ describe('the step asks for what the render reads', () => {
     expect(entries).toEqual([])
     expect(asked).toEqual([])
   })
+
+  it('⛔ a locale that disagrees with the Website is refused, not applied', async () => {
+    // A Website is sliced for one locale and resolves every address in it. Taking a second locale
+    // here would prerender a page in one language with the data of another, and nothing downstream
+    // would see it — so the mistake is reported where it is made.
+    const uniweb = initPrerender(site(), foundation, [])
+    await expect(
+      loadPageData({ website: uniweb.activeWebsite, route: '/posts', fetch: transport().fetch, locale: 'fr' }),
+    ).rejects.toThrow(/locale-sliced/)
+    // CONTROL — its own locale is accepted
+    await expect(
+      loadPageData({ website: uniweb.activeWebsite, route: '/posts', fetch: transport().fetch, locale: 'en' }),
+    ).resolves.toBeInstanceOf(Array)
+  })
 })

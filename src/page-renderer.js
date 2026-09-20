@@ -173,7 +173,10 @@ export async function prefetchAndHydrate({ website, content, route, locale = nul
       'To use the ambient fetch deliberately, pass `fetch: globalThis.fetch`.'
     )
   }
-  const fetched = await loadPageData({ website, route, fetch, dev, prerender })
+  // ⛔ `locale` is forwarded to be CHECKED, not applied: the Website is locale-sliced already, so a
+  // caller whose two disagree gets an error rather than a page prerendered in one language with the
+  // data of another.
+  const fetched = await loadPageData({ website, route, fetch, dev, locale, prerender })
   hydrateDataStore(website, fetched)
   return fetched
 }

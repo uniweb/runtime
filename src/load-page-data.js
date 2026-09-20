@@ -55,14 +55,26 @@ function blocksOf(page) {
  * @param {string|Object} options.route - the route, or an already-resolved Page
  * @param {Function} options.fetch - the transport, per request
  * @param {boolean} [options.dev]
+ * @param {string|null} [options.locale] - ⛔ NOT a locale to fetch in: the Website is already
+ *   locale-sliced (`initPrerenderForLocale`) and every address is resolved in ITS locale. Passing
+ *   one that disagrees throws, because the alternative is a page prerendered in one language with
+ *   the data of another, and nothing to see it.
  * @param {'always'|'author'} [options.prerender] - `'always'` asks for everything, which is what an
  *   isolate rendering a visit's first page wants; `'author'` honours `prerender: false`.
  * @returns {Promise<Array<{ config: Object, outcome: 'fetched'|'failed'|'skipped', data: *, meta?: Object, error?: string }>>}
  *   one entry per request the render will make, keyed downstream by `deriveCacheKey(config)`
  */
-export async function loadPageData({ website, route, fetch, dev = false, prerender = 'always' }) {
+export async function loadPageData({ website, route, fetch, dev = false, locale = null, prerender = 'always' }) {
   if (prerender !== 'author' && prerender !== 'always') {
     throw new Error(`loadPageData: prerender must be 'author' or 'always', got ${JSON.stringify(prerender)}`)
+  }
+  const active = website?.getActiveLocale?.() ?? null
+  if (locale && active && locale !== active) {
+    throw new Error(
+      `loadPageData: this Website renders ${JSON.stringify(active)} and the caller asked for ` +
+      `${JSON.stringify(locale)}. A Website is locale-sliced — build one per locale ` +
+      '(`initPrerenderForLocale`) rather than asking this step for another language.'
+    )
   }
   const resolved = typeof route === 'string' ? resolvePage(website, route) : route
   // Nothing matched: a genuine 404, and the caller's to turn into one. Nothing to fetch.

@@ -23,7 +23,7 @@
  * @module
  */
 import DataStore, { deriveCacheKey } from '@uniweb/core/datastore'
-import { resolvePage } from './ssr-renderer.js'
+import { resolvePage } from './resolve-page.js'
 import { getComponentMeta } from './prepare-props.js'
 import { createDefaultFetcher } from './default-fetcher.js'
 

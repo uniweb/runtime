@@ -529,36 +529,19 @@ export async function prefetchIcons(siteContent, uniweb, onProgress = () => {}) 
 // Layer 3: Per-page rendering
 // ============================================================================
 
+// ⭐ `resolvePage` LIVES IN ITS OWN LEAF and is re-exported here, so the public
+// `@uniweb/runtime/ssr` surface is unchanged. It is `website.getPage` and needs
+// no renderer; this file imports `react-dom/server` at module scope, so a caller
+// that only wants the lookup used to get React's server renderer with it
+// (`./resolve-page.js`, 2026-09-20).
+export { resolvePage } from './resolve-page.js'
+
 /**
  * Classify an SSR rendering error.
  *
  * @param {Error} err
  * @returns {{ type: 'hooks'|'null-component'|'unknown', message: string }}
  */
-/**
- * Resolve a route to the Page that should render it.
- *
- * Exists because this module exported `renderPage(page, …)` and no supported way
- * to *get* a page — so every host rendering server-side wrote its own lookup,
- * and the obvious one (`website.pages.find(p => p.route === route)`) cannot
- * match a dynamic route, because the payload holds `/blog/:id` and the request
- * carries `/blog/1`. One host wrote that lookup three times in three files
- * before the gap was noticed. A renderer that takes a Page owes callers a Page.
- *
- * This is `Website#getPage` — the same seven-step resolution the browser runs,
- * literally the same function, so a server-rendered page and the one hydrating
- * over it cannot disagree. Pure `@uniweb/core`: no React, no DOM, no DataStore
- * required, safe in a Worker isolate.
- *
- * @param {Website} website
- * @param {string} route - The requested path, e.g. `/blog/1`
- * @returns {Page|undefined} The page, or undefined when nothing matches — which
- *   is a genuine 404 and the caller's to turn into one.
- */
-export function resolvePage(website, route) {
-  return website.getPage(route)
-}
-
 export function classifyRenderError(err) {
   const msg = err.message || ''
 

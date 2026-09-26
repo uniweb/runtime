@@ -119,9 +119,11 @@ function applySchemaToObject(obj, schema) {
     if (typeof fieldDef !== 'object') continue
 
     // Inline picklist (`enum`): if the value is set but not among the allowed
-    // values, fall back to the default.
+    // values, fall back to the default. By value: an entry may be `{ value, label }`, as a
+    // foundation built before its build lowered it to values still carries.
     if (Array.isArray(fieldDef.enum)) {
-      if (result[field] !== undefined && !fieldDef.enum.includes(result[field]) && defaultValue !== undefined) {
+      const allowed = fieldDef.enum.map((e) => (e && typeof e === 'object' && 'value' in e ? e.value : e))
+      if (result[field] !== undefined && !allowed.includes(result[field]) && defaultValue !== undefined) {
         result[field] = defaultValue
       }
     }

@@ -83,6 +83,24 @@ describe('createDefaultFetcher — baseline (no config)', () => {
     expect(result.error).toMatch(/^HTTP 500/)
   })
 
+  // ⛔ A host answers a data file it does not hold with the site's page — a 200 of text/html —
+  // and kept as text, that page reached a component as records and took the page down.
+  it('an HTML page answering a data address is a failed read, not data', async () => {
+    fetchStub.setResponse({ contentType: 'text/html; charset=utf-8', body: '<!doctype html>\n<html lang="es"><head></head><body></body></html>' })
+    const f = createDefaultFetcher()
+    const result = await f.resolve({ path: '/es/data/team.json' })
+    expect(result.data).toEqual([])
+    expect(result.error).toMatch(/HTML page, not data/)
+  })
+
+  it('CONTROL: a fragment of HTML, and plain text, are still kept as text', async () => {
+    const f = createDefaultFetcher()
+    fetchStub.setResponse({ contentType: 'text/html', body: '<p>Hello</p>' })
+    expect((await f.resolve({ url: 'https://api.example.com/fragment' })).data).toBe('<p>Hello</p>')
+    fetchStub.setResponse({ contentType: 'text/plain', body: 'plain words' })
+    expect((await f.resolve({ url: 'https://api.example.com/plain' })).data).toBe('plain words')
+  })
+
   it('returns { data: [], error } on empty request', async () => {
     const f = createDefaultFetcher()
     const result = await f.resolve({})

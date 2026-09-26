@@ -498,6 +498,13 @@ async function flushAsked(url, queue, doFetch) {
  * address shares. A JSON body is parsed as JSON; anything else is tried as JSON
  * and kept as text when it is not. A failed response keeps its text, so a caller
  * can read a message out of it (the records service's problem details).
+ *
+ * ⛔ A WHOLE HTML DOCUMENT IS NOT DATA — it is a failed read. A host that serves a site
+ * answers an address it holds no file for with the site's page, a `200` of `text/html`,
+ * and kept as text that page reached a component as a query's records: the component
+ * called `.map` on it and the page fell to its error boundary. Measured 2026-09-26 on a
+ * site a local backend serves, `/es/data/team.json` answering with the page. A fragment of
+ * HTML is still kept as text; only a document — `<!doctype html>` or `<html>` — is refused.
  */
 async function readResponse(doFetch, target, init) {
   const response = await doFetch(target, init)
@@ -516,9 +523,14 @@ async function readResponse(doFetch, target, init) {
   try {
     return { ok: true, body: JSON.parse(text) }
   } catch {
+    if (HTML_DOCUMENT.test(text)) {
+      return { ok: false, status: response.status, statusText: 'an HTML page, not data', text: null }
+    }
     return { ok: true, body: text }
   }
 }
+
+const HTML_DOCUMENT = /^\s*(?:<!doctype\s+html|<html[\s>])/i
 
 /** Build a `meta` from the fields that are actually present, or `undefined`. */
 function withMeta(fields) {

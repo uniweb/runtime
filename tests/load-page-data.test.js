@@ -22,10 +22,10 @@ import { hydrateDataStore } from '../src/wire-foundation.js'
 import { loadPageData } from '../src/load-page-data.js'
 
 const POSTS = [
-  { slug: 'a', title: 'A' },
-  { slug: 'b', title: 'B' },
+  { $name: 'a', title: 'A' },
+  { $name: 'b', title: 'B' },
 ]
-const ITEMS = [{ id: '7', slug: 'seven', title: 'Seven' }]
+const ITEMS = [{ id: '7', $name: 'seven', title: 'Seven' }]
 
 /** A transport the SITE selects for one key — a foundation's, which a payload cannot know about. */
 const siteTransport = { resolve: vi.fn(async () => ({ data: [{ label: 'Home' }] })) }
@@ -111,7 +111,7 @@ function transport() {
     asked.push(String(url))
     // The service answers an envelope keyed by the question's key, and says which keys came whole.
     const body = String(url).includes('/_records/')
-      ? { data: { posts: [{ $uuid: 'u1', $name: 'b', slug: 'b', title: 'B', body: 'Full' }] }, whole: { posts: true } }
+      ? { data: { posts: [{ $uuid: 'u1', $name: 'b', title: 'B', body: 'Full' }] }, whole: { posts: true } }
       : String(url).includes('/data/posts.json') ? POSTS
       : String(url).includes('/data/items.json') ? ITEMS
       : String(url).includes('/data/items/seven.json') ? { ...ITEMS[0], body: 'Full' }

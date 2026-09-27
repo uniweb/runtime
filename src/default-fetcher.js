@@ -554,9 +554,10 @@ function sortLocale(request, ctx) {
 /**
  * Evaluate the query over what the source returned — the ONE evaluator,
  * `@uniweb/core`'s `evaluateQuery`, so the browser orders and filters exactly as
- * the build does: the query's set first (`scope` over each record's placement,
- * `where`, `sort`, `limit`), then the fetch's `narrow` of it. Only the sort is this
- * lane's own, for what it does with a bad `sort:` in production.
+ * the build does: the query's set first (`scope` over the branch a compiled record is
+ * held with, `where`, `sort`, `limit`), then the fetch's `narrow` of it. What comes back
+ * carries no branch — `evaluateQuery` drops it, so no component receives one. Only the
+ * sort is this lane's own, for what it does with a bad `sort:` in production.
  */
 function applyOperators(data, request, { dev = false, locale = null } = {}) {
   return evaluateQuery(data, request, {

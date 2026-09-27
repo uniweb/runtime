@@ -346,9 +346,9 @@ describe('views of one file — each its own answer, one read in flight (2026-09
   let fetchStub
   beforeEach(() => {
     fetchStub = stubFetch({ body: [
-      { slug: 'a', team: 'x', path: 'field' },
-      { slug: 'b', team: 'y', path: 'lab' },
-      { slug: 'c', team: 'x', path: 'field/2025' },
+      { slug: 'a', team: 'x', $branch: 'field' },
+      { slug: 'b', team: 'y', $branch: 'lab' },
+      { slug: 'c', team: 'x', $branch: 'field/2025' },
     ] })
   })
   afterEach(() => fetchStub.restore())
@@ -373,10 +373,21 @@ describe('views of one file — each its own answer, one read in flight (2026-09
     expect(whole.data.map((r) => r.slug)).toEqual(['a', 'b', 'c'])
   })
 
-  it('`scope` is evaluated over each record\'s placement, at segment boundaries', async () => {
+  it('`scope` is evaluated over the branch each record is held with, at segment boundaries', async () => {
     const f = createDefaultFetcher()
     const res = await f.resolve({ path: '/data/people.json', as: 'people', scope: 'field' }, {})
     expect(res.data.map((r) => r.slug)).toEqual(['a', 'c'])
+  })
+
+  // ⛔ Ruled 2026-09-27 [Diego]: a record does not carry its branch. The compiled file holds it
+  // for `scope`; what a component receives is the answer, which has none.
+  it('delivers no record with the branch its compiled file holds', async () => {
+    const f = createDefaultFetcher()
+    for (const request of [{ scope: 'field' }, {}]) {
+      const res = await f.resolve({ path: '/data/people.json', as: 'people', ...request }, {})
+      expect(res.data.length).toBeGreaterThan(0)
+      expect(res.data.some((r) => '$branch' in r)).toBe(false)
+    }
   })
 })
 

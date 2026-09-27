@@ -58,7 +58,6 @@ import {
   sortToWire,
   deriveCacheKey,
   resolveServiceUrl,
-  nameRecords,
 } from '@uniweb/core'
 
 /**
@@ -205,9 +204,6 @@ export function createDefaultFetcher({ basePath = '', dev = false, fetch: fetchI
         if (transform && data !== null && data !== undefined) {
           data = getNestedValue(data, transform)
         }
-        // An external query's records named by the field its `name_field:` says — `$name`,
-        // before a route's `match` or a `where` on `$name` reads it.
-        data = nameRecords(data, request.nameField)
 
         // Evaluate the query locally. Only applies to array data
         // (filtering/sorting/limiting a single record doesn't make sense).

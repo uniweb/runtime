@@ -120,22 +120,6 @@ describe('createDefaultFetcher — baseline (no config)', () => {
     expect(result.data).toEqual([{ id: 1 }])
   })
 
-  // ⭐ An external query's `name_field:` (2026-09-27): its records are named `$name` from that field
-  // after `transform` and before the query is evaluated — so a `narrow.match` on `$name` finds them.
-  it('names the records by `nameField` after the transform, before a `$name` match', async () => {
-    fetchStub.setResponse({ body: { data: { items: [{ slug: 'a', n: 1 }, { slug: 'b', n: 2 }] } } })
-    const f = createDefaultFetcher()
-    const result = await f.resolve({ url: 'https://api.example.com/x', transform: 'data.items', nameField: 'slug', narrow: { match: { $name: 'b' } } })
-    expect(result.data).toEqual([{ slug: 'b', n: 2, $name: 'b' }])
-  })
-
-  it('CONTROL — with no `nameField`, a record\'s `slug` names nothing', async () => {
-    fetchStub.setResponse({ body: [{ slug: 'a' }, { slug: 'b' }] })
-    const f = createDefaultFetcher()
-    const result = await f.resolve({ url: 'https://api.example.com/x', narrow: { match: { $name: 'b' } } })
-    expect(result.data).toEqual([])
-  })
-
   it('surfaces AbortError as { error: "aborted" }', async () => {
     const original = globalThis.fetch
     globalThis.fetch = vi.fn(() => Promise.reject(Object.assign(new Error('abort'), { name: 'AbortError' })))

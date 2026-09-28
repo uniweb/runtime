@@ -29,6 +29,7 @@ function makePage({ route, hasContent = true, blocks = [] }) {
     hasContent: () => hasContent,
     getBodyBlocks: () => blocks,
     getPageBlocks: () => blocks,
+    getAllBlocks: () => blocks,
     getLayoutName: () => 'default',
     getLayoutAreas: () => ({}),
     getLayoutParams: () => ({}),

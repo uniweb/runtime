@@ -29,6 +29,7 @@ import {
 } from 'react-router-dom'
 
 import { ChildBlocks } from './components/PageRenderer.jsx'
+import Background from './components/Background.jsx'
 import { wireFoundationCapabilities, hydrateDataStore, ensureThemeCss } from './wire-foundation.js'
 
 // Re-export so existing consumers importing hydrateDataStore from
@@ -283,6 +284,9 @@ export function initUniweb({ content, foundation, extensions = [], routingCompon
   }
 
   uniweb.childBlockRenderer = ChildBlocks
+  // The same background a section gets, for kit's `SectionBackground` — a component that
+  // paints its own (`background: 'self'`). The SSR twin sets its own (`ssr-renderer.js`).
+  uniweb.backgroundRenderer = Background
 
   // L2 (singleton wiring): defaultInsets, xref.build(), and any future
   // framework-level capability bridge — shared with ssr-renderer.js so

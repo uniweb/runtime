@@ -67,7 +67,8 @@ export function getWrapperProps(block) {
     className = className ? `${className} ${blockClassName}` : blockClassName
   }
 
-  const { background = {} } = block.standardOptions
+  // Normalized once by core (`block.background`) — the same value the SPA renderer reads.
+  const background = block.background || {}
   const style = {}
 
   // If background has content, ensure relative positioning and a stacking context
@@ -77,7 +78,8 @@ export function getWrapperProps(block) {
     style.isolation = 'isolate'
   }
 
-  // Apply context overrides as inline CSS custom properties
+  // The section's tokens in effect whatever the scheme, inline — as in the SPA renderer
+  // (`BlockRenderer.jsx`); the rest of its theme is the page stylesheet's.
   if (block.contextOverrides) {
     for (const [key, value] of Object.entries(block.contextOverrides)) {
       style[`--${key}`] = value
@@ -445,6 +447,12 @@ export function initPrerender(content, foundation, extensionsOrOptions, maybeOpt
     )
   }
 
+  // The same background a section gets, for kit's `SectionBackground` — a component that
+  // paints its own (`background: 'self'`). Mirrors the SPA's `Background` (setup.js).
+  uniweb.backgroundRenderer = function InlineBackground(background) {
+    return renderBackground(background)
+  }
+
   // L2 (singleton wiring): defaultInsets, xref.build(), and any future
   // framework-level capability bridge — shared with setup.js so both
   // boot paths apply the same foundation contract. See
@@ -610,7 +618,9 @@ export function renderPage(page, website) {
 
   // Build per-page section override CSS (theme pinning, component vars)
   const appearance = website.themeData?.appearance
-  const sectionOverrideCSS = buildSectionOverrides(page.getPageBlocks(), appearance)
+  // Every block the page renders — each layout area it shows, a sidebar too; the builder walks
+  // their child sections. The SPA renderer passes the same (`PageRenderer.jsx`).
+  const sectionOverrideCSS = buildSectionOverrides(page.getAllBlocks(), appearance)
 
   return { renderedContent, sectionOverrideCSS }
 }

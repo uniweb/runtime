@@ -36,7 +36,8 @@ const getWrapperProps = (block) => {
     className = className ? `${className} ${blockClassName}` : blockClassName
   }
 
-  const { background = {} } = block.standardOptions
+  // Normalized once by core (`block.background`), for this renderer and its SSR twin alike.
+  const background = block.background || {}
   const style = {}
 
   // If background has content, ensure relative positioning and a stacking context
@@ -46,8 +47,10 @@ const getWrapperProps = (block) => {
     style.isolation = 'isolate'
   }
 
-  // Apply context overrides as inline CSS custom properties.
-  // These override the context class tokens for this specific section.
+  // The section's tokens in effect whatever the scheme (`block.contextOverrides`), inline, so
+  // they reach the page even where a host places no page stylesheet. The rest of the section's
+  // theme — a palette, values per context that follow the site's scheme, the foundation's
+  // variables — is the page stylesheet's (`buildSectionOverrides`, @uniweb/theming).
   if (block.contextOverrides) {
     for (const [key, value] of Object.entries(block.contextOverrides)) {
       style[`--${key}`] = value

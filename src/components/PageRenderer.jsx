@@ -59,7 +59,9 @@ function SectionOverrideStyles({ page, appearance }) {
 
   const css = useMemo(() => {
     if (!page) return ''
-    const blocks = page.getPageBlocks()
+    // Every block the page renders — each layout area it shows, a sidebar too; the builder
+    // walks their child sections. The SSR twin passes the same (`ssr-renderer.js`).
+    const blocks = page.getAllBlocks()
     return buildSectionOverrides(blocks, appearance)
   }, [page, appearance])
 

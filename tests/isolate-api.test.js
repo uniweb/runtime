@@ -85,9 +85,14 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
   // the implementation against itself and pass for any value; literals are what
   // make raising the floor a deliberate edit a reviewer sees. It is also the
   // number a publisher ratchets, so a silent move is the thing to prevent.
-  it('the floor is 0.27.0 — the WIRE, raised as a baseline once the surface settled', () => {
-    expect(MIN_USABLE_RUNTIME).toBe('0.27.0')
+  it('the floor is 0.28.1 — the WIRE, raised as a baseline to the current runtime', () => {
+    expect(MIN_USABLE_RUNTIME).toBe('0.28.1')
     expect(MIN_USABLE_RUNTIME).toMatch(/^\d+\.\d+\.\d+$/)
+
+    // ⭐ 2026-09-28 — raised to the current published runtime [Diego], again a BASELINE raise. 0.28.0 reads a section's `theme` as
+    // `theme.yml` for that section and its background from its own params; 0.28.1 carries core
+    // 0.34.0, which reads a section's data from `params.fetch`. An editor that writes those can rely
+    // on them for every site published from then on.
 
     // ⭐ 2026-09-20 — WHY IT MOVED, and it is a BASELINE raise, not an incompatibility:
     // [Diego] *"we can raise minVersion to 0.27.0 to have a round and clean baseline"*, which the
@@ -118,13 +123,14 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
     // ⭐ 0.25.0 (2026-09-14) is both: raised on Diego's word after the publish, and the
     // first runtime that asks the records service with `narrow` — every earlier one
     // sends a top-level `match` or `cursor`, which the service now refuses.
-    expect(WIRE_FLOOR).toBe('0.27.0')
+    expect(WIRE_FLOOR).toBe('0.28.1')
     expect(ISOLATE_API.collectSiteRecords).toBe('0.17.0')
     expect(compareVersions(WIRE_FLOOR, ISOLATE_API.collectSiteRecords)).toBeGreaterThan(0)
     // the render's data step — it led the floor for one day (0.26.6) and now sits under the wire
     expect(ISOLATE_API.loadPageData).toBe('0.26.6')
     expect(compareVersions(WIRE_FLOOR, ISOLATE_API.loadPageData)).toBeGreaterThan(0)
-    // ⛔ and the floor names a PUBLISHED version: 0.27.0 is on npm and on the channel (2026-09-20)
+    // ⛔ and the floor names a PUBLISHED version: 0.28.1 is on npm and is the channel's `latest`
+    // (2026-09-28)
     expect(compareVersions(WIRE_FLOOR, MIN_USABLE_RUNTIME)).toBe(0)
 
     // the composed render entry, which was the floor until 0.17.0

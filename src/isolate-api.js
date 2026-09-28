@@ -164,7 +164,18 @@ export const ISOLATE_API = Object.freeze({
  * sites"* stops being free, and this paragraph is the thing to re-argue.
  */
 /*
- * ⭐ **0.27.0, raised 2026-09-20 [Diego: "we can raise minVersion to 0.27.0 to have a round
+ * ⭐ **0.28.1, raised 2026-09-28 [Diego]** — a BASELINE raise, like the one below: the current
+ * published runtime, so an editor writing what it reads can rely on it for every site published
+ * from then on. What the line carries:
+ *   - 0.28.0 — a section's `theme` is `theme.yml` for that section (`{ mode, colors, contexts,
+ *     vars, ...tokens }`), applied by the page stylesheet across every block the page renders; the
+ *     background is `block.background`, read from the section's own params;
+ *   - 0.28.1 — core 0.34.0: a section's data is read from `params.fetch`, and a stored `insets[]`
+ *     is no longer read.
+ * ⚠️ It bounds what is PUBLISHED next, not a site already pinned below it, and it reaches a
+ * consumer at the next runtime publish, as every raise does.
+ *
+ * ⛔ **Previously 0.27.0, raised 2026-09-20 [Diego: "we can raise minVersion to 0.27.0 to have a round
  * and clean baseline"]** — a BASELINE raise, which the 2026-09-12 ruling allows while in 0.x, and
  * it is not an incompatibility: a runtime between 0.25.0 and 0.27.0 works, and a host at 0.26.6
  * has every name the map promises.
@@ -186,7 +197,7 @@ export const ISOLATE_API = Object.freeze({
  * which the service refuses with a whole-request `400` since it took `narrow`. It also carries
  * declared-key delivery and `$route`. That break is still real and still below this number.
  */
-export const WIRE_FLOOR = '0.27.0'
+export const WIRE_FLOOR = '0.28.1'
 
 /**
  * ⭐ **THE MINIMUM RUNTIME VERSION A SITE MAY BE PUBLISHED AT.** At or above it,

@@ -28,6 +28,10 @@ function guaranteeItemStructure(item) {
     lists: item.lists || [],
     icons: item.icons || [],
     videos: item.videos || [],
+    // ⛔ An entry's own insets were left out until 2026-09-29, as `tables` was: the
+    // parser delivered them and this object, built key by key, did not carry them.
+    insets: item.insets || [],
+    media: item.media || [],
     snippets: item.snippets || [],
     buttons: item.buttons || [],
     data: item.data || {},
@@ -37,6 +41,7 @@ function guaranteeItemStructure(item) {
     quotes: item.quotes || [],
     headings: item.headings || [],
     ...(item.math && item.math.length ? { math: item.math } : {}),
+    ...(item.tables && item.tables.length ? { tables: item.tables } : {}),
   }
 }
 
@@ -65,6 +70,9 @@ export function guaranteeContentStructure(parsedContent) {
     icons: content.icons || [],
     videos: content.videos || [],
     insets: content.insets || [],
+    // The section's visual media — images, videos and insets on their own line — in
+    // the order written, each with its `kind`: what a `media` slot holds (2026-09-29).
+    media: content.media || [],
     snippets: content.snippets || [],
     buttons: content.buttons || [],
     data: content.data || {},
@@ -78,7 +86,12 @@ export function guaranteeContentStructure(parsedContent) {
     // use them don't pay the allocation cost. Foundations that need them
     // should check for presence (content.math?.length) or use
     // content.sequence for in-order rendering.
+    //
+    // ⛔ `tables` was not passed through until 2026-09-29: the parser delivered it and
+    // this object, built key by key, left it out — so a component declaring `tables`
+    // received nothing, while `math`, its twin, arrived.
     ...(content.math && content.math.length ? { math: content.math } : {}),
+    ...(content.tables && content.tables.length ? { tables: content.tables } : {}),
 
     // Items with guaranteed structure
     items: (content.items || []).map(guaranteeItemStructure),

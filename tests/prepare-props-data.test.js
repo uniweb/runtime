@@ -71,6 +71,19 @@ describe('prepareProps — content.data from the declared keys', () => {
     expect(said[0]).toMatch(/Lesson: the `quizzes` data block is not in content\.data/)
   })
 
+  it('dev: says so for a concept block (```md:tag) under an undeclared key too', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const sequence = [
+      { type: 'concept_block', tag: 'faq', children: [] },
+      { type: 'concept_block', tag: 'steps', children: [] },
+    ]
+    const block = makeBlock({ held: { faq: { items: [], sequence: [] } }, sequence, dev: true, type: 'Help' })
+    prepareProps(block, { data: { steps: {} } }, null)
+    const said = warn.mock.calls.map(([m]) => m).filter((m) => m.includes('concept block'))
+    expect(said).toHaveLength(1)
+    expect(said[0]).toMatch(/Help: the `faq` concept block is not in content\.data/)
+  })
+
   it('CONTROL — silent outside dev', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const block = makeBlock({ held: { notes: {} }, sequence: [{ type: 'dataBlock', tag: 'notes', data: {} }], type: 'Quiet' })

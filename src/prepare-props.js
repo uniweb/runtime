@@ -346,8 +346,8 @@ function assembleData(block, meta, entityData) {
 }
 
 /**
- * Say once, in dev, that a tagged data block did not reach its section's component — its
- * key is not declared. The block is still in `content.sequence`, where a component that
+ * Say once, in dev, that a tagged block — a data block or a concept block — did not reach its
+ * section's component: its key is not declared. The block is still in `content.sequence`, where a component that
  * renders the sequence finds it.
  */
 const warnedBlocks = new Set()
@@ -355,12 +355,16 @@ function warnUndeclaredBlocks(block, declared) {
   if (!block.website?.entityStore?.dev) return
   const keys = new Set(declared.map(([key]) => key))
   for (const item of block.parsedContent?.sequence || []) {
-    if (item?.type !== 'dataBlock' || typeof item.tag !== 'string' || keys.has(item.tag)) continue
+    // A data block (```yaml:tag) and a concept block (```md:tag) both land under their tag, so
+    // both need the key declared. ⛔ Until 2026-09-29 only a data block was reported, and an
+    // undeclared concept block left content.data without a word.
+    const kind = item?.type === 'dataBlock' ? 'data block' : item?.type === 'concept_block' ? 'concept block' : null
+    if (!kind || typeof item.tag !== 'string' || keys.has(item.tag)) continue
     const memo = `${block.type}::${item.tag}`
     if (warnedBlocks.has(memo)) continue
     warnedBlocks.add(memo)
     console.warn(
-      `[uniweb] ${block.type}: the \`${item.tag}\` data block is not in content.data — ${block.type} does not ` +
+      `[uniweb] ${block.type}: the \`${item.tag}\` ${kind} is not in content.data — ${block.type} does not ` +
         `declare \`${item.tag}\` in its meta.js \`data:\`. It stays in content.sequence.`
     )
   }

@@ -107,11 +107,11 @@ export const ISOLATE_API = Object.freeze({
   // the whole corpus, for a host that indexes rather than renders
   collectSiteRecords: '0.17.0',
   // what a URL names — a page, a redirect, a page served from elsewhere, or nothing
-  resolveRoute: UNRELEASED,
-  routeIndex: UNRELEASED,
-  localeOfPath: UNRELEASED,
-  localeUrl: UNRELEASED,
-  RESOLUTION_STATUS: UNRELEASED,
+  resolveRoute: '0.28.6',
+  routeIndex: '0.28.6',
+  localeOfPath: '0.28.6',
+  localeUrl: '0.28.6',
+  RESOLUTION_STATUS: '0.28.6',
 })
 
 /**

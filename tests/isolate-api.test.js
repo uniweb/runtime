@@ -85,9 +85,17 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
   // the implementation against itself and pass for any value; literals are what
   // make raising the floor a deliberate edit a reviewer sees. It is also the
   // number a publisher ratchets, so a silent move is the thing to prevent.
-  it('the floor is 0.28.1 — the WIRE, raised as a baseline to the current runtime', () => {
-    expect(MIN_USABLE_RUNTIME).toBe('0.28.1')
+  it('the floor is 0.28.6 — the EXPORT MAP, since resolveRoute shipped', () => {
+    expect(MIN_USABLE_RUNTIME).toBe('0.28.6')
     expect(MIN_USABLE_RUNTIME).toMatch(/^\d+\.\d+\.\d+$/)
+
+    // ⭐ 2026-09-30 — raised by an EXPORT, the second time the map has led: `resolveRoute`,
+    // `routeIndex`, `localeOfPath`, `localeUrl` and `RESOLUTION_STATUS` first shipped in 0.28.6
+    // (checked in the published tarball's `dist/ssr.js`, and 0.28.6 is the channel's `latest`),
+    // and their UNRELEASED stamps were replaced after that publish [Diego: "I published"]. A host at
+    // or above the floor asks `resolveRoute` without feature-detecting it.
+    expect(ISOLATE_API.resolveRoute).toBe('0.28.6')
+    expect(compareVersions(MIN_USABLE_RUNTIME, WIRE_FLOOR)).toBeGreaterThan(0)
 
     // ⭐ 2026-09-28 — raised to the current published runtime [Diego], again a BASELINE raise. 0.28.0 reads a section's `theme` as
     // `theme.yml` for that section and its background from its own params; 0.28.1 carries core
@@ -129,9 +137,9 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
     // the render's data step — it led the floor for one day (0.26.6) and now sits under the wire
     expect(ISOLATE_API.loadPageData).toBe('0.26.6')
     expect(compareVersions(WIRE_FLOOR, ISOLATE_API.loadPageData)).toBeGreaterThan(0)
-    // ⛔ and the floor names a PUBLISHED version: 0.28.1 is on npm and is the channel's `latest`
-    // (2026-09-28)
-    expect(compareVersions(WIRE_FLOOR, MIN_USABLE_RUNTIME)).toBe(0)
+    // ⛔ and the wire's own floor names a PUBLISHED version: 0.28.1 was on npm and the channel's
+    // `latest` (2026-09-28). The floor itself is the export map's since 2026-09-30 (above).
+    expect(compareVersions(WIRE_FLOOR, MIN_USABLE_RUNTIME)).toBeLessThan(0)
 
     // the composed render entry, which was the floor until 0.17.0
     expect(ISOLATE_API.prefetchAndHydrate).toBe('0.14.2')

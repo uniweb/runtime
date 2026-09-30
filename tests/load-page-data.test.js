@@ -20,6 +20,7 @@ import { initPrerender } from '../src/ssr-renderer.js'
 import { getComponentMeta } from '../src/prepare-props.js'
 import { hydrateDataStore } from '../src/wire-foundation.js'
 import { loadPageData } from '../src/load-page-data.js'
+import { createPageRenderer } from '../src/page-renderer.js'
 
 const POSTS = [
   { $name: 'a', title: 'A' },
@@ -198,6 +199,18 @@ describe('the step asks for what the render reads', () => {
   it('a URL naming no record is a not-found, because the page’s own record is asked for', async () => {
     const { page } = await serve('/posts/zzz')
     expect(page.notFound).toBe(true)
+  })
+
+  it('…and the renderer says so to its caller — the outcome is `notFound`, not `rendered`', async () => {
+    // The isolate's whole sequence on a real Website: the data step, then the render. A host
+    // keys its status on the outcome, so a page naming no record must reach it as `notFound`;
+    // until 2026-09-30 it arrived as `rendered`, and a host sent 200 for it.
+    const shell = '<html><head></head><body><div id="root"></div></body></html>'
+    const missing = await serve('/posts/zzz')
+    expect(createPageRenderer({ website: missing.website, shell }).render('/posts/zzz').outcome).toBe('notFound')
+    // CONTROL — a record that exists is not a not-found.
+    const found = await serve('/posts/b')
+    expect(createPageRenderer({ website: found.website, shell }).render('/posts/b').outcome).not.toBe('notFound')
   })
 
   it('⛔ a fetch NO section declares is not asked — a parent page’s query on a child that does not read it', async () => {

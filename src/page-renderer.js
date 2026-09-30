@@ -65,6 +65,13 @@ export function createPageRenderer({ website, shell }) {
    * @param {Object} [options.inject] - extra options forwarded to `injectPageContent`
    * @returns {{ outcome: 'rendered'|'notFound'|'failed', html: string|null,
    *   page: Object|null, error: {type: string, message: string}|null }}
+   *   `notFound` means the URL names nothing, and `html` says whether there is a page to
+   *   send for it:
+   *   - `page: null`, `html: null` — no route matched. Send your own not-found page.
+   *   - `page` set, `html` set — the page's record does not exist, and `html` is the page
+   *     rendered in its own not-found state. Send it, with your not-found status.
+   *   - `page` set, `html: null`, `error` set — that not-found state broke while rendering.
+   *     Send your own not-found page; `error` says what broke.
    */
   function render(target, { inject = {} } = {}) {
     const resolved = typeof target === 'string' ? resolvePage(website, target) : target
@@ -86,6 +93,16 @@ export function createPageRenderer({ website, shell }) {
     // you", not throw.
     const page = typeof resolved.getRenderableSelf === 'function' ? resolved.getRenderableSelf() : resolved
 
+    // ⭐ A PAGE CAN RESOLVE AND STILL NAME NOTHING: a parametric page whose record does
+    // not exist. Core marks it `notFound` only when the data answered definitively
+    // (`Website#_createDynamicPage`), never on a failed or missing fetch. It renders the
+    // page's own not-found state — a record miss is not a route miss — and the outcome
+    // says `notFound` all the same, so a caller keying its status on the outcome sends a
+    // not-found response without reading anything new. Known before rendering, so it
+    // holds even when that render breaks. ⛔ Until 2026-09-30 this was `rendered`, and a
+    // host that answered by the outcome sent 200 for a URL naming no record.
+    const missing = page?.notFound === true
+
     let result
     try {
       result = renderPage(page, website)
@@ -93,10 +110,10 @@ export function createPageRenderer({ website, shell }) {
       // `renderPage` handles its own errors, but a foundation can throw from
       // module scope in ways it does not catch. Classify rather than propagate,
       // so one page cannot take down a build loop or an isolate's request.
-      return { outcome: 'failed', html: null, page, error: classifyRenderError(err) }
+      return { outcome: missing ? 'notFound' : 'failed', html: null, page, error: classifyRenderError(err) }
     }
 
-    if (result.error) return { outcome: 'failed', html: null, page, error: result.error }
+    if (result.error) return { outcome: missing ? 'notFound' : 'failed', html: null, page, error: result.error }
 
     // ⛔ `sectionOverrideCSS` LAST, so a caller's `inject` cannot displace it. It is
     // computed by `renderPage` for this page — theme pinning and component vars —
@@ -108,7 +125,7 @@ export function createPageRenderer({ website, shell }) {
       ...inject,
       sectionOverrideCSS: result.sectionOverrideCSS,
     })
-    return { outcome: 'rendered', html, page, error: null }
+    return { outcome: missing ? 'notFound' : 'rendered', html, page, error: null }
   }
 
   return { website, render }

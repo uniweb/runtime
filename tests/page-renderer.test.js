@@ -37,11 +37,14 @@ const page = (route) => ({ route })
 
 /**
  * A Website stub whose `__render` says what `renderPage` answered for a route:
- * an ok result, a returned `{error}`, or a throw.
+ * an ok result, a returned `{error}`, or a throw. A route in `missing` resolves to a
+ * page whose record does not exist — core's `notFound: true` — as a parametric page
+ * does when the data answers that its record is not there.
  */
-function websiteStub(routes, answers = {}) {
+function websiteStub(routes, answers = {}, missing = []) {
   return {
-    getPage: (route) => (routes.includes(route) ? page(route) : undefined),
+    getPage: (route) =>
+      missing.includes(route) ? { ...page(route), notFound: true } : routes.includes(route) ? page(route) : undefined,
     pages: routes.map(page),
     __render: (p) => {
       const a = answers[p.route]
@@ -126,6 +129,39 @@ describe('createPageRenderer — the outcome triple', () => {
     const r = createPageRenderer({ website: websiteStub(['/bad'], { '/bad': 'throw' }), shell: SHELL }).render('/bad')
     expect(r.outcome).toBe('failed')
     expect(r.error.type).toBe('classified')
+  })
+
+  it("a page whose record does not exist is `notFound` — and carries its own rendering", () => {
+    // The URL names nothing, so a caller keying its status on the outcome answers
+    // not-found without reading anything new; `html` is the page's own not-found state,
+    // for a caller that sends it. ⛔ Until 2026-09-30 this was `rendered`, and a host
+    // answering by the outcome sent 200 for a URL naming no record.
+    const r = createPageRenderer({ website: websiteStub([], {}, ['/blog/gone']), shell: SHELL }).render('/blog/gone')
+    expect(r.outcome).toBe('notFound')
+    expect(r.page.route).toBe('/blog/gone')
+    expect(r.error).toBeNull()
+    expect(r.html).toContain('<h1>/blog/gone</h1>')
+    expect(r.html).toContain('.s{}')
+  })
+
+  it('…and stays `notFound` when that not-found state breaks while rendering', () => {
+    // Whether the URL names anything is known before rendering. A component that throws
+    // on a missing record must not turn a not-found into a failure: the caller sends its
+    // own not-found page, and `error` says what broke.
+    const w = websiteStub([], { '/blog/gone': 'throw', '/blog/void': 'error' }, ['/blog/gone', '/blog/void'])
+    const renderer = createPageRenderer({ website: w, shell: SHELL })
+    for (const route of ['/blog/gone', '/blog/void']) {
+      const r = renderer.render(route)
+      expect(r.outcome).toBe('notFound')
+      expect(r.html).toBeNull()
+      expect(r.page.route).toBe(route)
+      expect(r.error).not.toBeNull()
+    }
+  })
+
+  it('CONTROL — a page that resolves without `notFound` is `rendered`, as before', () => {
+    const r = createPageRenderer({ website: websiteStub(['/blog/here']), shell: SHELL }).render(page('/blog/here'))
+    expect(r.outcome).toBe('rendered')
   })
 
   it('CONTROL — the three outcomes are distinguishable without reading `html`', () => {

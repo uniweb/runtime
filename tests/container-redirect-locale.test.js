@@ -15,8 +15,10 @@
  * folder's own route, so comparing a localized destination against a canonical
  * `page.route` finds a difference that isn't one and redirects forever.
  *
- * PageRenderer is a React component wired to react-router, so rather than mount
- * it, this pins the resolution rule it now follows against a real Website.
+ * ⭐ The rule is `resolveRoute` (`@uniweb/core/resolve-route`) since 2026-09-30 — the one every
+ * lane calls — and PageRenderer navigates to the location it gives. PageRenderer is a React
+ * component wired to react-router, so rather than mount it, this pins the rule against a real
+ * Website and checks the component reads its redirect from there.
  */
 
 import { describe, it, expect } from 'vitest'
@@ -35,20 +37,6 @@ const RT = {
     '/Quick-Start-Guide/From-Idea-to-Website': "/Guide-de-démarrage-rapide/De-l'idée-au-site-Web",
     '/Articles': '/Articles',
   },
-}
-
-/**
- * The rule PageRenderer applies: decide on canonical, navigate to localized.
- * Kept here in one place so the assertions below describe behaviour rather than
- * restate an implementation.
- */
-function resolveRedirect(website, page) {
-  const navigable = page && !page.redirect && !page.hasContent() ? page.getNavigableRoute() : null
-  const shouldRedirect = !!(navigable && navigable !== page?.route)
-  const target = shouldRedirect
-    ? website?.getLocaleUrl?.(website.activeLocale, navigable) || navigable
-    : null
-  return { shouldRedirect, target }
 }
 
 function site(activeLocale) {
@@ -79,60 +67,57 @@ function site(activeLocale) {
 describe('content-less container redirect', () => {
   it('keeps the reader in French', () => {
     const w = site('fr')
-    w.setActiveLocale('fr')
-    const container = w.pages.find((p) => p.route === '/Quick-Start-Guide')
-
-    const { shouldRedirect, target } = resolveRedirect(w, container)
-
-    expect(shouldRedirect).toBe(true)
     // Both halves matter: the translated slug AND the /fr prefix.
-    expect(target).toBe("/fr/Guide-de-démarrage-rapide/De-l'idée-au-site-Web")
+    expect(w.resolveRoute('/fr/Guide-de-démarrage-rapide')).toMatchObject({
+      kind: 'redirect',
+      reason: 'container',
+      location: "/fr/Guide-de-démarrage-rapide/De-l'idée-au-site-Web",
+    })
   })
 
   it('emits a bare canonical route in the default locale', () => {
     const w = site('en')
-    const container = w.pages.find((p) => p.route === '/Quick-Start-Guide')
-
-    const { shouldRedirect, target } = resolveRedirect(w, container)
-
-    expect(shouldRedirect).toBe(true)
-    expect(target).toBe('/Quick-Start-Guide/From-Idea-to-Website')
+    expect(w.resolveRoute('/Quick-Start-Guide')).toMatchObject({
+      kind: 'redirect',
+      location: '/Quick-Start-Guide/From-Idea-to-Website',
+    })
   })
 
   it('does not redirect a page that has its own content', () => {
     const w = site('fr')
-    w.setActiveLocale('fr')
-    const leaf = w.pages.find((p) => p.route === '/Quick-Start-Guide/From-Idea-to-Website')
-
-    expect(resolveRedirect(w, leaf).shouldRedirect).toBe(false)
+    expect(w.resolveRoute("/fr/Guide-de-démarrage-rapide/De-l'idée-au-site-Web").kind).toBe('page')
   })
 
-  it('does not redirect when the navigable route is the page itself', () => {
-    // The self-redirect trap: a folder whose getNavigableRoute() returns its own
-    // route must compare CANONICAL to CANONICAL. Localizing before comparing
-    // makes `/fr/Articles` differ from `/Articles` and loops.
-    const w = site('fr')
-    w.setActiveLocale('fr')
-    const selfPage = { route: '/Articles', redirect: null, hasContent: () => false, getNavigableRoute: () => '/Articles' }
-
-    expect(resolveRedirect(w, selfPage).shouldRedirect).toBe(false)
+  it('does not redirect a folder whose landing is itself — the decision is canonical', () => {
+    // The self-redirect trap: a folder with an index child lands on its own route. Comparing a
+    // LOCALIZED destination against the canonical route makes `/fr/Articles` differ from
+    // `/Articles` and loops.
+    const w = new Website({
+      content: {
+        config: { name: 'T', defaultLanguage: 'en', activeLocale: 'fr', i18n: { routeTranslations: RT } },
+        theme: {},
+        pages: [
+          { route: '/', isIndex: true, title: 'Home', sections: [] },
+          { route: '/Articles', title: 'Articles', sections: [] },
+          { route: '/Articles/index', isIndex: true, title: 'Index', sections: [{ type: 'Section' }] },
+        ],
+      },
+    })
+    expect(w.resolveRoute('/fr/Articles')).toMatchObject({ kind: 'page', route: '/Articles/index' })
   })
 
   /**
-   * The cases above pin the RULE against a real Website, which is the part worth
-   * describing — but they would keep passing if PageRenderer stopped following
-   * it. These two read the component itself so a revert actually fails.
+   * The cases above pin the RULE against a real Website — but they would keep passing if
+   * PageRenderer stopped following it. These read the component itself so a revert fails.
    */
   describe('PageRenderer follows the rule', () => {
-    it('localizes the redirect destination', () => {
-      expect(pageRendererSource).toMatch(/getLocaleUrl\?\.\(\s*website\.activeLocale/)
+    it('resolves the URL with the Website', () => {
+      expect(pageRendererSource).toMatch(/website\?\.resolveRoute\?\.\(location\.pathname\)/)
     })
 
-    it('decides on the canonical route, not the localized one', () => {
-      // `shouldAutoRedirect` must compare getNavigableRoute()'s canonical output
-      // against page.route. If it ever compares the localized destination, a
-      // folder with an index child redirects to itself forever.
-      expect(pageRendererSource).toMatch(/shouldAutoRedirect\s*=\s*!!\(\s*navigableRoute\s*&&\s*navigableRoute\s*!==\s*page\?\.route/)
+    it('navigates to the location the resolution gives', () => {
+      expect(pageRendererSource).toMatch(/resolution\?\.kind === 'redirect' \? resolution\.location/)
+      expect(pageRendererSource).not.toMatch(/getNavigableRoute\(\)/)
     })
   })
 })

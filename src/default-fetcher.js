@@ -252,7 +252,9 @@ export function createDefaultFetcher({ basePath = '', dev = false, fetch: fetchI
  * Anything the service does not answer (a retired operator) is sent as written and
  * answered there: never approximated.
  */
-function toQuestion(request) {
+// Exported so the question a parametric page's record is asked with can be generated as test
+// vectors: it is this body, and nothing else composes one.
+export function toQuestion(request) {
   const q = { schema: request.schema }
   const where = request.where && typeof request.where === 'object' ? request.where : null
   // ⭐ `scope` crosses as authored. ⛔ A top-level `where.path.under` was respelled

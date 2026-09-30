@@ -63,10 +63,18 @@ export {
 // hydration.
 export { loadPageData } from './load-page-data.js'
 
-// Which page a route names — the rule, not a copy of it (`@uniweb/core/route-match`). A host
-// resolving a route before it asks us anything imports this rather than comparing strings: the
-// SPA normalizes a trailing slash, and a copy that did not made `/about/` prefetch nothing and
-// then render fine (2026-09-12).
+// ⭐ WHAT A URL NAMES — a page, a redirect, a page served from elsewhere, or nothing: the rule the
+// SPA and the static build call (`@uniweb/core/resolve-route`). A host asks it BEFORE it fetches:
+// a redirect needs no data and a URL naming nothing needs no render. It reads one locale's content;
+// `localeOfPath` says which locale a path names, so which content to read. `status` is what a host
+// that sends one sends. ⛔ Each host kept its own copy of the redirect and locale rules until
+// 2026-09-30, and the copies disagreed.
+export { resolveRoute, routeIndex, localeOfPath, localeUrl, RESOLUTION_STATUS } from '@uniweb/core/resolve-route'
+
+// Which page a route names, by its exact route and then the parametric patterns
+// (`@uniweb/core/route-match`). ⚠️ The subset of `resolveRoute`: no locale prefix, no translated
+// route, no index page — for a canonical, unprefixed route only. A copy that compared strings made
+// `/about/` prefetch nothing and then render fine (2026-09-12).
 // ⛔ `prefetchPageData`, `resolvePageFetchConfigs` and `executeFetchConfigs` are GONE (2026-09-20).
 // They worked from the payload alone, which cannot say which keys a component declares, which
 // layout a page draws, or which transport a key is routed to — four measured cases wrong

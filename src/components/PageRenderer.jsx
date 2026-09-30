@@ -122,12 +122,14 @@ export default function PageRenderer() {
   // Force re-render counter — incremented by DataStore listener below
   const [, forceUpdate] = useReducer((x) => x + 1, 0)
 
-  // Resolve page from current URL and sync website.activePage immediately.
-  // This must happen synchronously (not in an effect) so child components
-  // like Header see the correct activePage during the same render cycle.
+  // ⭐ WHAT THE URL NAMES — `Website#resolveRoute`, the one rule every lane calls
+  // (`@uniweb/core/resolve-route`): a page, a redirect, a page served from elsewhere, or
+  // nothing. Resolved synchronously (not in an effect) so child components like Header see the
+  // correct activePage during the same render cycle.
   const navigate = useNavigate()
 
-  let page = website?.getPage(location.pathname)
+  const resolution = website?.resolveRoute?.(location.pathname) ?? null
+  let page = resolution && resolution.kind !== 'notFound' ? resolution.page : null
   if (page && website) website.setActivePage(location.pathname)
 
   // ─── Content loading (split page content) ───
@@ -155,32 +157,16 @@ export default function PageRenderer() {
 
   // ─── Compute navigation targets (before hooks, no early returns) ───
 
-  // Explicit redirect: in page.yml
-  const redirectTarget = page?.redirect || null
-
-  // Auto-redirect for content-less pages (structural containers).
-  // Folders with page.yml but no markdown keep their route in the hierarchy;
-  // when visited directly, redirect to the first descendant with content.
-  //
-  // The DECISION stays canonical — `getNavigableRoute()` and `page.route` are
-  // both canonical, and comparing a localized URL against a canonical route
-  // would make a folder-with-index redirect to itself forever.
-  const navigableRoute = page && !page.redirect && !page.hasContent()
-    ? page.getNavigableRoute()
-    : null
-  const shouldAutoRedirect = !!(navigableRoute && navigableRoute !== page?.route)
-
-  // The DESTINATION is localized. `getNavigableRoute()` returns a canonical
-  // route, so navigating to it raw dropped both the slug translation and the
-  // `/<locale>` prefix: visiting `/fr/Guide-de-démarrage-rapide` landed on
-  // `/Quick-Start-Guide/From-Idea-to-Website` and served the page in ENGLISH.
-  // getLocaleUrl() is the same helper the language switcher uses.
-  const autoRedirectRoute = shouldAutoRedirect
-    ? website?.getLocaleUrl?.(website.activeLocale, navigableRoute) || navigableRoute
-    : null
+  // The redirect the URL names, as the resolver gives it: an author's `redirect:` as written; a
+  // page with no content to its first descendant with content, as THIS locale shows it (the
+  // decision canonical, the destination localized — `localeUrl`, the language switcher's rule);
+  // or the locale served unprefixed, asked for with its prefix, to the path without it.
+  // ⛔ This component worked the first two out for itself until 2026-09-30, and the static build
+  // and every host each had a copy.
+  const redirectLocation = resolution?.kind === 'redirect' ? resolution.location : null
 
   // If no page found, try the 404 page (do NOT fall back to activePage/homepage)
-  const isNotFound = !page && !redirectTarget
+  const isNotFound = !page && !redirectLocation
   if (isNotFound) {
     page = website?.getNotFoundPage?.() || null
   }
@@ -194,18 +180,14 @@ export default function PageRenderer() {
   // ─── All hooks called unconditionally (React rules of hooks) ───
 
   useEffect(() => {
-    if (!redirectTarget) return
-    if (redirectTarget.startsWith('http')) {
-      window.location.replace(redirectTarget)
+    if (!redirectLocation) return
+    // A URL with a scheme leaves the app — another site, or a locale's own domain.
+    if (/^[a-z][a-z0-9+.-]*:/i.test(redirectLocation)) {
+      window.location.replace(redirectLocation)
     } else {
-      navigate(redirectTarget, { replace: true })
+      navigate(redirectLocation, { replace: true })
     }
-  }, [redirectTarget, navigate])
-
-  useEffect(() => {
-    if (!shouldAutoRedirect) return
-    navigate(autoRedirectRoute, { replace: true })
-  }, [shouldAutoRedirect, autoRedirectRoute, navigate])
+  }, [redirectLocation, navigate])
 
   useHeadMeta(headMeta, { siteName })
 
@@ -221,13 +203,12 @@ export default function PageRenderer() {
 
   // ─── Early returns (after all hooks) ───
 
-  if (redirectTarget) return null
-  if (shouldAutoRedirect) return null
+  if (redirectLocation) return null
 
   // Rewrite pages are served by an external site — the host handles routing.
   // In SPA mode this shouldn't be reached (host proxies before JS loads),
   // but if it is (e.g., dev mode), do a full page reload to let the host handle it.
-  if (page?.rewrite) {
+  if (resolution?.kind === 'rewrite') {
     window.location.reload()
     return null
   }

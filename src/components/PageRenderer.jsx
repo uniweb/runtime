@@ -157,16 +157,25 @@ export default function PageRenderer() {
 
   // ─── Compute navigation targets (before hooks, no early returns) ───
 
-  // The redirect the URL names, as the resolver gives it: an author's `redirect:` as written; a
-  // page with no content to its first descendant with content, as THIS locale shows it (the
-  // decision canonical, the destination localized — `localeUrl`, the language switcher's rule);
-  // or the locale served unprefixed, asked for with its prefix, to the path without it.
+  // The redirect the URL names, as the resolver gives it: an author's `redirect:` — a page of the
+  // site as THIS locale shows it, anything else as written; a page with no content to its first
+  // descendant with content, in this locale too (the decision canonical, the destination localized —
+  // `localeUrl`, the language switcher's rule); or the locale served unprefixed, asked for with its
+  // prefix, to the path without it.
   // ⛔ This component worked the first two out for itself until 2026-09-30, and the static build
   // and every host each had a copy.
   const redirectLocation = resolution?.kind === 'redirect' ? resolution.location : null
 
+  // ⭐ A page served from elsewhere (`rewrite:`) is the HOST's to proxy, before the app loads.
+  // Reached by in-app navigation, it is loaded for real so the host can. Reached as the document's
+  // own first load (`location.key === 'default'`), the host served the app instead — it does not
+  // proxy — so there is no page here: the not-found page, as a static build emits none for it.
+  // ⛔ Until 2026-09-30 both reloaded, and on a host that does not proxy that reload never ended.
+  const isRewrite = resolution?.kind === 'rewrite'
+  const rewriteNotProxied = isRewrite && location.key === 'default'
+
   // If no page found, try the 404 page (do NOT fall back to activePage/homepage)
-  const isNotFound = !page && !redirectLocation
+  const isNotFound = (!page && !redirectLocation) || rewriteNotProxied
   if (isNotFound) {
     page = website?.getNotFoundPage?.() || null
   }
@@ -205,10 +214,8 @@ export default function PageRenderer() {
 
   if (redirectLocation) return null
 
-  // Rewrite pages are served by an external site — the host handles routing.
-  // In SPA mode this shouldn't be reached (host proxies before JS loads),
-  // but if it is (e.g., dev mode), do a full page reload to let the host handle it.
-  if (resolution?.kind === 'rewrite') {
+  // An in-app navigation to a rewrite route: load it for real, so a host that proxies can.
+  if (isRewrite && !rewriteNotProxied) {
     window.location.reload()
     return null
   }

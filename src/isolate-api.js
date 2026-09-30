@@ -5,11 +5,13 @@
  * ⭐ THE ONE PLACE THE NUMBER IS STATED. A host loads the SITE'S pinned runtime as a
  * dynamically-loaded artifact — never an import — so it cannot link-check what it
  * calls; it feature-detects, and an export that is missing looks exactly like an old
- * runtime. The backend evaluates a site's runtime at publish and holds this floor as
- * a constant of its own [Diego, 2026-09-04: "We will set a runtime version floor that
- * guarantees they are there"], composing it as `max(absoluteFloor, foundationFloors)`.
- * That constant is copied from here, and `tests/isolate-api.test.js` is what keeps
- * this file honest: every export of `src/ssr.js` must appear below with the version
+ * runtime. The backend evaluates a site's runtime at publish against this floor [Diego,
+ * 2026-09-04: "We will set a runtime version floor that guarantees they are there"],
+ * composing it as `max(floor, foundationFloors)`. It reads the floor from the runtime
+ * channel's index (`minUsable`), which every channel publish writes from this file —
+ * since 2026-09-05, when that replaced a constant copied from here by hand. (This said
+ * the backend held a copied constant until 2026-09-30.) `tests/isolate-api.test.js` is
+ * what keeps this file honest: every export of `src/ssr.js` must appear below with the version
  * it first shipped in, and every name below must still be exported — by the source
  * and by the built `dist/ssr.js` when it is present. Forgetting to stamp a new export
  * fails HERE, in the repo where the change happens; a rename fails here too.
@@ -57,7 +59,9 @@
  *   3. replace `UNRELEASED` with the version that publish produced — the floor
  *      moves here, and the runtime channel's `minUsable` follows at the
  *      next channel publish;
- *   4. tell backend, which holds the number and must ratchet it.
+ *   4. nothing to copy by hand: the backend reads the floor from the channel index, so
+ *      a raise reaches it at the channel publish AFTER the commit that makes it. (This
+ *      step said "tell backend, which holds the number" until 2026-09-30.)
  *
  * ⚖️ **Step 3 is a real obligation, not bookkeeping**: an export left
  * `UNRELEASED` after it ships keeps the floor below its own API forever, so a

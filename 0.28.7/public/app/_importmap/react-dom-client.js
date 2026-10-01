@@ -1,0 +1,1 @@
+import{c as o}from"../assets/client-CQjOKqaN.js";import{a as n}from"../assets/client-CQjOKqaN.js";import"../assets/_commonjsHelpers-CqkleIqs.js";import"../assets/index-CxUeIbEw.js";import"../assets/index-VvOM7xKK.js";const s=o.createRoot,c=o.hydrateRoot,i=o.version;export{s as createRoot,n as default,c as hydrateRoot,i as version};

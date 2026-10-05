@@ -219,8 +219,18 @@ function runDataHandler(block) {
  * Skipped when the block is still waiting on async data
  * (`block.dataLoading`), when no handler is registered, when the
  * block has no raw content, when the handler returns a no-change
- * signal (undefined, null, or the same reference as rawContent), or
- * when the handler throws. Errors are logged via `console.error`.
+ * signal (undefined, null, or the same reference as rawContent), when
+ * it returns anything but a ProseMirror document, or when the handler
+ * throws. Errors are logged via `console.error`.
+ *
+ * ⛔ ONLY A DOCUMENT IS RE-PARSED (2026-10-05). The handler is given the section's
+ * DATA, so the natural no-op — `(x) => x` — returns the data map. That is not
+ * `rawContent`, so it passed the no-change check; `parseContent` takes a plain
+ * object as content already parsed; and the section's content became its data
+ * map — title, paragraphs and items gone — with `data.data` pointing back at
+ * itself, so a `JSON.stringify(content.data)` threw far from the handler (and
+ * failed a static build's prerender of the page). Any result that is not a
+ * document is now ignored, and said once per handler.
  */
 function runContentHandler(block) {
   if (block.dataLoading) return
@@ -231,6 +241,10 @@ function runContentHandler(block) {
   try {
     const transformed = handler(block.parsedContent.data, block)
     if (!transformed || transformed === block.rawContent) return
+    if (!isDocument(transformed)) {
+      warnNotADocument(handler, transformed, block.parsedContent.data)
+      return
+    }
     const reparsed = block.parseContent(transformed)
     reparsed.data = block.parsedContent.data
     block.parsedContent = reparsed
@@ -240,11 +254,37 @@ function runContentHandler(block) {
   }
 }
 
+/** A ProseMirror document — bare, or wrapped as `{ doc }`, the two forms `rawContent` takes. */
+function isDocument(value) {
+  return value?.type === 'doc' || value?.doc?.type === 'doc'
+}
+
+/**
+ * Say, once per handler, that a content handler returned something that is not a
+ * document — naming the likely mistake when it returned the very data it was given.
+ */
+const warnedContentHandlers = new WeakSet()
+function warnNotADocument(handler, value, data) {
+  if (warnedContentHandlers.has(handler)) return
+  warnedContentHandlers.add(handler)
+  const what =
+    value === data
+      ? 'the data it was given'
+      : Array.isArray(value)
+        ? 'an array'
+        : `${typeof value === 'object' ? 'an object' : typeof value}`
+  console.warn(
+    `[uniweb] handlers.content returned ${what}, not a ProseMirror document — ignored, and the ` +
+      `section keeps its content. The handler is called (data, block) and returns the section's ` +
+      `raw content transformed (block.rawContent, as Loom's does), or null for no change.`
+  )
+}
+
 /**
  * Run the foundation-level props handler on the final { content, params }
  * before they reach the component. Runs after content parsing, param
- * defaults, content guarantees, and schema application — the handler
- * sees the exact shape the component would receive and can modify it.
+ * defaults and content guarantees — the handler sees the exact shape the
+ * component would receive and can modify it.
  *
  * The handler receives `(content, params, block)` and returns a new
  * `{ content, params }` object, or null/undefined for no change.

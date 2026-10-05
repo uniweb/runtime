@@ -74,9 +74,10 @@ export const UNRELEASED = 'UNRELEASED'
 
 /** Every export of `@uniweb/runtime/ssr`, with the version it first shipped in. */
 export const ISOLATE_API = Object.freeze({
-  // props preparation
+  // props preparation. ⛔ `applySchemas` was here (0.2.15) until 2026-10-05, when the runtime
+  // stopped filling `content.data` fields from schema defaults; no host imported it (checked
+  // that day).
   prepareProps: '0.2.15',
-  applySchemas: '0.2.15',
   applyDefaults: '0.2.15',
   guaranteeContentStructure: '0.2.15',
   getComponentMeta: '0.2.15',

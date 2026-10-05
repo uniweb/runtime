@@ -16,7 +16,6 @@
 // Props preparation (no browser APIs)
 export {
   prepareProps,
-  applySchemas,
   applyDefaults,
   guaranteeContentStructure,
   getComponentMeta,

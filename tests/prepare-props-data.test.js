@@ -91,3 +91,35 @@ describe('prepareProps — content.data from the declared keys', () => {
     expect(warn).not.toHaveBeenCalled()
   })
 })
+
+describe('⛔ no field defaults — ruled 2026-10-05', () => {
+  // A foundation built before then still carries `schemas` in its meta — each declared key's
+  // field defaults and `enum` — and the runtime filled a missing field from its `default` and
+  // replaced a value its `enum` rejected. A record now reaches the component as it is.
+  const STALE_META = {
+    data: { posts: '@std/article' },
+    schemas: {
+      posts: {
+        status: { type: 'string', default: 'published', enum: ['draft', 'published'] },
+        featured: { type: 'bool', default: false },
+        seo: { type: 'object', fields: { noindex: { type: 'bool', default: false } } },
+      },
+    },
+  }
+
+  it('a field the record lacks stays absent, nested ones included', () => {
+    const { content } = prepareProps(makeBlock(), STALE_META, { posts: [{ title: 'A', seo: {} }] })
+    expect(content.data.posts).toEqual([{ title: 'A', seo: {} }])
+  })
+
+  it('a value outside the enum reaches the component as written', () => {
+    const { content } = prepareProps(makeBlock(), STALE_META, { posts: [{ title: 'A', status: 'scheduled' }] })
+    expect(content.data.posts[0].status).toBe('scheduled')
+  })
+
+  it('a tagged block the section holds arrives as the author wrote it', () => {
+    const block = makeBlock({ held: { api: { path: '/users' } } })
+    const meta = { data: { api: null }, schemas: { api: { method: { type: 'string', default: 'GET' } } } }
+    expect(prepareProps(block, meta).content.data.api).toEqual({ path: '/users' })
+  })
+})

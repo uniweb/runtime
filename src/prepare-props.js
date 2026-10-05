@@ -4,12 +4,10 @@
  * Prepares props for foundation components with:
  * - Param defaults from runtime schema
  * - Guaranteed content structure (no null checks needed)
- * - Field defaults applied to `content.data` items from the bound schemas
+ * - `content.data` holding the keys the component declares, each as it arrived
  *
  * This enables simpler component code by ensuring predictable prop shapes.
  */
-
-import { isRichSchema } from '@uniweb/core'
 
 /**
  * Guarantee item has flat content structure
@@ -102,211 +100,6 @@ export function guaranteeContentStructure(parsedContent) {
     // Preserve raw content if present
     raw: content.raw,
   }
-}
-
-/**
- * Apply a schema to a single object
- * Only processes fields defined in the schema, preserves unknown fields
- *
- * @param {Object} obj - The object to process
- * @param {Object} schema - Schema definition (fieldName -> fieldDef)
- * @returns {Object} Object with schema defaults applied
- */
-function applySchemaToObject(obj, schema) {
-  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
-    return obj
-  }
-
-  const result = { ...obj }
-
-  for (const [field, fieldDef] of Object.entries(schema)) {
-    // Get the default value - handle both shorthand and full form
-    const defaultValue = typeof fieldDef === 'object' ? fieldDef.default : undefined
-
-    // Apply default if field is missing and default exists
-    if (result[field] === undefined && defaultValue !== undefined) {
-      result[field] = defaultValue
-    }
-
-    // Bare type strings ('string', 'decimal', …) carry nothing more to apply.
-    if (typeof fieldDef !== 'object') continue
-
-    // Inline picklist (`enum`): if the value is set but not among the allowed
-    // values, fall back to the default. By value: an entry may be `{ value, label }`, as a
-    // foundation built before its build lowered it to values still carries.
-    if (Array.isArray(fieldDef.enum)) {
-      const allowed = fieldDef.enum.map((e) => (e && typeof e === 'object' && 'value' in e ? e.value : e))
-      if (result[field] !== undefined && !allowed.includes(result[field]) && defaultValue !== undefined) {
-        result[field] = defaultValue
-      }
-    }
-
-    // Nested object → recurse into its field map.
-    if (fieldDef.type === 'object' && fieldDef.fields && result[field]) {
-      result[field] = applySchemaToObject(result[field], fieldDef.fields)
-    }
-
-    // Array of objects → apply the element field map to each item.
-    if (fieldDef.type === 'array' && fieldDef.items && Array.isArray(result[field])) {
-      const items = fieldDef.items
-      if (items && typeof items === 'object' && items.type === 'object' && items.fields) {
-        result[field] = result[field].map((item) => applySchemaToObject(item, items.fields))
-      }
-    }
-  }
-
-  return result
-}
-
-/**
- * Apply a schema to a value (object or array of objects)
- *
- * @param {Object|Array} value - The value to process
- * @param {Object} schema - Schema definition
- * @returns {Object|Array} Value with schema defaults applied
- */
-function applySchemaToValue(value, schema) {
-  if (Array.isArray(value)) {
-    return value.map(item => applySchemaToObject(item, schema))
-  }
-  return applySchemaToObject(value, schema)
-}
-
-/**
- * Apply field defaults from a rich form `fields` array to an object.
- *
- * Recurses into `type: 'form'` (composite arrays with childSchema) and
- * `type: 'nestedObject'` / `type: 'object'` (single nested objects).
- *
- * Conditional visibility (`field.condition`) is not yet applied here —
- * components receive all fields the author filled plus defaults; hiding
- * is a later pass that requires the shared evaluateCondition util.
- *
- * @param {Object} obj - Row data (object keyed by field id)
- * @param {Array} fields - Rich field definitions
- * @returns {Object} - obj with defaults filled in
- */
-function applyRichFieldDefaults(obj, fields) {
-  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj
-  if (!Array.isArray(fields)) return obj
-
-  const result = { ...obj }
-
-  for (const field of fields) {
-    if (!field || typeof field !== 'object' || !field.id) continue
-    const id = field.id
-
-    if (result[id] === undefined && field.default !== undefined) {
-      result[id] = field.default
-    }
-
-    if (field.type === 'form' && field.childSchema && Array.isArray(result[id])) {
-      result[id] = result[id].map(item =>
-        applyRichFieldDefaults(item, field.childSchema.fields)
-      )
-    } else if (
-      (field.type === 'nestedObject' || field.type === 'object') &&
-      Array.isArray(field.fields) &&
-      result[id] &&
-      typeof result[id] === 'object'
-    ) {
-      result[id] = applyRichFieldDefaults(result[id], field.fields)
-    }
-  }
-
-  return result
-}
-
-/**
- * Apply a rich form schema to its stored value.
- *
- * Shape rules:
- *   - composite (isComposite=true) → value is array of childSchema rows
- *     - when `childRecords` is set, value may be `{ [childRecords]: [...] }`
- *   - non-composite → value is a single object keyed by field id
- */
-function applyRichSchemaToValue(value, schema) {
-  if (value == null) return value
-
-  if (schema.isComposite && schema.childSchema) {
-    const childFields = schema.childSchema.fields
-    const queryKey = schema.childRecords
-
-    if (queryKey && value && typeof value === 'object' && !Array.isArray(value)) {
-      const arr = Array.isArray(value[queryKey]) ? value[queryKey] : []
-      return {
-        ...value,
-        [queryKey]: arr.map(row => applyRichFieldDefaults(row, childFields)),
-      }
-    }
-
-    if (Array.isArray(value)) {
-      return value.map(row => applyRichFieldDefaults(row, childFields))
-    }
-
-    return value
-  }
-
-  if (Array.isArray(schema.fields)) {
-    return applyRichFieldDefaults(value, schema.fields)
-  }
-
-  return value
-}
-
-/**
- * Apply schemas to content.data
- * Only processes tags that have a matching schema, leaves others untouched
- *
- * ## Two orders of schema — what a `data:` declaration may describe
- *
- * A component's `data:` is 1st order: a DEVELOPER says what shape the section
- * consumes. An authored form (```yaml:form```) is 2nd order: an AUTHOR says what
- * shape a VISITOR will submit. It is schema-shaped, but it is content.
- *
- * Declaring a schema for such a tag is legitimate, and it is worth being precise
- * about what it may describe:
- *
- *   OK    the DEFINITION's envelope — `title?`, `description?`, `fields: <map>`.
- *         That asks "is this a well-formed form?", which is what build-time
- *         validation is for (`build/src/validate-data.js` pairs a section's data
- *         input with the schema its meta.js binds to that key).
- *   WRONG a schema whose fields are THE FORM'S fields (`name`, `email`, …).
- *         Those are author-chosen and unknowable at build time. A form-rendering
- *         component receives its fields; it does not declare them.
- *
- * The mechanism is bounded and does not punish the mistake loudly:
- * `applySchemaToObject` recurses only where the schema declares structure
- * (`type: object` + `fields`, `type: array` + `items.fields`), so a
- * form-definition schema — which cannot name the author's fields — can never
- * reach into them. It fills the envelope defaults its own author declared.
- *
- * (Established with the editor team, 2026-07-31, channel frontend↔framework.
- * The editor shadows a foundation's `form` declaration with its own builder via
- * `builtinSchemas()`; that is about the EDITING UI and is orthogonal to whether a
- * foundation declares a schema for validation.)
- *
- * @param {Object} data - The data object from content
- * @param {Object} schemas - Schema definitions from runtime meta
- * @returns {Object} Data with schemas applied
- */
-export function applySchemas(data, schemas) {
-  if (!schemas || !data || typeof data !== 'object') {
-    return data || {}
-  }
-
-  const result = { ...data }
-
-  for (const [tag, rawValue] of Object.entries(data)) {
-    const schema = schemas[tag]
-    if (!schema) continue  // No schema for this tag - leave as-is
-
-    result[tag] = isRichSchema(schema)
-      ? applyRichSchemaToValue(rawValue, schema)
-      : applySchemaToValue(rawValue, schema)
-  }
-
-  return result
 }
 
 /**
@@ -490,12 +283,17 @@ function runPropsHandler(content, params, block) {
  *      instantiated version.
  *   4. Apply param defaults from meta.
  *   5. Build the guaranteed content structure.
- *   6. Apply schemas to content.data.
- *   7. Run the foundation props handler (if registered) for
+ *   6. Run the foundation props handler (if registered) for
  *      post-processing of the final { content, params }.
  *
- * Steps 1–3 mutate the block (vanilla JS layer). Steps 4–7 are
+ * Steps 1–3 mutate the block (vanilla JS layer). Steps 4–6 are
  * pure derivations of the block's now-assembled state.
+ *
+ * ⛔ No field defaults for `content.data` — ruled 2026-10-05 [Diego]. A step between 5 and 6
+ * filled each missing field from its schema's `default`, and replaced a value its `enum`
+ * rejected, from the `schemas` a foundation built before then still carries in its meta —
+ * read no more. A record reaches the component as it is: an absent field is its own fact,
+ * and what it renders as is the component's choice.
  *
  * @param {Object} block - The block instance
  * @param {Object} meta - Runtime metadata for the component (from meta[componentName])
@@ -516,13 +314,7 @@ export function prepareProps(block, meta, entityData = null) {
   const params = applyDefaults(block.properties, defaults)
 
   // Guarantee content structure
-  let content = guaranteeContentStructure(block.parsedContent)
-
-  // Apply schemas to content.data
-  const schemas = meta?.schemas || null
-  if (schemas && content.data) {
-    content.data = applySchemas(content.data, schemas)
-  }
+  const content = guaranteeContentStructure(block.parsedContent)
 
   // Post-process hook
   const adjusted = runPropsHandler(content, params, block)

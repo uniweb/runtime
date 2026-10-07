@@ -36,8 +36,9 @@ const foundation = {
     meta: {
       PostList: { data: { posts: null } },
       PostDetail: { data: { posts: null } },
-      // expects its record WHOLE (`/*`, 2026-09-27), so the page's record is asked by its own file
-      ItemDetail: { data: { items: '@test/items/*' } },
+      // expects its record WHOLE (2026-09-27; `whole: true` since 2026-10-07), so the page's record is
+      // asked by its own file
+      ItemDetail: { data: { items: { schema: '@test/items', whole: true } } },
       Nav: { data: { menu: null } },
       Toc: { data: { toc: null } },
       Plain: {}, // declares nothing, so nothing reaches it

@@ -131,6 +131,8 @@ export function applyDefaults(params, defaults) {
  *   3. `null` — nothing fills it, or its fetch is still out (`block.dataLoading`) or failed
  *      (`block.dataError[key]`). ⭐ Never `[]`, which is an answer with no records.
  *
+ * A key declared `single: true` then holds one record, or `null` (`holdOneRecord`).
+ *
  * A tagged data block under a key the component does not declare is left out, and said so
  * in dev (`warnUndeclaredBlocks`); it stays in `content.sequence`. The data object is
  * rebuilt on each render from those sources, never from the last render's.
@@ -149,6 +151,29 @@ function assembleData(block, meta, entityData) {
   }
   warnUndeclaredBlocks(block, declared)
   block.parsedContent.data = data
+  return declared
+}
+
+/**
+ * ⭐ A KEY DECLARED `single: true` HOLDS ONE RECORD — the first of the list that filled it, or `null`
+ * when the list is empty (ruled 2026-10-07 [Diego]).
+ * Every source answers a list: a query's records, a parametric page's record (a list of one), a
+ * static build's prerendered answer. The store already asked for one (`@uniweb/core/page-data`'s
+ * `keyProgram`). A value that is not a list is the record already — a data block holding it, or an
+ * external source answering one — and is left as it is.
+ *
+ * Runs after the records are linked (`linkOwnRecords`), so the record keeps its `$route`. The data
+ * object is replaced, never written into.
+ */
+function holdOneRecord(block, declared) {
+  const data = block.parsedContent.data
+  let out = null
+  for (const [key, , , single] of declared) {
+    if (single !== true || !Array.isArray(data?.[key])) continue
+    out = out || { ...data }
+    out[key] = data[key][0] ?? null
+  }
+  if (out) block.parsedContent.data = out
 }
 
 /**
@@ -315,7 +340,8 @@ function runPropsHandler(content, params, block) {
  *
  *   1. Assemble `block.parsedContent.data` from the keys the component
  *      declares: what the section holds, else what EntityStore delivered,
- *      else `null` (`assembleData`).
+ *      else `null` (`assembleData`) — one record for a key declared
+ *      `single: true` (`holdOneRecord`).
  *   2. Run the foundation data handler (if registered) to filter or
  *      reshape the assembled data.
  *   3. Run the foundation content handler (if registered) on the
@@ -341,11 +367,12 @@ function runPropsHandler(content, params, block) {
  * @returns {Object} Prepared props: { content, params }
  */
 export function prepareProps(block, meta, entityData = null) {
-  assembleData(block, meta, entityData)
+  const declared = assembleData(block, meta, entityData)
   // ⭐ A list the section held before the store answered — its own fetch, prerendered
   // into its content by a static build — gets its records' `$route` by the store's rule,
   // which the store did not deliver it by (2026-09-14).
   block.website?.entityStore?.linkOwnRecords?.(block)
+  holdOneRecord(block, declared)
   runDataHandler(block)
   runContentHandler(block)
 

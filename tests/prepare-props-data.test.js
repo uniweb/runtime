@@ -123,3 +123,43 @@ describe('⛔ no field defaults — ruled 2026-10-05', () => {
     expect(prepareProps(block, meta).content.data.api).toEqual({ path: '/users' })
   })
 })
+
+// ⭐ A key declared `single: true` holds ONE record — the first of what filled it, or `null` (ruled
+// 2026-10-07 [Diego]).
+describe('prepareProps — a key declared single holds one record', () => {
+  const meta = { data: { post: { schema: '@/post', single: true }, posts: '@/post' } }
+
+  it('the first record of the list that filled it; a list key beside it is unchanged', () => {
+    const { content } = prepareProps(makeBlock(), meta, { post: [{ slug: 'a' }, { slug: 'b' }], posts: [{ slug: 'a' }] })
+    expect(content.data).toEqual({ post: { slug: 'a' }, posts: [{ slug: 'a' }] })
+  })
+
+  it('`null` for no record — an empty answer, and nothing delivered alike', () => {
+    expect(prepareProps(makeBlock(), meta, { post: [], posts: [] }).content.data).toEqual({ post: null, posts: [] })
+    expect(prepareProps(makeBlock(), meta, null).content.data).toEqual({ post: null, posts: null })
+  })
+
+  it('a value that is not a list is the record already — a data block holding it', () => {
+    const block = makeBlock({ held: { post: { title: 'Held' } } })
+    expect(prepareProps(block, meta, null).content.data.post).toEqual({ title: 'Held' })
+  })
+
+  it('a list the section holds — a static build\'s prerendered answer — gives its first, linked', () => {
+    const block = makeBlock({ held: { post: [{ slug: 'a' }, { slug: 'b' }] } })
+    block.website.entityStore.linkOwnRecords = (b) => {
+      b.parsedContent.data = { ...b.parsedContent.data, post: b.parsedContent.data.post.map((r) => ({ ...r, $route: `/p/${r.slug}` })) }
+    }
+    expect(prepareProps(block, meta, null).content.data.post).toEqual({ slug: 'a', $route: '/p/a' })
+  })
+
+  it('the data handler sees the one record', () => {
+    const seen = []
+    globalThis.uniweb = { foundationConfig: { handlers: { data: (data) => { seen.push(data.post) } } } }
+    try {
+      prepareProps(makeBlock(), meta, { post: [{ slug: 'a' }] })
+    } finally {
+      delete globalThis.uniweb
+    }
+    expect(seen).toEqual([{ slug: 'a' }])
+  })
+})

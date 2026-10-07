@@ -163,7 +163,8 @@ describe('DefaultLayout leaves stacking to the wrappers', () => {
    */
   const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8')
 
-  for (const file of ['../src/components/Layout.jsx', '../src/ssr-renderer.js']) {
+  // The built-in layout lives in `default-layout.js` since 2026-10-07; both renderers render it.
+  for (const file of ['../src/default-layout.js', '../src/components/Layout.jsx', '../src/ssr-renderer.js']) {
     it(`${file} does not re-introduce a hand-rolled area z-index`, () => {
       const src = read(file)
       expect(src).not.toMatch(/zIndex:\s*(40|30)\b/)

@@ -33,31 +33,8 @@
 
 import Blocks from './Blocks.jsx'
 import { resolveLayoutTransitions, resolveLayoutLayers, areaWrapperStyle } from '../area-wrappers.js'
-
-/**
- * Default layout - renders header, body, footer in sequence
- * (no panels in default layout)
- */
-function DefaultLayout({ header, body, footer }) {
-  // No stacking is set here. The areas arrive already ordered: the runtime
-  // gives each area wrapper its layer (see area-wrappers.js), so chrome paints
-  // above the body whether or not view transitions are on, and a foundation
-  // can re-rank them with `layers` in its layout meta.
-  //
-  // This layout used to hard-code `z-index: 40` on the header and `30` on the
-  // footer for exactly that reason. Once the runtime owned the ordering those
-  // numbers were a second mechanism for one job -- and the older one won,
-  // because a positioned wrapper here becomes a stacking context that seals the
-  // area's own layer inside it. Measured 2026-07-31: `layers: { header: 0 }`
-  // on the default layout changed nothing at all.
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      {header && <header>{header}</header>}
-      {body && <main style={{ flex: 1 }}>{body}</main>}
-      {footer && <footer>{footer}</footer>}
-    </div>
-  )
-}
+// The built-in layout — one copy, which the prerender renders too (`../default-layout.js`).
+import { DefaultLayout } from '../default-layout.js'
 
 /**
  * Initialize all blocks to ensure cross-block communication works.

@@ -31,6 +31,7 @@ import {
   ensureThemeCss,
 } from './wire-foundation.js'
 import { resolveLayoutTransitions, resolveLayoutLayers, areaWrapperStyle } from './area-wrappers.js'
+import { DefaultLayout } from './default-layout.js'
 import { renderAppearanceBootScript } from './appearance.js'
 import { documentTitle } from './document-title.js'
 
@@ -348,14 +349,10 @@ export function renderLayout(page, website) {
     })
   }
 
-  // Default layout — mirror DefaultLayout in Layout.jsx, including its lack of
-  // stacking: the area wrappers already carry their layers, and a positioned
-  // element here would seal those layers inside it.
-  return React.createElement(React.Fragment, null,
-    areaElements.header && React.createElement('header', null, areaElements.header),
-    bodyElement && React.createElement('main', null, bodyElement),
-    areaElements.footer && React.createElement('footer', null, areaElements.footer)
-  )
+  // The built-in layout — the browser's own copy, not a mirror of it (`default-layout.js`).
+  // ⛔ Until 2026-10-07 this wrote its own, with no full-height column, so the prerendered
+  // page differed from the one the browser renders over it.
+  return React.createElement(DefaultLayout, { body: bodyElement, ...areaElements })
 }
 
 // ============================================================================

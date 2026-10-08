@@ -186,21 +186,26 @@ async function initRuntime(foundationSource, options = {}) {
 /**
  * Simplified entry point for sites
  *
- * Template main.js calls this with config + foundation/styles promises:
+ * A scaffolded site's entry.js imports the foundation's styles, then calls
+ * this with the build-time config and the foundation promise:
+ *
+ *   import '#foundation/styles'
+ *   import { start } from '@uniweb/runtime'
  *
  *   start({
  *     config: __FOUNDATION_CONFIG__,
- *     styles: import('#foundation/styles'),
  *     foundation: import('#foundation')
  *   })
  *
- * In runtime mode, the foundation/styles promises resolve to noop modules
- * (configured by the site Vite plugin) and are ignored.
+ * In runtime mode, `#foundation` and `#foundation/styles` resolve to noop
+ * modules (configured by the site Vite plugin), and the foundation is loaded
+ * by URL instead. `styles` is optional: in bundled mode a promise passed there
+ * is awaited along with the foundation.
  *
  * @param {Object} options
  * @param {Object} options.config - Build-time config from __FOUNDATION_CONFIG__
  * @param {Promise} options.foundation - Promise from import('#foundation')
- * @param {Promise} options.styles - Promise from import('#foundation/styles')
+ * @param {Promise} [options.styles] - Optional promise, e.g. import('#foundation/styles')
  */
 async function start({ config, foundation, styles } = {}) {
   // Try __DATA__ first (dynamic backends inject combined config + content)

@@ -13,6 +13,7 @@ import Layout from './Layout.jsx'
 import { useHeadMeta } from '../hooks/useHeadMeta.js'
 import { useSectionViews } from '../hooks/useSectionViews.js'
 import { buildSectionOverrides } from '@uniweb/theming'
+import { carryQuery } from '@uniweb/core/resolve-route'
 import { Default404 } from '../default-404.js'
 
 /**
@@ -190,13 +191,18 @@ export default function PageRenderer() {
 
   useEffect(() => {
     if (!redirectLocation) return
+    // ⭐ The query and fragment the visitor arrived with ride along, unless the destination names
+    // its own — a token a site's backend mails to the root (`/?verify=…`) reaches the page the root
+    // sends them to — and never onto another origin (`carryQuery`). ⛔ Until 2026-10-11 they were
+    // dropped here, before any code could read them.
+    const to = carryQuery(redirectLocation, { search: location.search, hash: location.hash }, window.location.origin)
     // A URL with a scheme leaves the app — another site, or a locale's own domain.
-    if (/^[a-z][a-z0-9+.-]*:/i.test(redirectLocation)) {
-      window.location.replace(redirectLocation)
+    if (/^[a-z][a-z0-9+.-]*:/i.test(to)) {
+      window.location.replace(to)
     } else {
-      navigate(redirectLocation, { replace: true })
+      navigate(to, { replace: true })
     }
-  }, [redirectLocation, navigate])
+  }, [redirectLocation, location.search, location.hash, navigate])
 
   useHeadMeta(headMeta, { siteName })
 

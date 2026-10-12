@@ -67,8 +67,11 @@ export { loadPageData } from './load-page-data.js'
 // a redirect needs no data and a URL naming nothing needs no render. It reads one locale's content;
 // `localeOfPath` says which locale a path names, so which content to read. `status` is what a host
 // that sends one sends. ⛔ Each host kept its own copy of the redirect and locale rules until
-// 2026-09-30, and the copies disagreed.
-export { resolveRoute, routeIndex, localeOfPath, localeUrl, RESOLUTION_STATUS } from '@uniweb/core/resolve-route'
+// 2026-09-30, and the copies disagreed. ⭐ A redirect's `location` names nothing of the request's
+// query or fragment: a host that answers one itself adds them with `carryQuery`, as the runtime does
+// before it navigates — or a link's parameters, a token a site's backend mails to the site's root
+// among them, are gone before any of the page's code runs.
+export { resolveRoute, routeIndex, localeOfPath, localeUrl, RESOLUTION_STATUS, carryQuery } from '@uniweb/core/resolve-route'
 
 // Which page a route names, by its exact route and then the parametric patterns
 // (`@uniweb/core/route-match`). ⚠️ The subset of `resolveRoute`: no locale prefix, no translated

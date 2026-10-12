@@ -117,6 +117,8 @@ export const ISOLATE_API = Object.freeze({
   localeOfPath: '0.28.6',
   localeUrl: '0.28.6',
   RESOLUTION_STATUS: '0.28.6',
+  // a redirect the host answers itself, with the visitor's query and fragment on it
+  carryQuery: UNRELEASED,
 })
 
 /**

@@ -118,7 +118,7 @@ export const ISOLATE_API = Object.freeze({
   localeUrl: '0.28.6',
   RESOLUTION_STATUS: '0.28.6',
   // a redirect the host answers itself, with the visitor's query and fragment on it
-  carryQuery: UNRELEASED,
+  carryQuery: '1.0.1',
 })
 
 /**
@@ -173,11 +173,21 @@ export const ISOLATE_API = Object.freeze({
  *      and refuses to serve a site below it, so the number moves for them when the
  *      CHANNEL republishes — not when this constant changes.
  *
- * ⚖️ Revisit at 1.0: once sites are pinned in the field, *"it does not break
- * sites"* stops being free, and this paragraph is the thing to re-argue.
+ * ⭐ **Revisited at 1.0 [Diego, 2026-10-11].** This note read: *"Revisit at 1.0: once
+ * sites are pinned in the field, 'it does not break sites' stops being free, and this
+ * paragraph is the thing to re-argue."* His answer: *"Foundations are not as sensitive
+ * to the runtime version as you claim"* — and the first 1.x floor was itself a
+ * baseline raise, to 1.0.1: *"We would also set `minUsable` to tell backend to start
+ * using 1.0.1+"*. The two mechanical rules above stand.
  */
 /*
- * ⭐ **0.28.1, raised 2026-09-28 [Diego]** — a BASELINE raise, like the one below: the current
+ * ⭐ **1.0.1, raised 2026-10-13 [Diego]** — the first 1.x runtime, a BASELINE raise like the two
+ * below: *"We would also set `minUsable` to tell backend to start using 1.0.1+"* (2026-10-11).
+ * 1.0.1 is the release that took every package from 0.x to 1.x; the runtime's line since 0.29.7
+ * carries `carryQuery`. Raised once npm served 1.0.1 and the channel's `latest` was 1.0.1, and,
+ * like every raise, it reaches backend at the next runtime publish.
+ *
+ * ⛔ **Previously 0.28.1, raised 2026-09-28 [Diego]** — a BASELINE raise, like the one below: the current
  * published runtime, so an editor writing what it reads can rely on it for every site published
  * from then on. What the line carries:
  *   - 0.28.0 — a section's `theme` is `theme.yml` for that section (`{ mode, colors, contexts,
@@ -210,7 +220,7 @@ export const ISOLATE_API = Object.freeze({
  * which the service refuses with a whole-request `400` since it took `narrow`. It also carries
  * declared-key delivery and `$route`. That break is still real and still below this number.
  */
-export const WIRE_FLOOR = '0.28.1'
+export const WIRE_FLOOR = '1.0.1'
 
 /**
  * ⭐ **THE MINIMUM RUNTIME VERSION A SITE MAY BE PUBLISHED AT.** At or above it,
@@ -226,9 +236,10 @@ export const WIRE_FLOOR = '0.28.1'
  * than merely being unsupported.
  *
  * ⚠️ **The drift that name was chosen to resist was RELAXED 2026-09-12** — see
- * `WIRE_FLOOR` above: while pre-1.0 the floor may be raised simply so nobody has
- * to check what a version supports, so a raise no longer implies a break at the
- * new number. **On the wire it is `minUsable`, and that is the only spelling.**
+ * `WIRE_FLOOR` above: the floor may be raised simply so nobody has to check what a
+ * version supports — pre-1.0, and to 1.0.1 at the first 1.x release — so a raise
+ * does not imply a break at the new number. **On the wire it is `minUsable`, and
+ * that is the only spelling.**
  */
 export const MIN_USABLE_RUNTIME = [WIRE_FLOOR, ...Object.values(ISOLATE_API)]
   .filter((v) => v !== UNRELEASED)

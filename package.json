@@ -1,6 +1,6 @@
 {
   "name": "@uniweb/runtime",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "description": "Minimal runtime for loading Uniweb foundations",
   "type": "module",
   "exports": {

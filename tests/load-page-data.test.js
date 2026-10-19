@@ -6,7 +6,7 @@
  * for exactly what the render will look for. ⛔ Until 2026-09-19 a host's prefetch worked that out
  * from the payload alone, and could not: it did not know which keys a component declares, which
  * layout the page draws, or which transport a key is routed to. The four cases below are the ones
- * measured against that copy (`kb/framework/plans/what-a-page-needs.md` §0); each renders empty in
+ * measured against that copy; each renders empty in
  * the served HTML and fills in later in the browser, so nobody clicking the site ever sees it.
  *
  * ⚖️ **The assertion is made against the render's own reader, not against a list.** After the step,

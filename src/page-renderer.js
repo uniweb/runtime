@@ -144,8 +144,7 @@ export function createPageRenderer({ website, shell }) {
  * draws, and the transport the site chose for a key. `content` is no longer read — the graph
  * carries everything — and stays in the signature for callers that pass it.
  * ⛔ `prefetchPageData` works from the payload alone and cannot know any of those; it asks for
- * every fetch on every level instead, and still gets four cases wrong
- * (`kb/framework/plans/what-a-page-needs.md` §0). Prefer this entry.
+ * every fetch on every level instead, and still gets four cases wrong. Prefer this entry.
  *
  * ⛔ The build lane does NOT call this: it hydrates every collection once, before
  * its page loop, from its own executor that honours the author's `prerender:` flag.

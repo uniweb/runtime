@@ -5,7 +5,7 @@
  * ⛔ `tables` was left out until 2026-09-29: the parser delivered it, `math` — its
  * twin — arrived, and a component declaring `tables` got nothing. An entry's `insets`
  * was left out the same way. The seam through the real reader and parser is guarded
- * in `_contracts/content-reaches-the-component.test.js`; these pin the object here.
+ * by a cross-package test; these pin the object here.
  */
 import { describe, it, expect } from 'vitest'
 import { guaranteeContentStructure } from '../src/prepare-props.js'

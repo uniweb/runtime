@@ -11,8 +11,8 @@
  * through a dispatcher built from the site's own foundation, so a transport the site chose answers
  * here too. ⛔ Until 2026-09-19 a host's prefetch worked this out from the payload alone: it could
  * not know which keys a component declares, which layout the page draws, or which transport a key
- * is routed to, so it asked for every fetch on every level and still got four cases wrong
- * (`kb/framework/plans/what-a-page-needs.md` §0). A payload cannot answer those; the graph the
+ * is routed to, so it asked for every fetch on every level and still got four cases wrong.
+ * A payload cannot answer those; the graph the
  * isolate is about to render with can.
  *
  * ⚖️ **What it still over-asks.** The blocks are the page's — body, the layout areas it uses, their

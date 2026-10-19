@@ -6,7 +6,7 @@
  *
  * Backgrounds are an L3 pair by design: `components/Background.jsx` renders
  * with hooks and DOM, `ssr-renderer.js` renders with `React.createElement`
- * only, and the runtime-layer rule (framework `CLAUDE.md` gotcha #2) says that
+ * only, and the runtime-layer rule says that
  * pair is twinned on purpose. ⛔ **What it also says is that only the RENDERING
  * is twinned — "pure data → L1, one home" — and two pure helpers had been
  * dragged across the seam with it**: a base-path joiner and a colour-opacity

@@ -77,7 +77,7 @@ describe('the twin does not re-grow', () => {
     const { fileURLToPath } = await import('node:url')
     for (const rel of ['../src/ssr-renderer.js', '../src/components/Background.jsx']) {
       const src = readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
-      // ⭐ The L3 pair is twinned on purpose (gotcha #2) — the RENDERING is.
+      // ⭐ The L3 pair is twinned on purpose — the RENDERING is.
       // A pure helper pulled inside that twin silently joins the commitment to
       // keep two copies in step, which is how these two drifted from core.
       expect(src, `${rel} re-declares a shared helper`).not.toMatch(/function\s+(withOpacity|resolveUrl|siteUrl)\s*\(/)

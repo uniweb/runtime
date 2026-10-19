@@ -79,8 +79,8 @@ export { resolveRoute, routeIndex, localeOfPath, localeUrl, RESOLUTION_STATUS, c
 // `/about/` prefetch nothing and then render fine (2026-09-12).
 // ⛔ `prefetchPageData`, `resolvePageFetchConfigs` and `executeFetchConfigs` are GONE (2026-09-20).
 // They worked from the payload alone, which cannot say which keys a component declares, which
-// layout a page draws, or which transport a key is routed to — four measured cases wrong
-// (`kb/framework/plans/what-a-page-needs.md` §0). `loadPageData` above is the step that replaced
+// layout a page draws, or which transport a key is routed to — four measured cases wrong.
+// `loadPageData` above is the step that replaced
 // them, and the one host that called them confirmed the switch before they went.
 export { findPageForRoute } from '@uniweb/core/route-match'
 

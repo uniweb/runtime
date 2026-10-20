@@ -11,9 +11,11 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { initPrerender, renderLayout } from '../src/ssr-renderer.js'
 import Layout from '../src/components/Layout.jsx'
-import { stickyStyle, areaStickiness, layoutStickiness, sectionStickyStyle } from '../src/sticky.js'
+import { stickyStyle, areaStickiness, layoutStickiness, sectionStickyStyle, STICKY_SECTION_TOP } from '../src/sticky.js'
 import { areaWrapperStyle, resolveLayoutLayers } from '../src/area-wrappers.js'
-import { canStick } from '../src/sticky-check.js'
+import { canStick, clippingAncestor } from '../src/sticky-check.js'
+import { measureStickyTop } from '../src/sticky-top.js'
+import { ChildBlocks } from '../src/components/PageRenderer.jsx'
 
 describe('the boxes, decided once (sticky.js)', () => {
   it('a sticky box keeps its layer, at the top unless a type says how far below', () => {
@@ -27,8 +29,13 @@ describe('the boxes, decided once (sticky.js)', () => {
     expect(areaStickiness(undefined)).toBeNull()
   })
 
-  it('a body section’s wrapper sticks above the sections after it', () => {
-    expect(sectionStickyStyle({ sticky: true, stickyTop: null })).toEqual({ position: 'sticky', top: '0px', zIndex: 1 })
+  it('a section’s wrapper sticks below what is stuck at the top, above the sections after it, top-aligned', () => {
+    expect(sectionStickyStyle({ sticky: true, stickyTop: null })).toEqual({
+      position: 'sticky', top: 'var(--uw-sticky-top, 0px)', zIndex: 1, alignSelf: 'start',
+    })
+    expect(STICKY_SECTION_TOP).toBe('var(--uw-sticky-top, 0px)')
+    // A type's own `top` wins.
+    expect(sectionStickyStyle({ sticky: true, stickyTop: '6rem' }).top).toBe('6rem')
     expect(sectionStickyStyle({ sticky: false })).toBeNull()
   })
 
@@ -163,7 +170,7 @@ function bothWays(content, opts) {
   }
 }
 
-const STICKY_ZONE = '<header style="position:sticky;top:0px;z-index:2">'
+const STICKY_ZONE = '<header style="position:sticky;top:0px;z-index:2" data-uw-sticky="area">'
 
 describe('the built-in layout: a sticky header’s zone is the box that sticks', () => {
   it('⭐ the author’s `sticky: true` — the zone sticks, the same in both renderers', () => {
@@ -171,7 +178,7 @@ describe('the built-in layout: a sticky header’s zone is the box that sticks',
     expect(prerender).toBe(browser)
     expect(prerender).toContain(STICKY_ZONE)
     // The area wrapper inside it carries the same layer; the section's own wrapper does not stick.
-    expect(prerender).toMatch(/<header style="position:sticky;top:0px;z-index:2"><div style="view-transition-name:uw-header;position:relative;z-index:2"><section id="section-[^"]*" class="">/)
+    expect(prerender).toMatch(/<header style="position:sticky;top:0px;z-index:2" data-uw-sticky="area"><div style="view-transition-name:uw-header;position:relative;z-index:2"><section id="section-[^"]*" class="">/)
     // ⭐ The footer stays on the layer below it, so it scrolls under the stuck header.
     expect(prerender).toContain('<footer><div style="view-transition-name:uw-footer;position:relative;z-index:1">')
   })
@@ -189,7 +196,7 @@ describe('the built-in layout: a sticky header’s zone is the box that sticks',
 
   it('a type’s `top`, for one that sits below another', () => {
     const { prerender } = bothWays(site(), { meta: { Nav: { sticky: { default: true, top: '2rem' } } } })
-    expect(prerender).toContain('<header style="position:sticky;top:2rem;z-index:2">')
+    expect(prerender).toContain('<header style="position:sticky;top:2rem;z-index:2" data-uw-sticky="area">')
   })
 
   it('CONTROL — no setting, no sticky box', () => {
@@ -205,7 +212,7 @@ describe('in the body: the section’s own wrapper sticks', () => {
     const body = [section('Hero'), section('SubNav', { sticky: true }), section('Hero')]
     const { browser, prerender } = bothWays(site({ body }))
     expect(prerender).toBe(browser)
-    expect(prerender).toMatch(/<section id="section-[^"]*" style="position:sticky;top:0px;z-index:1"[^>]*><div>On this page<\/div><\/section>/)
+    expect(prerender).toMatch(/<section id="section-[^"]*" style="position:sticky;top:var\(--uw-sticky-top, 0px\);z-index:1;align-self:start"[^>]*data-uw-sticky="section"[^>]*><div>On this page<\/div><\/section>/)
     expect(prerender).toContain('<header><div') // the header does not
   })
 })
@@ -215,7 +222,7 @@ describe('a foundation’s layout: the area wrapper sticks, and the layout can a
     const { browser, prerender } = bothWays(site({ header: { sticky: true } }), { layout: true })
     expect(prerender).toBe(browser)
     expect(prerender).toContain('data-sticky="true"')
-    expect(prerender).toContain('<div style="view-transition-name:uw-header;position:sticky;top:0px;z-index:2">')
+    expect(prerender).toContain('<div style="view-transition-name:uw-header;position:sticky;top:0px;z-index:2" data-uw-sticky="area">')
     expect(prerender).toContain('<div style="view-transition-name:uw-footer;position:relative;z-index:1">')
   })
 
@@ -223,5 +230,114 @@ describe('a foundation’s layout: the area wrapper sticks, and the layout can a
     const { prerender } = bothWays(site(), { layout: true })
     expect(prerender).toContain('data-sticky="false"')
     expect(prerender).not.toContain('position:sticky')
+  })
+})
+
+describe('a child section: its own wrapper sticks, within the box its parent places it in', () => {
+  const Panel = () => React.createElement('aside', null, 'Contents')
+  function childOf(params) {
+    const content = site({ body: [{ type: 'Hero', content: {}, params: {}, subsections: [{ type: 'Panel', content: {}, params }] }] })
+    const fdn = foundation({ meta: { Panel: {} } })
+    fdn.Panel = Panel
+    fdn.default.meta.Panel = {}
+    const website = initPrerender(structuredClone(content), fdn, []).activeWebsite
+    const parent = website.getPage('/').getBodyBlocks()[0]
+    return parent.childBlocks?.[0] || null
+  }
+
+  it('⭐ rendered as a section (`wrapAs`, as ChildGrid does), the same both ways', () => {
+    const child = childOf({ sticky: true })
+    expect(child, 'the fixture builds a child section').toBeTruthy()
+    const browser = renderToStaticMarkup(React.createElement(ChildBlocks, { blocks: [child], wrapAs: 'div' }))
+    const prerender = renderToStaticMarkup(React.createElement(React.Fragment, null, globalThis.uniweb.childBlockRenderer({ blocks: [child], wrapAs: 'div' })))
+    expect(prerender).toBe(browser)
+    expect(prerender).toMatch(/^<div id="section-[^"]*" style="position:sticky;top:var\(--uw-sticky-top, 0px\);z-index:1;align-self:start"[^>]*data-uw-sticky="child"/)
+  })
+
+  it('rendered bare there is no box of the runtime’s, so the component reads `block.sticky` itself', () => {
+    const child = childOf({ sticky: true })
+    const bare = renderToStaticMarkup(React.createElement(ChildBlocks, { blocks: [child] }))
+    expect(bare).toBe('<aside>Contents</aside>')
+    expect(child.sticky).toBe(true)
+  })
+
+  it('CONTROL — a child that does not stick', () => {
+    const child = childOf({})
+    const html = renderToStaticMarkup(React.createElement(ChildBlocks, { blocks: [child], wrapAs: 'div' }))
+    expect(html).not.toContain('sticky')
+  })
+})
+
+describe('--uw-sticky-top: how far down the stuck chrome over the body reaches', () => {
+  const rect = (top, height, left = 0, width = 1000) => ({ top, height, bottom: top + height, left, width, right: left + width })
+  // A page of boxes in document order: each knows its place, its rect and its computed `top`.
+  function page({ header, footer, rail, body }) {
+    const order = ['header', 'rail', 'body', 'footer']
+    const make = (name, spec) => spec && {
+      name,
+      top: spec.top,
+      getBoundingClientRect: () => spec.rect,
+      contains: () => false,
+      compareDocumentPosition: (other) => (order.indexOf(other.name) > order.indexOf(name) ? 4 : 2),
+    }
+    const boxes = { header: make('header', header), rail: make('rail', rail), footer: make('footer', footer) }
+    const doc = {
+      querySelectorAll: () => Object.values(boxes).filter(Boolean),
+      defaultView: { getComputedStyle: (node) => ({ top: node.top ?? '0px' }) },
+    }
+    return { doc, body: make('body', body) }
+  }
+
+  it('⭐ a header over the body: its top and its height', () => {
+    const { doc, body } = page({ header: { rect: rect(0, 64) }, body: { rect: rect(64, 2000) } })
+    expect(measureStickyTop(doc, body)).toBe(64)
+  })
+
+  it('a footer that sticks follows the body, and a rail stuck beside it covers no content', () => {
+    const { doc, body } = page({
+      rail: { rect: rect(64, 900, 0, 240) },
+      body: { rect: rect(64, 2000, 240, 760) },
+      footer: { rect: rect(2064, 300) },
+    })
+    expect(measureStickyTop(doc, body)).toBe(0)
+  })
+
+  it('a header that sticks below the top reaches its top plus its height', () => {
+    const { doc, body } = page({ header: { rect: rect(0, 64), top: '32px' }, body: { rect: rect(64, 2000) } })
+    expect(measureStickyTop(doc, body)).toBe(96)
+  })
+
+  it('no body section, nothing to measure', () => {
+    const { doc } = page({ header: { rect: rect(0, 64) } })
+    expect(measureStickyTop(doc, null)).toBe(0)
+  })
+})
+
+describe('the dev warning’s second rule — a box that clips without scrolling', () => {
+  const prev = globalThis.getComputedStyle
+  afterEach(() => { globalThis.getComputedStyle = prev })
+  const node = (style, parent = null, scroll = { scrollHeight: 100, clientHeight: 100 }) => ({
+    _style: { overflowX: 'visible', overflowY: 'visible', ...style }, parentElement: parent, ownerDocument: null, ...scroll,
+  })
+  const clip = (el) => {
+    globalThis.getComputedStyle = (n) => n._style
+    return clippingAncestor(el)
+  }
+
+  it('`overflow: hidden` — the element sticks to the box, which never scrolls', () => {
+    const box = node({ overflowX: 'hidden', overflowY: 'hidden' })
+    expect(clip(node({}, box))).toBe(box)
+  })
+
+  it('`overflow-x: hidden` alone — it makes the box a vertical scroller too, one that does not scroll', () => {
+    const box = node({ overflowX: 'hidden', overflowY: 'auto' })
+    expect(clip(node({}, box))).toBe(box)
+  })
+
+  it('CONTROL — a box that really scrolls is the element’s scroller, and `overflow: clip` clips without one', () => {
+    const scroller = node({ overflowY: 'auto' }, null, { scrollHeight: 3000, clientHeight: 800 })
+    expect(clip(node({}, scroller))).toBeNull()
+    const clipped = node({ overflowX: 'clip', overflowY: 'clip' })
+    expect(clip(node({}, clipped))).toBeNull()
   })
 })

@@ -30,8 +30,8 @@ import {
   hydrateDataStore,
   ensureThemeCss,
 } from './wire-foundation.js'
-import { resolveLayoutTransitions, resolveLayoutLayers, areaWrapperStyle } from './area-wrappers.js'
-import { layoutStickiness, sectionStickyStyle, stickyStyle } from './sticky.js'
+import { resolveLayoutTransitions, resolveLayoutLayers, areaWrapperProps } from './area-wrappers.js'
+import { layoutStickiness, sectionStickyProps, zoneProps } from './sticky.js'
 import { DefaultLayout } from './default-layout.js'
 import { renderAppearanceBootScript } from './appearance.js'
 import { documentTitle } from './document-title.js'
@@ -224,7 +224,8 @@ export function renderBackground(background) {
  * @param {Block} block - Block instance to render
  * @param {Object} [options]
  * @param {string|null} [options.as='section'] - Wrapper element tag, or null/false for bare mode
- * @param {boolean} [options.stickySelf] - whether a sticky section's own wrapper sticks (in the body)
+ * @param {'section'|'child'|boolean} [options.stickySelf] - whether a sticky section's own wrapper
+ *   is the box that sticks: a body section's (`'section'`), or a child section's (`'child'`)
  * @returns {React.ReactElement}
  */
 export function renderBlock(block, { as = 'section', stickySelf = false } = {}) {
@@ -267,9 +268,12 @@ export function renderBlock(block, { as = 'section', stickySelf = false } = {}) 
   // Section mode: full treatment with wrapper, context classes, background.
   const { background, ...wrapperProps } = getWrapperProps(block)
 
-  // In the body, a sticky section's wrapper is the box that stays in view (`sticky.js`).
-  const sticky = stickySelf ? sectionStickyStyle(block) : null
-  if (sticky) wrapperProps.style = { ...wrapperProps.style, ...sticky }
+  // A body section's wrapper, or a child section's, is the box that stays in view (`sticky.js`).
+  const sticky = sectionStickyProps(block, stickySelf)
+  if (sticky) {
+    wrapperProps.style = { ...wrapperProps.style, ...sticky.style }
+    wrapperProps['data-uw-sticky'] = sticky['data-uw-sticky']
+  }
 
   // Merge Component.className (static classes declared on the component function)
   const componentClassName = Component.className
@@ -347,11 +351,11 @@ export function renderLayout(page, website) {
   const sticky = layoutStickiness(areas)
   const layers = resolveLayoutLayers(areaNames, layoutMeta?.layers, sticky)
   const wrapArea = (name, element) => {
-    const style = areaWrapperStyle(name, transitions, layers, RemoteLayout ? sticky[name] : null)
-    return style ? React.createElement('div', { style }, element) : element
+    const props = areaWrapperProps(name, transitions, layers, RemoteLayout ? sticky[name] : null)
+    return props ? React.createElement('div', props, element) : element
   }
 
-  const bodyElement = bodyBlocks ? wrapArea('body', renderBlocks(bodyBlocks, { stickySelf: true })) : null
+  const bodyElement = bodyBlocks ? wrapArea('body', renderBlocks(bodyBlocks, { stickySelf: 'section' })) : null
   const areaElements = {}
   for (const [name, blocks] of Object.entries(areas)) {
     areaElements[name] = wrapArea(name, renderBlocks(blocks))
@@ -369,7 +373,7 @@ export function renderLayout(page, website) {
   // The built-in layout — the browser's own copy, not a mirror of it (`default-layout.js`).
   // ⛔ Until 2026-10-07 this wrote its own, with no full-height column, so the prerendered
   // page differed from the one the browser renders over it.
-  const zone = (name) => (sticky[name] ? stickyStyle(sticky[name].top, layers?.[name]) : null)
+  const zone = (name) => zoneProps(sticky[name], layers?.[name])
   return React.createElement(DefaultLayout, {
     body: bodyElement,
     ...areaElements,
@@ -461,7 +465,7 @@ export function initPrerender(content, foundation, extensionsOrOptions, maybeOpt
     const blockList = blocks || from?.childBlocks || []
     return blockList.map((childBlock, index) =>
       React.createElement(React.Fragment, { key: childBlock.id || index },
-        renderBlock(childBlock, { as: wrapAs || null })
+        renderBlock(childBlock, { as: wrapAs || null, stickySelf: wrapAs ? 'child' : false })
       )
     )
   }

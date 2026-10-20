@@ -33,9 +33,10 @@
 
 import { useEffect } from 'react'
 import Blocks from './Blocks.jsx'
-import { resolveLayoutTransitions, resolveLayoutLayers, areaWrapperStyle } from '../area-wrappers.js'
-import { layoutStickiness, stickyStyle } from '../sticky.js'
+import { resolveLayoutTransitions, resolveLayoutLayers, areaWrapperProps } from '../area-wrappers.js'
+import { layoutStickiness, zoneProps } from '../sticky.js'
 import { warnUnmovableSticky } from '../sticky-check.js'
+import { watchStickyTop, bodySectionOf } from '../sticky-top.js'
 // The built-in layout — one copy, which the prerender renders too (`../default-layout.js`).
 import { DefaultLayout } from '../default-layout.js'
 
@@ -98,21 +99,25 @@ export default function Layout({ page, website }) {
   const layers = resolveLayoutLayers(areaNames, layoutMeta?.layers, sticky)
 
   const wrap = (region, children) => {
-    const style = areaWrapperStyle(region, transitions, layers, RemoteLayout ? sticky[region] : null)
-    return style ? <div style={style}>{children}</div> : children
+    const props = areaWrapperProps(region, transitions, layers, RemoteLayout ? sticky[region] : null)
+    return props ? <div {...props}>{children}</div> : children
   }
 
   // A body section's own wrapper is the box that sticks for it; an area's sections leave that to
   // the area's box.
-  const bodyElement = bodyBlocks ? wrap('body', <Blocks blocks={bodyBlocks} stickySelf />) : null
+  const bodyElement = bodyBlocks ? wrap('body', <Blocks blocks={bodyBlocks} stickySelf="section" />) : null
 
   const areaElements = {}
   for (const [name, blocks] of Object.entries(areas)) {
     areaElements[name] = wrap(name, <Blocks blocks={blocks} />)
   }
 
-  // `uniweb dev` names a sticky element that cannot move — a component's own `sticky`, or an area
-  // a layout wraps in an element of its own. Dropped from a published page's runtime.
+  // How far down the stuck chrome reaches — `--uw-sticky-top`, where a sticky section with no
+  // `top` of its own stays, and where kit's anchors land (`../sticky-top.js`).
+  useEffect(() => watchStickyTop(document, bodySectionOf(bodyBlocks?.[0])), [page])
+
+  // `uniweb dev` names a sticky element that cannot move — a component's own `sticky`, an area a
+  // layout wraps in an element of its own, a box that clips. Dropped from a published page's runtime.
   useEffect(() => {
     if (import.meta.env?.DEV) return warnUnmovableSticky()
   }, [page])
@@ -134,7 +139,7 @@ export default function Layout({ page, website }) {
   }
 
   // Default layout — a sticky area's zone is the box that sticks.
-  const zone = (name) => (sticky[name] ? stickyStyle(sticky[name].top, layers?.[name]) : null)
+  const zone = (name) => zoneProps(sticky[name], layers?.[name])
   return (
     <DefaultLayout
       body={bodyElement}

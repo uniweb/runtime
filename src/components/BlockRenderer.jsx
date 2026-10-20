@@ -10,7 +10,8 @@ import React, { useState, useEffect } from 'react'
 import { sectionDomId } from '@uniweb/core/section-id'
 import { prepareProps, getComponentMeta } from '../prepare-props.js'
 import Background from './Background.jsx'
-import { sectionStickyStyle } from '../sticky.js'
+import { sectionStickyProps } from '../sticky.js'
+import { noteBodySection } from '../sticky-top.js'
 
 /**
  * Valid color contexts
@@ -79,7 +80,8 @@ const getWrapperProps = (block) => {
  * @param {Object} props
  * @param {Block} props.block - Block instance to render
  * @param {string|null} props.as - Wrapper element tag for section mode, or null/false for bare mode
- * @param {boolean} [props.stickySelf] - whether a sticky section's own wrapper sticks (in the body)
+ * @param {'section'|'child'|boolean} [props.stickySelf] - whether a sticky section's own wrapper is
+ *   the box that sticks: a body section's (`'section'`), or a child section's (`'child'`)
  */
 export default function BlockRenderer({ block, as = 'section', stickySelf = false }) {
   const Component = block.initComponent()
@@ -161,9 +163,14 @@ export default function BlockRenderer({ block, as = 'section', stickySelf = fals
   // Section mode — full treatment with wrapper, context classes, background.
   const { background, ...wrapperProps } = getWrapperProps(block)
 
-  // In the body, a sticky section's wrapper is the box that stays in view (`../sticky.js`).
-  const sticky = stickySelf ? sectionStickyStyle(block) : null
-  if (sticky) wrapperProps.style = { ...wrapperProps.style, ...sticky }
+  // A body section's wrapper, or a child section's, is the box that stays in view (`../sticky.js`).
+  const sticky = sectionStickyProps(block, stickySelf)
+  if (sticky) {
+    wrapperProps.style = { ...wrapperProps.style, ...sticky.style }
+    wrapperProps['data-uw-sticky'] = sticky['data-uw-sticky']
+  }
+  // A body section's element, for the measurement of what is stuck over the body (`../sticky-top.js`).
+  if (stickySelf === 'section' || stickySelf === true) wrapperProps.ref = (element) => noteBodySection(block, element)
 
   // Merge Component.className (static classes declared on the component function)
   // Order: context-{theme} + block.state.className + Component.className

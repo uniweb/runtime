@@ -19,8 +19,8 @@ import BlockRenderer from './BlockRenderer.jsx'
 /**
  * @param {Object} props
  * @param {Block[]} props.blocks
- * @param {boolean} [props.stickySelf] - a sticky section's own wrapper is the box that sticks:
- *   true in the body; an area's sections leave it to the area's box (`../sticky.js`)
+ * @param {'section'|false} [props.stickySelf] - a sticky section's own wrapper is the box that
+ *   sticks: `'section'` in the body; an area's sections leave it to the area's box (`../sticky.js`)
  */
 export default function Blocks({ blocks, stickySelf = false }) {
   if (!blocks || blocks.length === 0) return null

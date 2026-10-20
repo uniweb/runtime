@@ -137,15 +137,17 @@ describe('the two renderers cannot drift', () => {
    * test before it stopped recurring.
    *
    * So the guard is mechanical: neither renderer may hand-build a wrapper
-   * style. Both must go through `areaWrapperStyle`.
+   * style. Both must go through `areaWrapperProps` — the wrapper's props, its
+   * style built by `areaWrapperStyle` and the attribute that says it sticks
+   * (2026-10-20; `areaWrapperStyle` itself until then).
    */
   const read = (p) =>
     readFileSync(new URL(p, import.meta.url), 'utf8')
 
   for (const file of ['../src/components/Layout.jsx', '../src/ssr-renderer.js']) {
-    it(`${file} builds its wrapper through areaWrapperStyle`, () => {
+    it(`${file} builds its wrapper through areaWrapperProps`, () => {
       const src = read(file)
-      expect(src).toMatch(/areaWrapperStyle\(/)
+      expect(src).toMatch(/areaWrapperProps\(/)
       // A literal `viewTransitionName:` here means someone rebuilt the wrapper
       // by hand instead of asking for it.
       expect(src).not.toMatch(/viewTransitionName\s*:/)

@@ -10,21 +10,43 @@
  * defaulted by its type's `meta.js` — and the runtime makes sticky the box that can:
  *
  *   - in the body, the section's own wrapper, whose parent, the body, spans every section;
+ *   - a child section rendered as a section (`<ChildBlocks wrapAs>`, kit's `ChildGrid`), its own
+ *     wrapper too, which then stays in view within the box its parent places it in — in
+ *     `ChildGrid`, its cell, as tall as the row — and no further. Top-aligned, so a flex or grid
+ *     item has room. At one column (a phone) a child is its own row and does not stick, which is
+ *     what a side panel stacked under the content should do;
  *   - in any other area, the area's box when any of its sections is sticky: the zone, in the
  *     built-in layout; the area wrapper, in a foundation's layout. That box takes the area's
  *     layer, and a sticky area's layer is above every area that scrolls under it
  *     (`resolveLayoutLayers`).
+ *
+ * ⭐ A section stays in view BELOW what is stuck at the top. A sticky area sticks at `0px`; a
+ * sticky section with no `top` of its own sticks at `--uw-sticky-top`, how far down the page's
+ * stuck chrome reaches, which the browser measures (`sticky-top.js`) — so a side panel or a
+ * sub-navigation clears a stuck header whatever its height. Unmeasured — a prerendered page
+ * before the browser runs, a page with nothing stuck — it is `0px`.
+ *
+ * Every box this module makes sticky says so, `data-uw-sticky` = `area`, `section` or `child`,
+ * for what reads them in the browser: the measurement, and `uniweb dev`'s check
+ * (`sticky-check.js`).
  *
  * ⛔ A layout that wraps an area in an element of its own confines the area wrapper, as the zone
  * does in the built-in layout. That element is the layout's, so the layout makes it sticky, when
  * `page.isSticky(area)`.
  *
  * ⛔ Until 2026-10-19 there was no setting, and a header's own `sticky top-0` — the starter
- * templates' — scrolled away with the page.
+ * templates' — scrolled away with the page. Until 2026-10-20 a child section's setting did
+ * nothing, and a sticky section stuck at `0px`, under a stuck header.
  */
 
-/** The very top of the viewport — a sticky box with no `top` of its own. */
+/** The very top of the viewport — a sticky area with no `top` of its own. */
 export const STICKY_TOP = '0px'
+
+/**
+ * Where a sticky section with no `top` of its own stays: below what is stuck at the top
+ * (`sticky-top.js` measures it), else the very top.
+ */
+export const STICKY_SECTION_TOP = 'var(--uw-sticky-top, 0px)'
 
 /**
  * The style that keeps a box in view.
@@ -65,12 +87,38 @@ export function layoutStickiness(areas) {
 }
 
 /**
- * The style a sticky section's own wrapper takes, in the body — or null. Layer 1, so it paints
- * over the sections after it, which are positioned only when they have a background.
+ * The props a built-in layout zone takes when its area sticks — or null.
+ *
+ * @param {{ top: string }|null|undefined} stickiness - the area's (`areaStickiness`)
+ * @param {number|null} [layer] - the area's layer (`resolveLayoutLayers`)
+ * @returns {{ style: Object, 'data-uw-sticky': 'area' }|null}
+ */
+export function zoneProps(stickiness, layer) {
+  return stickiness ? { style: stickyStyle(stickiness.top, layer), 'data-uw-sticky': 'area' } : null
+}
+
+/**
+ * The style a sticky section's own wrapper takes — a body section's, or a child section's — or
+ * null. Below what is stuck at the top unless its type says how far down; layer 1, so it paints
+ * over the sections after it, which are positioned only when they have a background; and
+ * top-aligned, so that as a flex or grid item it is not stretched to the row, which would leave
+ * it no room to move (in normal flow `align-self` does nothing).
  *
  * @param {Object} block - its component initialized
  * @returns {Object|null}
  */
 export function sectionStickyStyle(block) {
-  return block?.sticky ? stickyStyle(block.stickyTop, 1) : null
+  return block?.sticky ? { ...stickyStyle(block.stickyTop || STICKY_SECTION_TOP, 1), alignSelf: 'start' } : null
+}
+
+/**
+ * What a section's wrapper adds when it sticks: its style, and which kind of box it is.
+ *
+ * @param {Object} block - its component initialized
+ * @param {'section'|'child'|boolean} kind - a body section (`true` reads as one), or a child section
+ * @returns {{ style: Object, 'data-uw-sticky': string }|null}
+ */
+export function sectionStickyProps(block, kind) {
+  const style = kind ? sectionStickyStyle(block) : null
+  return style ? { style, 'data-uw-sticky': kind === 'child' ? 'child' : 'section' } : null
 }

@@ -180,3 +180,20 @@ export function areaWrapperStyle(region, transitions, layers, sticky = null) {
 
   return Object.keys(style).length > 0 ? style : null
 }
+
+/**
+ * The props for one area's wrapper element — its style, and `data-uw-sticky="area"` when it is
+ * the box that sticks (`sticky.js`) — or `null` when the region needs no wrapper. Both renderers
+ * build the wrapper from this, so the prerendered page and the browser's agree.
+ *
+ * @param {string} region - Area name, or `body`.
+ * @param {Object|null} transitions - region → view-transition-name.
+ * @param {Object} layers - region → z-index.
+ * @param {{ top: string }|null} [sticky] - the area's stickiness, when its box is the one that sticks
+ * @returns {{ style: Object, 'data-uw-sticky'?: 'area' }|null}
+ */
+export function areaWrapperProps(region, transitions, layers, sticky = null) {
+  const style = areaWrapperStyle(region, transitions, layers, sticky)
+  if (!style) return null
+  return sticky ? { style, 'data-uw-sticky': 'area' } : { style }
+}

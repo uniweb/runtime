@@ -13,7 +13,14 @@
  *     The layout makes its element sticky when `page.isSticky(area)`.
  *
  * Table parts are left out: a sticky table header cell sticks within its table, though its row is
- * no taller than it is.
+ * no taller than it is. So is a child section the runtime made sticky (`data-uw-sticky="child"`):
+ * with no room — stacked at one column, or the tallest in its row — it does not stick, by design.
+ *
+ * And an element that sits in a box that CLIPS — `overflow: hidden`, or `overflow-x: hidden`
+ * alone, which makes the box scroll vertically too — sticks to that box in place of the page,
+ * and the box does not scroll, so it never moves. Components clip for rounded corners; the
+ * warning names `overflow: clip`, which clips and keeps it sticking. A box that really scrolls
+ * (a layout's own scrolling `<main>`) is the element's scroller, and is left alone.
  */
 
 const warned = new WeakSet()
@@ -44,6 +51,28 @@ export function canStick(el) {
 }
 
 /**
+ * The box a sticky element would stick to in place of the page, because it clips its overflow
+ * without scrolling — or null. Looks no further than the nearest box with an overflow of its own:
+ * one that scrolls is the element's scroller, which is fine. Stops below `<body>`, whose overflow
+ * is the viewport's.
+ *
+ * @param {Element} el
+ * @returns {Element|null}
+ */
+export function clippingAncestor(el) {
+  const doc = el.ownerDocument
+  for (let node = el.parentElement; node && node !== doc?.body && node !== doc?.documentElement; node = node.parentElement) {
+    const { overflowX, overflowY } = getComputedStyle(node)
+    if (overflowY === 'visible' || overflowY === 'clip') continue
+    if (overflowY === 'hidden') return node
+    // `auto` / `scroll`: a scroller — unless it is only `overflow-x: hidden`'s side effect.
+    const scrolls = node.scrollHeight > node.clientHeight + 1
+    return overflowX === 'hidden' && !scrolls ? node : null
+  }
+  return null
+}
+
+/**
  * Warn, once per element, about each sticky element on the page that cannot move.
  *
  * @param {Document} [doc]
@@ -53,7 +82,20 @@ export function warnUnmovableSticky(doc = globalThis.document) {
   if (!doc?.body || typeof requestAnimationFrame !== 'function') return () => {}
   const frame = requestAnimationFrame(() => {
     for (const el of doc.body.querySelectorAll('*')) {
-      if (warned.has(el) || getComputedStyle(el).position !== 'sticky' || canStick(el)) continue
+      if (warned.has(el) || getComputedStyle(el).position !== 'sticky') continue
+      const clip = clippingAncestor(el)
+      if (clip) {
+        warned.add(el)
+        console.warn(
+          '[uniweb] This element is sticky but sits in a box that clips its overflow (`overflow: hidden`, ' +
+            'or `overflow-x: hidden`), so it sticks to that box, which does not scroll, and never moves. ' +
+            'Clip with `overflow: clip` instead: it clips the same and keeps the element sticking.',
+          el,
+          clip,
+        )
+        continue
+      }
+      if (el.getAttribute('data-uw-sticky') === 'child' || canStick(el)) continue
       warned.add(el)
       console.warn(
         '[uniweb] This element is sticky but cannot move: its parent is no taller than it is, so it ' +

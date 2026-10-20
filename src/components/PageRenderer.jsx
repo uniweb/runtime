@@ -45,7 +45,7 @@ export function ChildBlocks({ blocks, from, wrapAs }) {
 
   return blockList.map((childBlock, index) => (
     <React.Fragment key={childBlock.id || index}>
-      <BlockRenderer block={childBlock} as={wrapAs || null} />
+      <BlockRenderer block={childBlock} as={wrapAs || null} stickySelf={wrapAs ? 'child' : false} />
     </React.Fragment>
   ))
 }

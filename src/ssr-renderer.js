@@ -31,6 +31,7 @@ import {
   ensureThemeCss,
 } from './wire-foundation.js'
 import { resolveLayoutTransitions, resolveLayoutLayers, areaWrapperStyle } from './area-wrappers.js'
+import { layoutStickiness, sectionStickyStyle, stickyStyle } from './sticky.js'
 import { DefaultLayout } from './default-layout.js'
 import { renderAppearanceBootScript } from './appearance.js'
 import { documentTitle } from './document-title.js'
@@ -223,9 +224,10 @@ export function renderBackground(background) {
  * @param {Block} block - Block instance to render
  * @param {Object} [options]
  * @param {string|null} [options.as='section'] - Wrapper element tag, or null/false for bare mode
+ * @param {boolean} [options.stickySelf] - whether a sticky section's own wrapper sticks (in the body)
  * @returns {React.ReactElement}
  */
-export function renderBlock(block, { as = 'section' } = {}) {
+export function renderBlock(block, { as = 'section', stickySelf = false } = {}) {
   const Component = block.initComponent()
 
   if (!Component) {
@@ -265,6 +267,10 @@ export function renderBlock(block, { as = 'section' } = {}) {
   // Section mode: full treatment with wrapper, context classes, background.
   const { background, ...wrapperProps } = getWrapperProps(block)
 
+  // In the body, a sticky section's wrapper is the box that stays in view (`sticky.js`).
+  const sticky = stickySelf ? sectionStickyStyle(block) : null
+  if (sticky) wrapperProps.style = { ...wrapperProps.style, ...sticky }
+
   // Merge Component.className (static classes declared on the component function)
   const componentClassName = Component.className
   if (componentClassName) {
@@ -300,11 +306,11 @@ export function renderBlock(block, { as = 'section' } = {}) {
 /**
  * Render an array of blocks for SSR.
  */
-export function renderBlocks(blocks) {
+export function renderBlocks(blocks, { stickySelf = false } = {}) {
   if (!blocks || blocks.length === 0) return null
   return blocks.map((block, index) =>
     React.createElement(React.Fragment, { key: block.id || index },
-      renderBlock(block)
+      renderBlock(block, { stickySelf })
     )
   )
 }
@@ -321,6 +327,12 @@ export function renderLayout(page, website) {
   const bodyBlocks = page.getBodyBlocks()
   const areas = page.getLayoutAreas()
 
+  // Mirror Layout.jsx: every block's component initialized before anything renders, so each
+  // section's `sticky` — its type's default included — is known before the areas' layers are.
+  for (const blocks of [bodyBlocks, ...Object.values(areas)]) {
+    for (const block of blocks || []) block.initComponent()
+  }
+
   // Mirror Layout.jsx: wrap body + each area in a thin div carrying its
   // view-transition-name, so the prerendered HTML matches what the SPA hydrates
   // and the browser can animate regions independently on client navigation.
@@ -328,13 +340,18 @@ export function renderLayout(page, website) {
   const transitions = website.viewTransitions
     ? resolveLayoutTransitions(areaNames, layoutMeta?.transitions)
     : null
-  const layers = resolveLayoutLayers(areaNames, layoutMeta?.layers)
+
+  // Mirror Layout.jsx: an area stays in view when any of its sections is sticky — in a
+  // foundation's layout its wrapper sticks, in the built-in one the zone around it — and is lifted
+  // above the areas that scroll under it.
+  const sticky = layoutStickiness(areas)
+  const layers = resolveLayoutLayers(areaNames, layoutMeta?.layers, sticky)
   const wrapArea = (name, element) => {
-    const style = areaWrapperStyle(name, transitions, layers)
+    const style = areaWrapperStyle(name, transitions, layers, RemoteLayout ? sticky[name] : null)
     return style ? React.createElement('div', { style }, element) : element
   }
 
-  const bodyElement = bodyBlocks ? wrapArea('body', renderBlocks(bodyBlocks)) : null
+  const bodyElement = bodyBlocks ? wrapArea('body', renderBlocks(bodyBlocks, { stickySelf: true })) : null
   const areaElements = {}
   for (const [name, blocks] of Object.entries(areas)) {
     areaElements[name] = wrapArea(name, renderBlocks(blocks))
@@ -352,7 +369,12 @@ export function renderLayout(page, website) {
   // The built-in layout — the browser's own copy, not a mirror of it (`default-layout.js`).
   // ⛔ Until 2026-10-07 this wrote its own, with no full-height column, so the prerendered
   // page differed from the one the browser renders over it.
-  return React.createElement(DefaultLayout, { body: bodyElement, ...areaElements })
+  const zone = (name) => (sticky[name] ? stickyStyle(sticky[name].top, layers?.[name]) : null)
+  return React.createElement(DefaultLayout, {
+    body: bodyElement,
+    ...areaElements,
+    zones: { header: zone('header'), footer: zone('footer') },
+  })
 }
 
 // ============================================================================

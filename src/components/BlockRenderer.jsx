@@ -10,6 +10,7 @@ import React, { useState, useEffect } from 'react'
 import { sectionDomId } from '@uniweb/core/section-id'
 import { prepareProps, getComponentMeta } from '../prepare-props.js'
 import Background from './Background.jsx'
+import { sectionStickyStyle } from '../sticky.js'
 
 /**
  * Valid color contexts
@@ -78,8 +79,9 @@ const getWrapperProps = (block) => {
  * @param {Object} props
  * @param {Block} props.block - Block instance to render
  * @param {string|null} props.as - Wrapper element tag for section mode, or null/false for bare mode
+ * @param {boolean} [props.stickySelf] - whether a sticky section's own wrapper sticks (in the body)
  */
-export default function BlockRenderer({ block, as = 'section' }) {
+export default function BlockRenderer({ block, as = 'section', stickySelf = false }) {
   const Component = block.initComponent()
 
   // Entity-aware data resolution via EntityStore
@@ -158,6 +160,10 @@ export default function BlockRenderer({ block, as = 'section' }) {
 
   // Section mode — full treatment with wrapper, context classes, background.
   const { background, ...wrapperProps } = getWrapperProps(block)
+
+  // In the body, a sticky section's wrapper is the box that stays in view (`../sticky.js`).
+  const sticky = stickySelf ? sectionStickyStyle(block) : null
+  if (sticky) wrapperProps.style = { ...wrapperProps.style, ...sticky }
 
   // Merge Component.className (static classes declared on the component function)
   // Order: context-{theme} + block.state.className + Component.className

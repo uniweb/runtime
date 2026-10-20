@@ -29,6 +29,8 @@
  * the hydrated SPA aligned.
  */
 
+import { stickyStyle } from './sticky.js'
+
 // Namespace so generated names can't collide with `view-transition-name`s a
 // foundation sets inside its own component CSS. The prefix also guarantees a
 // valid CSS <custom-ident> (starts with a letter).
@@ -66,7 +68,8 @@ export function resolveLayoutTransitions(areaNames, explicit) {
  * The stacking layer of each area's wrapper.
  *
  * Default: every area except the body gets `1`, and the body gets nothing —
- * content is the backdrop, chrome is above it. That is the whole of what the
+ * content is the backdrop, chrome is above it — and a sticky area gets one more
+ * than every area that does not stick (below). That is the whole of what the
  * framework claims to know, and it is deliberately not more.
  *
  * The body is left unstacked rather than pinned to `0` on purpose. A layer
@@ -103,17 +106,36 @@ export function resolveLayoutTransitions(areaNames, explicit) {
  * whole — a foundation could set `layers: { header: 0 }` on the default layout
  * and measurably nothing happened.
  *
+ * ⭐ The one ordering the framework does know is a sticky area's (`sticky.js` — any of its sections
+ * is). It stays in view while the rest of the page scrolls under it, so it is lifted above every
+ * area that does not stick: the runtime made it stick, so it owes it the layer. Left equal to them,
+ * a footer taller than the space below a stuck header paints over the header at the bottom of the
+ * page, since it comes later in the DOM (measured 2026-10-19: a 521px footer on a 480px-tall
+ * phone). That is a fact about the box, not a reading of the area's name, and the layout's
+ * `layers` still rank a sticky area it names.
+ *
  * @param {string[]} areaNames - Names of the areas rendered for this page (excludes `body`).
  * @param {Object|false|null|undefined} explicit - `layoutMeta.layers`.
+ * @param {Object} [sticky] - region → its stickiness, or null (`layoutStickiness`).
  * @returns {Object} region → z-index. Empty when the layout opts out.
  */
-export function resolveLayoutLayers(areaNames, explicit) {
+export function resolveLayoutLayers(areaNames, explicit, sticky = null) {
   if (explicit === false) return {}
 
-  const defaults = {}
-  for (const name of areaNames) defaults[name] = 1
+  const layers = {}
+  for (const name of areaNames) layers[name] = 1
+  if (explicit) Object.assign(layers, explicit)
 
-  return explicit ? { ...defaults, ...explicit } : defaults
+  const lifted = areaNames.filter((name) => sticky?.[name] && !(explicit && name in explicit))
+  if (lifted.length > 0) {
+    const under = Object.entries(layers)
+      .filter(([name, layer]) => !sticky?.[name] && Number.isFinite(layer))
+      .map(([, layer]) => layer)
+    const above = Math.max(0, ...under) + 1
+    for (const name of lifted) layers[name] = above
+  }
+
+  return layers
 }
 
 /**
@@ -132,19 +154,26 @@ export function resolveLayoutLayers(areaNames, explicit) {
  * absolutely-positioned descendant on the page, and the ordering does not need
  * it.
  *
+ * A sticky area (`sticky.js` — any of its sections is) is `position: sticky` in place of
+ * `relative`, keeping its layer and its transition name. Only a foundation's layout passes one: the
+ * built-in layout's area wrapper sits in its zone, as tall as itself, so the zone sticks instead.
+ *
  * @param {string} region - Area name, or `body`.
  * @param {Object|null} transitions - region → view-transition-name.
  * @param {Object} layers - region → z-index.
+ * @param {{ top: string }|null} [sticky] - the area's stickiness, when its box is the one that sticks
  * @returns {Object|null} Inline style object, or null for no wrapper.
  */
-export function areaWrapperStyle(region, transitions, layers) {
+export function areaWrapperStyle(region, transitions, layers, sticky = null) {
   const style = {}
 
   const name = transitions?.[region]
   if (name) style.viewTransitionName = name
 
   const layer = layers?.[region]
-  if (layer != null) {
+  if (sticky) {
+    Object.assign(style, stickyStyle(sticky.top, layer))
+  } else if (layer != null) {
     style.position = 'relative'
     style.zIndex = layer
   }

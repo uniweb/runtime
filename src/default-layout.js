@@ -19,6 +19,11 @@
  * the ordering, those numbers were a second mechanism for it, and the older one won — a positioned
  * element here becomes a stacking context that seals the area's own layer inside it. Measured
  * 2026-07-31: `layers: { header: 0 }` on the default layout changed nothing.
+ *
+ * ⭐ A ZONE IS THE BOX THAT STICKS. When a section of the header (or footer) area is sticky, the
+ * runtime hands this layout the zone's style (`zones`): its parent is the page column, so it can
+ * stay in view, where the area wrapper inside it, as tall as itself, cannot (`sticky.js`). The
+ * style carries the area's layer, which the sticky zone then holds.
  */
 
 import React from 'react'
@@ -27,15 +32,20 @@ const COLUMN = { display: 'flex', flexDirection: 'column', minHeight: '100vh' }
 const GROW = { flex: 1 }
 
 /**
- * @param {{ header?: React.ReactNode, body?: React.ReactNode, footer?: React.ReactNode }} props
+ * @param {Object} props
+ * @param {React.ReactNode} [props.header]
+ * @param {React.ReactNode} [props.body]
+ * @param {React.ReactNode} [props.footer]
+ * @param {{ header?: Object, footer?: Object }} [props.zones] - a zone's style, when it sticks
  * @returns {React.ReactElement}
  */
-export function DefaultLayout({ header, body, footer }) {
+export function DefaultLayout({ header, body, footer, zones }) {
+  const zone = (name) => (zones?.[name] ? { style: zones[name] } : null)
   return React.createElement(
     'div',
     { style: COLUMN },
-    header && React.createElement('header', null, header),
+    header && React.createElement('header', zone('header'), header),
     body && React.createElement('main', { style: GROW }, body),
-    footer && React.createElement('footer', null, footer),
+    footer && React.createElement('footer', zone('footer'), footer),
   )
 }

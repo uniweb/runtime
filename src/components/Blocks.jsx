@@ -16,12 +16,18 @@ import BlockRenderer from './BlockRenderer.jsx'
  * @param {Object} props
  * @param {Block[]} props.blocks - Array of Block instances to render
  */
-export default function Blocks({ blocks }) {
+/**
+ * @param {Object} props
+ * @param {Block[]} props.blocks
+ * @param {boolean} [props.stickySelf] - a sticky section's own wrapper is the box that sticks:
+ *   true in the body; an area's sections leave it to the area's box (`../sticky.js`)
+ */
+export default function Blocks({ blocks, stickySelf = false }) {
   if (!blocks || blocks.length === 0) return null
 
   return blocks.map((block, index) => (
     <React.Fragment key={block.id || index}>
-      <BlockRenderer block={block} />
+      <BlockRenderer block={block} stickySelf={stickySelf} />
     </React.Fragment>
   ))
 }

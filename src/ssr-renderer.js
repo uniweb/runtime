@@ -31,7 +31,7 @@ import {
   ensureThemeCss,
 } from './wire-foundation.js'
 import { resolveLayoutTransitions, resolveLayoutLayers, areaWrapperProps } from './area-wrappers.js'
-import { layoutStickiness, sectionStickyProps, zoneProps } from './sticky.js'
+import { layoutStickiness, sectionStickyProps, sectionScrollMargin, zoneProps } from './sticky.js'
 import { DefaultLayout } from './default-layout.js'
 import { renderAppearanceBootScript } from './appearance.js'
 import { documentTitle } from './document-title.js'
@@ -274,6 +274,9 @@ export function renderBlock(block, { as = 'section', stickySelf = false } = {}) 
     wrapperProps.style = { ...wrapperProps.style, ...sticky.style }
     wrapperProps['data-uw-sticky'] = sticky['data-uw-sticky']
   }
+  // On a page whose layout has a sticky area, a link to this section lands below it.
+  const margin = sectionScrollMargin(block, stickySelf)
+  if (margin) wrapperProps.style = { ...wrapperProps.style, ...margin }
 
   // Merge Component.className (static classes declared on the component function)
   const componentClassName = Component.className

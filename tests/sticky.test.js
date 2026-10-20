@@ -341,3 +341,38 @@ describe('the dev warning’s second rule — a box that clips without scrolling
     expect(clip(node({}, clipped))).toBeNull()
   })
 })
+
+describe('a link to a section lands below what is stuck at the top', () => {
+  const MARGIN = 'scroll-margin-top:var(--uw-sticky-top, 0px)'
+  const sectionsOf = (html) => html.match(/<section [^>]*>/g) || []
+
+  it('⭐ on a page whose header sticks, each body section’s box carries the margin — the same both ways', () => {
+    const { browser, prerender } = bothWays(site({ header: { sticky: true }, body: [section('Hero'), section('Hero')] }))
+    expect(prerender).toBe(browser)
+    const [headerSection, ...bodySections] = sectionsOf(prerender.slice(0, prerender.indexOf('<footer')))
+    expect(headerSection).not.toContain('scroll-margin') // the header's own section is not a target
+    expect(bodySections).toHaveLength(2)
+    for (const tag of bodySections) expect(tag).toContain(MARGIN)
+  })
+
+  it('and a child section rendered as a section', () => {
+    const Panel = () => React.createElement('aside', null, 'Contents')
+    const content = site({ header: { sticky: true }, body: [{ type: 'Hero', content: {}, params: {}, subsections: [{ type: 'Panel', content: {}, params: {} }] }] })
+    const fdn = foundation({ meta: { Panel: {} } })
+    fdn.Panel = Panel
+    const website = initPrerender(structuredClone(content), fdn, []).activeWebsite
+    const page = website.getPage('/')
+    for (const blocks of [page.getBodyBlocks(), ...Object.values(page.getLayoutAreas())]) for (const block of blocks) block.initComponent()
+    const child = page.getBodyBlocks()[0].childBlocks[0]
+    const browser = renderToStaticMarkup(React.createElement(ChildBlocks, { blocks: [child], wrapAs: 'div' }))
+    const prerender = renderToStaticMarkup(React.createElement(React.Fragment, null, globalThis.uniweb.childBlockRenderer({ blocks: [child], wrapAs: 'div' })))
+    expect(prerender).toBe(browser)
+    expect(prerender).toContain(MARGIN)
+  })
+
+  it('CONTROL — on a page where nothing sticks, no section carries it, so its markup is as before', () => {
+    const { browser, prerender } = bothWays(site({ body: [section('Hero'), section('Hero')] }))
+    expect(prerender).toBe(browser)
+    expect(prerender).not.toContain('scroll-margin')
+  })
+})

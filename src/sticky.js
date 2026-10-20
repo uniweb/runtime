@@ -112,6 +112,34 @@ export function sectionStickyStyle(block) {
 }
 
 /**
+ * Whether any area of a page's layout sticks — its sections' components initialized, as both
+ * renderers do before they render.
+ *
+ * @param {Object} page
+ * @returns {boolean}
+ */
+export function hasStickyArea(page) {
+  const areas = page?.getLayoutAreas?.() || {}
+  return Object.values(areas).some((blocks) => areaStickiness(blocks) !== null)
+}
+
+/**
+ * Where a link to a section lands — below what is stuck at the top, `--uw-sticky-top` — given to a
+ * body section's box, and a child section's, on a page whose layout has a sticky area. A link to
+ * `#section-…` (a search result, a contents entry, a pasted deep link) scrolls the section's top
+ * edge to the top of the viewport, and without the margin the stuck header covers it — measured
+ * 2026-10-20: a section's top at 0px under an 80px header, at 80px with the margin. On other pages
+ * the markup is unchanged, and unmeasured the margin is `0px`.
+ *
+ * @param {Object} block - its component initialized
+ * @param {'section'|'child'|boolean} kind - a body section's box, or a child section's; else none
+ * @returns {{ scrollMarginTop: string }|null}
+ */
+export function sectionScrollMargin(block, kind) {
+  return kind && hasStickyArea(block?.page) ? { scrollMarginTop: STICKY_SECTION_TOP } : null
+}
+
+/**
  * What a section's wrapper adds when it sticks: its style, and which kind of box it is.
  *
  * @param {Object} block - its component initialized

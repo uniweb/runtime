@@ -10,7 +10,7 @@ import React, { useState, useEffect } from 'react'
 import { sectionDomId } from '@uniweb/core/section-id'
 import { prepareProps, getComponentMeta } from '../prepare-props.js'
 import Background from './Background.jsx'
-import { sectionStickyProps } from '../sticky.js'
+import { sectionStickyProps, sectionScrollMargin } from '../sticky.js'
 import { noteBodySection } from '../sticky-top.js'
 
 /**
@@ -169,6 +169,9 @@ export default function BlockRenderer({ block, as = 'section', stickySelf = fals
     wrapperProps.style = { ...wrapperProps.style, ...sticky.style }
     wrapperProps['data-uw-sticky'] = sticky['data-uw-sticky']
   }
+  // On a page whose layout has a sticky area, a link to this section lands below it.
+  const margin = sectionScrollMargin(block, stickySelf)
+  if (margin) wrapperProps.style = { ...wrapperProps.style, ...margin }
   // A body section's element, for the measurement of what is stuck over the body (`../sticky-top.js`).
   if (stickySelf === 'section' || stickySelf === true) wrapperProps.ref = (element) => noteBodySection(block, element)
 

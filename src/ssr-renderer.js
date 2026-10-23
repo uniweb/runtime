@@ -35,6 +35,7 @@ import { layoutStickiness, sectionStickyProps, sectionScrollMargin, zoneProps } 
 import { DefaultLayout } from './default-layout.js'
 import { renderAppearanceBootScript } from './appearance.js'
 import { documentTitle } from './document-title.js'
+import { escapeHtml } from '@uniweb/core/page-shell'
 
 // Re-export L2 helpers so the public `@uniweb/runtime/ssr` surface
 // carries everything an SSR consumer needs from one entry point.
@@ -655,18 +656,9 @@ export function renderPage(page, website) {
 // HTML injection
 // ============================================================================
 
-/**
- * Escape HTML special characters.
- */
-export function escapeHtml(str) {
-  if (!str) return ''
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
+// Escape HTML special characters — the one implementation, which a page's shell writes with too
+// (`@uniweb/core/page-shell`). Still exported from here, as it has been since 0.6.14.
+export { escapeHtml }
 
 /**
  * Inject prerendered content into an HTML shell.

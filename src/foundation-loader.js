@@ -5,6 +5,8 @@
  * with CSS loading in parallel.
  */
 
+import { foundationCssUrl } from '@uniweb/core/page-shell'
+
 /**
  * Resolve a foundation/extension URL so that absolute-path forms
  * (`/_module/...`) anchor to the document's origin, not to the importing
@@ -75,11 +77,11 @@ export async function loadFoundationCSS(url) {
  */
 export async function loadFoundation(source) {
   const rawUrl = typeof source === 'string' ? source : source.url
-  // Auto-derive CSS URL from JS URL by convention: entry.js → assets/style.css.
+  // Auto-derive CSS URL from JS URL by the one convention, entry.js → assets/style.css
+  // (`foundationCssUrl`, which a page's shell links the primary's stylesheet by too).
   // Pre-Phase-5 foundations were named foundation.js + assets/foundation.css;
   // those keep working when an explicit `cssUrl` is passed in `source`.
-  const rawCssUrl = typeof source === 'object' ? source.cssUrl
-    : rawUrl.replace(/[^/]+\.js$/, 'assets/style.css')
+  const rawCssUrl = typeof source === 'object' ? source.cssUrl : foundationCssUrl(rawUrl)
 
   // Phase 5: when the runtime is loaded from a different host than the
   // document (e.g. runtime served from cdn.uniweb.app, page on

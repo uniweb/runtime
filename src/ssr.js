@@ -109,3 +109,11 @@ export { renderAppearanceBootScript } from './appearance.js'
 // is invalid JSON — and no page of the site it served could start (`decodeData`).
 // `jsonForScript` is the escaping alone, for any other JSON a host writes into a `<script>`.
 export { dataScript, jsonForScript } from '@uniweb/core/data-script'
+
+// ⭐ THE PAGE'S SHELL — the whole HTML a page starts as, from what only the host holds (its
+// addresses, the runtime's manifest, the content it read): the head, an empty `#root`, and
+// `__DATA__`. Page assembly is framework's [Diego, 2026-10-23]. In an isolate it is the `shell`
+// `createPageRenderer` renders into, versioned with the runtime; a host links the same function
+// (`@uniweb/core/page-shell`) for a page it serves without rendering. `foundationCssUrl` is the
+// one convention for a foundation's stylesheet, which the loader and the shell both follow.
+export { pageShell, foundationCssUrl } from '@uniweb/core/page-shell'

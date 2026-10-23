@@ -122,6 +122,9 @@ export const ISOLATE_API = Object.freeze({
   // the `__DATA__` element a host writes into a page's shell, and the escaping it uses
   dataScript: UNRELEASED,
   jsonForScript: UNRELEASED,
+  // the page's whole shell, and the foundation stylesheet convention it links by
+  pageShell: UNRELEASED,
+  foundationCssUrl: UNRELEASED,
 })
 
 /**

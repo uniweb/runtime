@@ -100,3 +100,12 @@ export { collectSiteRecords } from './collect-records.js'
 // Appearance. injectPageContent() already emits this for every prerendered
 // page; exported for lanes that assemble a shell without a per-page render.
 export { renderAppearanceBootScript } from './appearance.js'
+
+// ⭐ THE `__DATA__` ELEMENT A HOST WRITES INTO A PAGE'S SHELL — the boot payload as JSON a
+// `<script>` cannot end or misparse (every `<` as `<`), carrying only the served page's
+// sections when the content names where the others are (`config.pageHashes`). The rule a static
+// build writes its own page data by (`@uniweb/core/data-script`). ⛔ A host wrote `__DATA__` with
+// its own escaping until 2026-10-23, escaping `<!--` as `<\!--` — a JavaScript-string escape that
+// is invalid JSON — and no page of the site it served could start (`decodeData`).
+// `jsonForScript` is the escaping alone, for any other JSON a host writes into a `<script>`.
+export { dataScript, jsonForScript } from '@uniweb/core/data-script'

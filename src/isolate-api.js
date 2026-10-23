@@ -119,6 +119,9 @@ export const ISOLATE_API = Object.freeze({
   RESOLUTION_STATUS: '0.28.6',
   // a redirect the host answers itself, with the visitor's query and fragment on it
   carryQuery: '1.0.1',
+  // the `__DATA__` element a host writes into a page's shell, and the escaping it uses
+  dataScript: UNRELEASED,
+  jsonForScript: UNRELEASED,
 })
 
 /**

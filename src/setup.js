@@ -355,10 +355,16 @@ export async function decodeData() {
   const raw = el.textContent
 
   // Plain JSON (uncompressed)
+  // ⛔ A payload that is there and does not parse is said as such: the boot then finds no
+  // configuration, and "No site configuration found" alone sent a reader looking for a payload
+  // that was present. Measured 2026-10-23: a host escaped `<!--` as `<\!--`, which JSON has no
+  // escape for, and every page stayed its server render with nothing naming the cause. JSON
+  // inside a <script> escapes `<` as `<` (`build/src/prerender.js`).
   if (el.type === 'application/json') {
     try {
       return JSON.parse(raw)
-    } catch {
+    } catch (err) {
+      console.error(`[Runtime] __DATA__ is not valid JSON, so the site cannot start: ${err.message}`)
       return null
     }
   }

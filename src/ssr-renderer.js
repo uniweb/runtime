@@ -547,9 +547,12 @@ export async function prefetchIcons(siteContent, uniweb, onProgress = () => {}) 
   )
 
   const succeeded = results.filter(r => r.status === 'fulfilled').length
-  const failed = results.filter(r => r.status === 'rejected').length
-  if (failed > 0) {
-    const msg = `Fetched ${succeeded}/${icons.length} icons (${failed} failed)`
+  const failedRefs = icons.filter((_, i) => results[i].status === 'rejected')
+  if (failedRefs.length > 0) {
+    // Named, so an author can fix the reference. ⛔ Until 2026-10-24 this said only "(1 failed)",
+    // and a missing icon on a live page took a search through every reference to find.
+    const shown = failedRefs.slice(0, 10).join(', ') + (failedRefs.length > 10 ? ', …' : '')
+    const msg = `Fetched ${succeeded}/${icons.length} icons (${failedRefs.length} failed: ${shown})`
     console.warn(`[prerender] ${msg}`)
     onProgress(`  ${msg}`)
   }

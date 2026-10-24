@@ -269,9 +269,15 @@ function buildDefaultFetcher(content) {
  *   through this transport, bypassing foundation routes and the framework
  *   default. Used only by the editor's preview iframe — normal sites never
  *   pass this option.
+ * @param {(target: { locale: string, route: string, url: string }) => void} [options.localeSwitch] -
+ *   Locale switch override: called with the locale, the page's canonical route and
+ *   the URL a page load would go to, instead of the page load
+ *   (`Website#switchLocale`; a click on a link to another locale's page too). For a
+ *   host that hands the runtime each locale's content itself, like the editor's
+ *   preview iframe, which a page load would leave.
  * @returns {import('@uniweb/core').Uniweb}
  */
-export function initUniweb({ content, foundation, extensions = [], routingComponents = DEFAULT_ROUTING_COMPONENTS, transport = null }) {
+export function initUniweb({ content, foundation, extensions = [], routingComponents = DEFAULT_ROUTING_COMPONENTS, transport = null, localeSwitch = null }) {
   const defaultFetcher = buildDefaultFetcher(content)
   const dev = !!(import.meta.env && import.meta.env.DEV)
   const uniweb = createUniweb(content, foundation, extensions, { defaultFetcher, transport, dev })
@@ -308,6 +314,7 @@ export function initUniweb({ content, foundation, extensions = [], routingCompon
   }
 
   uniweb.routingComponents = routingComponents
+  uniweb.localeSwitch = localeSwitch
   // `config.icons`, NOT `content.icons` — the latter is the build's manifest
   // (`{used, families, …}`), which carries no `cdnUrl`, so passing it here
   // pinned every browser fetch to the built-in default and made `icons.cdnUrl`

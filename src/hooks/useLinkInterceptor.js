@@ -14,6 +14,7 @@
 
 import { useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { localeOfPath } from '@uniweb/core/resolve-route'
 import { prefetchContent, prefersReducedMotion } from '../setup.js'
 
 /**
@@ -72,6 +73,24 @@ function findAnchorElement(target) {
     element = element.parentElement
   }
   return null
+}
+
+/**
+ * The locale and page a link goes to when it leaves the active locale, or null.
+ *
+ * Which locale a path names is the hosts' rule (`localeOfPath`): a served locale's prefix,
+ * else the locale served unprefixed. The page is the route that locale shows, made canonical.
+ * Only a path names a locale: a fragment or query of this page does not.
+ *
+ * @param {string} routeHref - The link's href, base path removed
+ * @param {Object} website - The active Website
+ * @returns {{ locale: string, route: string } | null}
+ */
+export function localeSwitchOf(routeHref, website) {
+  if (!website?.hasMultipleLocales() || !routeHref.startsWith('/') || routeHref.startsWith('//')) return null
+  const { locale, path } = localeOfPath(routeHref.split(/[?#]/)[0], website.config)
+  if (locale === website.getActiveLocale()) return null
+  return { locale, route: website.reverseTranslateRoute(path, locale) }
 }
 
 /**
@@ -144,9 +163,6 @@ export function useLinkInterceptor(options = {}) {
       // Check for download attribute
       if (anchor.hasAttribute('download')) return
 
-      // Opt out: anchors marked for full-page reload (e.g., <Link reload>)
-      if (anchor.hasAttribute('data-reload')) return
-
       // Check for target="_blank" or other non-self targets
       const target = anchor.getAttribute('target')
       if (target && target !== '_self') return
@@ -162,21 +178,28 @@ export function useLinkInterceptor(options = {}) {
         routeHref = href.slice(basePath.length) || '/'
       }
 
-      // Check if this link switches locale (requires full page reload)
-      if (website?.hasMultipleLocales()) {
-        const activeLocale = website.getActiveLocale()
-        const defaultLocale = website.getDefaultLocale()
-        const localeCodes = website.getLocales().map(l => l.code)
-        const hrefMatch = routeHref.match(/^\/([a-z]{2,3}(?:-[A-Za-z]{2,4})?)(?:\/|$)/)
-        const hrefLocale = hrefMatch?.[1]
-
-        let isLocaleSwitch = false
-        if (hrefLocale && localeCodes.includes(hrefLocale)) {
-          isLocaleSwitch = hrefLocale !== activeLocale
-        } else {
-          // No locale prefix = targets default locale
-          isLocaleSwitch = activeLocale !== defaultLocale
+      // A link to another locale's page is a page load, since that locale is its own document,
+      // and the browser makes it. A host that switches locale its own way (`uniweb.localeSwitch`:
+      // an editor's preview, which a page load would leave) is handed it instead, a
+      // `<Link reload>` from a language menu and a plain link to `/fr/…` alike.
+      if (globalThis.uniweb?.localeSwitch) {
+        const switchTo = localeSwitchOf(routeHref, website)
+        if (switchTo) {
+          event.preventDefault()
+          website.switchLocale(switchTo.locale, switchTo.route)
+          return
         }
+      }
+
+      // Opt out: anchors marked for full-page reload (e.g., <Link reload>)
+      if (anchor.hasAttribute('data-reload')) return
+
+      // Check if this link switches locale (requires full page reload). Any href that is not
+      // a path counts as the default locale's, as it always has.
+      if (website?.hasMultipleLocales()) {
+        const isLocaleSwitch = routeHref.startsWith('/') && !routeHref.startsWith('//')
+          ? !!localeSwitchOf(routeHref, website)
+          : website.getActiveLocale() !== website.getDefaultLocale()
         if (isLocaleSwitch) return  // Allow full page reload
       }
 

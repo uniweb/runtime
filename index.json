@@ -2,7 +2,7 @@
   "schema": 1,
   "name": "@uniweb/runtime",
   "integrityAlgorithm": "per-file: sha256 of the file bytes, lowercase hex. per-group: sha256-<lowercase hex of sha256(utf8(  the per-file hex digests, SORTED as strings, joined with LF, no trailing newline  ))>. Hashes contents only — never paths, sizes or names; duplicates are not collapsed.",
-  "latest": "1.1.18",
+  "latest": "1.1.19",
   "minUsable": "1.1.16",
   "versions": {
     "0.9.7": {
@@ -26843,6 +26843,235 @@
       "integrity": {
         "browser": "sha256-b07be0a3bd1ceee56e6676287a111796cbdca54f50c24e1a1e1b97c30a20f43d",
         "isolate": "sha256-1c71fd17946ee7c40b7be6dfd12f0be5029608001bce686ec2cf83b3eb9ef4ea"
+      }
+    },
+    "1.1.19": {
+      "published": "2026-10-24T19:33:48.824Z",
+      "files": {
+        "browser": [
+          {
+            "path": "public/app/_importmap/@uniweb-core.js",
+            "size": 4563,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "cb2ac702dc95be95a5c7ccb7e8a7cf588a475ac20d7b6474c1d1a0ff62512047"
+          },
+          {
+            "path": "public/app/_importmap/@uniweb-runtime-default-fetcher.js",
+            "size": 6152,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "303f1efbcec841cff42e074efbbc4049f8af10dd35b2e97c1dddbf3414bd179e"
+          },
+          {
+            "path": "public/app/_importmap/@uniweb-runtime-foundation-loader.js",
+            "size": 1418,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "a6062ba38b5083c6796a125ac476ea517f2d422ddb59ee009aa4b1d2bc8eafd0"
+          },
+          {
+            "path": "public/app/_importmap/@uniweb-runtime-provider.js",
+            "size": 6641,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "658a00d939d722dae726870d32d5b7eb2415a1b4327d32b443eefd1f4aa873bb"
+          },
+          {
+            "path": "public/app/_importmap/@uniweb-runtime-setup.js",
+            "size": 690,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "28a685317f816a95611c1cc10eb213577bcebde7b5c65f4d5aea1023d8741408"
+          },
+          {
+            "path": "public/app/_importmap/@uniweb-theming.js",
+            "size": 21812,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "a51313d4ea2557ea989ba55c142d685c2890a85b87fa22a1f9d77f2ff4c3a949"
+          },
+          {
+            "path": "public/app/_importmap/react-dom-client.js",
+            "size": 334,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "6357f7e8b44d7c27935797a8bd95a14b8cb32f380d34cf2efb95b5f4c4e04697"
+          },
+          {
+            "path": "public/app/_importmap/react-dom-server.js",
+            "size": 203767,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "b699f2f9f439bcb0d630a1c72dba27b4dda748162dad8aef3a93c7685b4558bc"
+          },
+          {
+            "path": "public/app/_importmap/react-dom.js",
+            "size": 793,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "edb030bdc4fbf2fc36f91355069ebae9df8f48f6b50e72d3bfef525ea9a603e5"
+          },
+          {
+            "path": "public/app/_importmap/react-jsx-dev-runtime.js",
+            "size": 347,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "6c472f5447ca6daf1fc883da683442fd00df9a5c95236f52c6a54ef6da8d0279"
+          },
+          {
+            "path": "public/app/_importmap/react-jsx-runtime.js",
+            "size": 246,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "db6aa70fd3b9b9ab2589bb18954af19d447e2a7d407b5dcc73c9c8ec12900418"
+          },
+          {
+            "path": "public/app/_importmap/react-router-dom.js",
+            "size": 583,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "e6484243237121eb6e47a11f8f835851abb4e533f77c0c92ee39242f79538d9c"
+          },
+          {
+            "path": "public/app/_importmap/react.js",
+            "size": 1873,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "4808700c6afe7b9f29c1cad1cfcf22a4f7717ba9fd2121dfc3d3a8770e385f2d"
+          },
+          {
+            "path": "public/app/assets/_commonjsHelpers-CqkleIqs.js",
+            "size": 116,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "4c81dcd54e7e877a79145c4c6fde30ac0e8d857f412b73f48f6970e5d7eab938"
+          },
+          {
+            "path": "public/app/assets/_importmap_react-kaoFWc3y.js",
+            "size": 137,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "02c563fabe051c226acdb2a16589b7bbf18280ab9924ca3406c581f1a39892bb"
+          },
+          {
+            "path": "public/app/assets/_importmap_react-router-dom-CMXDLYOK.js",
+            "size": 42050,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "4341ea7280a51c4d0ca2bef679068ce087e5569a6e52a1950345f76a1e396c32"
+          },
+          {
+            "path": "public/app/assets/client-Bkp0X_xI.js",
+            "size": 209070,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "03fa62e4035760c0dd4a1502939974ddcf7f85b196c99354fee80daa6acd070a"
+          },
+          {
+            "path": "public/app/assets/document-tracking-TyXWRmKi.js",
+            "size": 1424,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "430ab7a123ea788466deb99c960264ade5afec84b27f4747c1f94912df4dee47"
+          },
+          {
+            "path": "public/app/assets/index-BCUHxXpx.js",
+            "size": 7945,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "e4ae344f4df47567f9db31b5781a36e974d50ae58bbc861504a58556cb29bf3d"
+          },
+          {
+            "path": "public/app/assets/index-C3y8zQtt.js",
+            "size": 4487,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "ab83f6d211a5f133ea0cb4a7f64022b93b350a7d6b5b792df02c0123a087efd2"
+          },
+          {
+            "path": "public/app/assets/index-CP7ErihO.js",
+            "size": 80392,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "fe375d2447f616443546c17558f5117b8f67ccc95e745819818b51202c5630cb"
+          },
+          {
+            "path": "public/app/assets/index-CeSOlDzF.js",
+            "size": 3971,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "a90b25504eadc348b758327dd7785c1409928904a39816f16306d7351b175851"
+          },
+          {
+            "path": "public/app/assets/jsx-runtime-0PlsXv6K.js",
+            "size": 550,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "22f09c1e411626302e4a85d6b355ef2804bee8a25b023548836a19a35f059404"
+          },
+          {
+            "path": "public/app/assets/normalize-C19NMNCX.js",
+            "size": 1951,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "eba03c2e5baf4e89a416b4a98df8859929de27afc31e9e433c9837f4301fe4b8"
+          },
+          {
+            "path": "public/app/assets/query-evaluation-Dbxnncr2.js",
+            "size": 23232,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "842541bae9fd91d238a7d25f05d1d96e54712c06f732d1537f91d33ff2e9ae9d"
+          },
+          {
+            "path": "public/app/assets/script-loader-ugCB0nUm.js",
+            "size": 859,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "5b5cf95cc42dd59c20ad958e315f0a25f9712146eabbc40557917572778ccd32"
+          },
+          {
+            "path": "public/app/assets/section-views-CyRZKbel.js",
+            "size": 694,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "f313ece9bc05236b73414a85733873162c1c98697694c4a35974f37739eb5fcb"
+          },
+          {
+            "path": "public/app/assets/setup-DRfzvqTs.js",
+            "size": 29838,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "158197c45c81acf30546e4098941791a51b06ed9e39d6391c8dc0d7221072e1f"
+          },
+          {
+            "path": "public/app/assets/shade-generator-BBzWo1IN.js",
+            "size": 5482,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "f608538c074735238c601fdf68ea93eface7867c2b0bd4d776d0c5d0513195a5"
+          },
+          {
+            "path": "public/app/index.html",
+            "size": 2583,
+            "contentType": "text/html; charset=utf-8",
+            "sha256": "9e3b6223eee26579eccce38ec98fa6e82c873be0b2312438eb5e2f65285b5670"
+          },
+          {
+            "path": "public/app/manifest.json",
+            "size": 1376,
+            "contentType": "application/json; charset=utf-8",
+            "sha256": "350712ba170073496fc4f7ff56d935513276740a0a5fd169093c77f49ec463a1"
+          }
+        ],
+        "isolate": [
+          {
+            "path": "internal/shims/react-dom.js",
+            "size": 1000,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "420aebf62e4c45df3f3c0221b73b96746c5d8fb637704616e9989b1edc90ae05"
+          },
+          {
+            "path": "internal/shims/react-jsx-runtime.js",
+            "size": 330,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "8e163d8e7fb48d274d8d4090ebd429b478741f8e3dff0277c2c67ce00bbe641c"
+          },
+          {
+            "path": "internal/shims/react.js",
+            "size": 2372,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "b1f79ead61e8aeb14bf967d908550ba650f7547958ae58ba6aa8f7e99609d0be"
+          },
+          {
+            "path": "internal/shims/uniweb-core.js",
+            "size": 4214,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "11b4302a71342da4c2b892465a9c77e42c43ccd088348a884a19949a34bc3e88"
+          },
+          {
+            "path": "internal/worker-runtime.js",
+            "size": 1292196,
+            "contentType": "text/javascript; charset=utf-8",
+            "sha256": "3d813decbef5748c3ea73aaaacf3c55195e6c2388ae8813d4b8dfff1b0cd9f89"
+          }
+        ]
+      },
+      "integrity": {
+        "browser": "sha256-64a54cd5c168bacceafec8cf151d8a7e39589288c81b388fb66280b4083b4ab9",
+        "isolate": "sha256-2b645b78f3542cf48518169c7f8ff915704964ef5ee41640f7268540bc0d9b00"
       }
     }
   }

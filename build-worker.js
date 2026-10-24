@@ -2,7 +2,8 @@
 
 /**
  * Build the `ssr-edge` flavor of @uniweb/runtime — the worker-runtime.js SSR
- * isolate bundle plus its three globalThis-bridge shims — into dist/.
+ * isolate bundle plus its four globalThis-bridge shims (BRIDGES, below) — into
+ * dist/. *(This said "three" until react-dom's shim was counted.)*
  *
  * BUILT AT PUBLISH, BUT NOT SHIPPED BY NPM — and the distinction matters.
  *

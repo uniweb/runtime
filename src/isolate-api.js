@@ -42,11 +42,14 @@
  * at publish time and never hand-edited.
  *
  * ⚠️ **The tempting fix is the dangerous one.** Stamping the current version
- * (`0.16.0`) would satisfy every check and be **false**: backend reads
- * `minUsable` from the channel index and refuses to serve a site below it,
- * so a floor of 0.16.0 would promise an export that 0.16.0 does not contain —
+ * (`0.16.0`) would satisfy every check and be **false**: a backend reads
+ * `minUsable` from the channel index and publishes no site at a runtime below
+ * it, so a floor of 0.16.0 would promise an export that 0.16.0 does not contain —
  * and a host at the floor is entitled to skip feature detection. That is a
  * guarantee broken in the one direction the floor exists to prevent.
+ * ⛔ *This said a backend "refuses to serve a site below it" until 2026-10-24.*
+ * The floor bounds what is published next. A site already pinned below it is
+ * served as it is, until it is republished.
  *
  * ⇒ **`UNRELEASED` says the true thing: this export exists in the tree and in no
  * published version.** It is stamped like any other name, so nothing rides out
@@ -120,11 +123,11 @@ export const ISOLATE_API = Object.freeze({
   // a redirect the host answers itself, with the visitor's query and fragment on it
   carryQuery: '1.0.1',
   // the `__DATA__` element a host writes into a page's shell, and the escaping it uses
-  dataScript: UNRELEASED,
-  jsonForScript: UNRELEASED,
+  dataScript: '1.1.16',
+  jsonForScript: '1.1.16',
   // the page's whole shell, and the foundation stylesheet convention it links by
-  pageShell: UNRELEASED,
-  foundationCssUrl: UNRELEASED,
+  pageShell: '1.1.16',
+  foundationCssUrl: '1.1.16',
 })
 
 /**

@@ -53,9 +53,12 @@ beforeEach(() => {
     body: {},
     addEventListener: (type, handler) => { if (type === 'click') clickHandler = handler },
     removeEventListener() {},
-    getElementById: () => null,
+    getElementById: () => ({ scrollIntoView() {} }),
   }
-  globalThis.window = { location: { origin: 'https://site.test', assign: vi.fn() }, history: { pushState: vi.fn() } }
+  globalThis.window = {
+    location: { origin: 'https://site.test', href: 'https://site.test/', assign: vi.fn() },
+    history: { pushState: vi.fn() },
+  }
 })
 afterEach(() => {
   globalThis.uniweb = saved.uniweb
@@ -63,9 +66,10 @@ afterEach(() => {
   globalThis.document = saved.document
 })
 
-/** Arm the interceptor on `website`, with or without a host switch, and click an anchor. */
-function click(website, attrs, { localeSwitch = null } = {}) {
+/** Arm the interceptor on `website`, at the page URL `at`, with or without a host switch, and click an anchor. */
+function click(website, attrs, { localeSwitch = null, at = '/' } = {}) {
   globalThis.uniweb = { activeWebsite: website, localeSwitch }
+  globalThis.window.location.href = `https://site.test${at}`
   useLinkInterceptor({ enabled: true })
   const anchor = {
     tagName: 'A',
@@ -119,6 +123,42 @@ describe('with no host switch, the browser loads the other locale', () => {
   ])('from %s', (_, attrs) => {
     const event = click(site(), attrs)
     expect(event.preventDefault).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+  })
+})
+
+// ⛔ Until 2026-10-24 an href that was not a path counted as the default locale's: on another
+// locale's page a query or a relative link was a page load, which left a host's frame.
+describe('an href that is not a path goes where the browser would take it', () => {
+  const french = () => site({ activeLocale: 'fr' }, '/fr/a-propos')
+  const at = '/fr/a-propos'
+
+  it.each([
+    ['a query', '?tab=2', '/fr/a-propos?tab=2'],
+    ['a relative link', 'blogue', '/fr/blogue'],
+    ['a same-origin URL', 'https://site.test/fr/blogue', '/fr/blogue'],
+  ])('%s that stays in the locale is the router\'s, with or without a host', (_, href, path) => {
+    for (const localeSwitch of [null, vi.fn()]) {
+      navigate.mockClear()
+      const event = click(french(), { href }, { localeSwitch, at })
+      expect(event.preventDefault).toHaveBeenCalled()
+      expect(navigate).toHaveBeenCalledWith(path)
+      if (localeSwitch) expect(localeSwitch).not.toHaveBeenCalled()
+    }
+  })
+
+  it('a relative link to another locale is a switch like any other', () => {
+    const localeSwitch = vi.fn()
+    const event = click(french(), { href: '../About-Us' }, { localeSwitch, at })
+    expect(event.preventDefault).toHaveBeenCalled()
+    expect(localeSwitch).toHaveBeenCalledWith({ locale: 'en', route: '/About-Us', url: '/About-Us' })
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('a fragment scrolls this page', () => {
+    const event = click(french(), { href: '#team' }, { localeSwitch: vi.fn(), at })
+    expect(event.preventDefault).toHaveBeenCalled()
+    expect(globalThis.window.history.pushState).toHaveBeenCalledWith(null, '', '#team')
     expect(navigate).not.toHaveBeenCalled()
   })
 })

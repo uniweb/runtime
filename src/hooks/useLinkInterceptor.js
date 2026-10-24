@@ -80,9 +80,9 @@ function findAnchorElement(target) {
  *
  * Which locale a path names is the hosts' rule (`localeOfPath`): a served locale's prefix,
  * else the locale served unprefixed. The page is the route that locale shows, made canonical.
- * Only a path names a locale: a fragment or query of this page does not.
+ * It reads a path only; the click handler resolves every href to one first.
  *
- * @param {string} routeHref - The link's href, base path removed
+ * @param {string} routeHref - Where the link goes, as a path, base path removed
  * @param {Object} website - The active Website
  * @returns {{ locale: string, route: string } | null}
  */
@@ -167,48 +167,45 @@ export function useLinkInterceptor(options = {}) {
       const target = anchor.getAttribute('target')
       if (target && target !== '_self') return
 
-      // Strip basePath from href for internal processing
-      // Links from <Link reload> include the basePath, but React Router
-      // and locale detection work with router-relative paths
       const website = globalThis.uniweb?.activeWebsite
       const basePath = website?.basePath || ''
 
-      let routeHref = href
-      if (basePath && href.startsWith(basePath)) {
-        routeHref = href.slice(basePath.length) || '/'
+      // Where the browser would go, as a path: the href resolved against this page's URL, so
+      // a query (`?tab=2`) or a relative href (`about`) is judged like any other path. The
+      // base path comes off, because React Router and locale detection work with
+      // router-relative paths (a <Link reload> carries the base).
+      //
+      // ⛔ Until 2026-10-24 an href that was not a path counted as the default locale's, so
+      // on any other locale's page it was a page load: a query or a relative link reloaded
+      // the page, and left an editor's preview frame.
+      const resolved = new URL(href, window.location.href)
+      let routeHref = resolved.pathname + resolved.search + resolved.hash
+      if (basePath && routeHref.startsWith(basePath)) {
+        routeHref = routeHref.slice(basePath.length) || '/'
       }
 
       // A link to another locale's page is a page load, since that locale is its own document,
       // and the browser makes it. A host that switches locale its own way (`uniweb.localeSwitch`:
       // an editor's preview, which a page load would leave) is handed it instead, a
       // `<Link reload>` from a language menu and a plain link to `/fr/…` alike.
-      if (globalThis.uniweb?.localeSwitch) {
-        const switchTo = localeSwitchOf(routeHref, website)
-        if (switchTo) {
+      const switchTo = localeSwitchOf(routeHref, website)
+      if (switchTo) {
+        if (globalThis.uniweb?.localeSwitch) {
           event.preventDefault()
           website.switchLocale(switchTo.locale, switchTo.route)
-          return
         }
+        return
       }
 
       // Opt out: anchors marked for full-page reload (e.g., <Link reload>)
       if (anchor.hasAttribute('data-reload')) return
 
-      // Check if this link switches locale (requires full page reload). Any href that is not
-      // a path counts as the default locale's, as it always has.
-      if (website?.hasMultipleLocales()) {
-        const isLocaleSwitch = routeHref.startsWith('/') && !routeHref.startsWith('//')
-          ? !!localeSwitchOf(routeHref, website)
-          : website.getActiveLocale() !== website.getDefaultLocale()
-        if (isLocaleSwitch) return  // Allow full page reload
-      }
-
       // Prevent the default browser navigation
       event.preventDefault()
 
       // Handle hash-only links (same page scroll)
-      if (routeHref.startsWith('#')) {
-        const elementId = routeHref.slice(1)
+      if (href.startsWith('#')) {
+        const elementId = href.slice(1)
         if (elementId) {
           scrollToElement(elementId)
           // Update URL hash without navigation

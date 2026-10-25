@@ -56,6 +56,15 @@ describe('withOpacity', () => {
     expect(withOpacity('rgba(1, 2, 3, 0.9)', 0.25)).toBe('rgba(1, 2, 3, 0.25)')
   })
 
+  it('⛔ writes a short hex out first — `#000` was read as six digits and gave NaN', () => {
+    expect(withOpacity('#000', 0.5)).toBe('rgba(0, 0, 0, 0.5)')
+    expect(withOpacity('#0f08', 0.5)).toBe('rgba(0, 255, 0, 0.5)')
+    expect(withOpacity('#33669980', 0.25)).toBe('rgba(51, 102, 153, 0.25)')
+    // not a hex colour at all: unchanged, like any colour this cannot read
+    expect(withOpacity('#12', 0.5)).toBe('#12')
+    expect(withOpacity('#ggg', 0.5)).toBe('#ggg')
+  })
+
   it('returns anything else unchanged — a wrong guess paints the wrong colour', () => {
     expect(withOpacity('rebeccapurple', 0.5)).toBe('rebeccapurple')
     expect(withOpacity('var(--section)', 0.5)).toBe('var(--section)')

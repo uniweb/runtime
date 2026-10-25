@@ -173,6 +173,49 @@ describe('createPageRenderer — the outcome triple', () => {
   })
 })
 
+describe('createPageRenderer — the entries the page carries (`fetchedData`)', () => {
+  // What a render reads with them is `page-parity.test.js`'s, against real renderers. Here: the
+  // order, and the guard.
+  const carrying = () => {
+    const log = []
+    const stub = websiteStub(['/a'])
+    const website = {
+      ...stub,
+      getPage: (route) => (log.push(`resolve ${route}`), stub.getPage(route)),
+      forgetData: () => log.push('forget'),
+      dataStore: { set: (key) => log.push(`file ${JSON.parse(key).path}`) },
+    }
+    return { log, renderer: createPageRenderer({ website, shell: SHELL }) }
+  }
+  const entry = { config: { path: '/data/team.json', as: 'team' }, data: [{ id: 1 }] }
+
+  it('⭐ forgets what the Website held, then files the entries, BEFORE the route is resolved', () => {
+    // A parametric page is made from the store when it is resolved, so the order is the point.
+    const { log, renderer } = carrying()
+    expect(renderer.render('/a', { fetchedData: [entry] }).outcome).toBe('rendered')
+    expect(log).toEqual(['forget', 'file /data/team.json', 'resolve /a'])
+  })
+
+  it('an empty array is a page that carries nothing: the Website still forgets', () => {
+    const { log, renderer } = carrying()
+    renderer.render('/a', { fetchedData: [] })
+    expect(log).toEqual(['forget', 'resolve /a'])
+  })
+
+  it('CONTROL — without it, the render reads the store as it is', () => {
+    const { log, renderer } = carrying()
+    renderer.render('/a')
+    expect(log).toEqual(['resolve /a'])
+  })
+
+  it('refuses anything but an array, rather than rendering against an emptied store', () => {
+    const { log, renderer } = carrying()
+    expect(() => renderer.render('/a', { fetchedData: { team: [] } })).toThrow(/fetchedData/)
+    expect(() => renderer.render('/a', { fetchedData: null })).toThrow(/fetchedData/)
+    expect(log).toEqual([])
+  })
+})
+
 describe('prefetchAndHydrate', () => {
   // Passed because the signature still takes `content`; nothing reads it since the step went to the
   // Website (2026-09-19), and the step is stubbed above. ⛔ This said it matched `prefetch.test.js`,

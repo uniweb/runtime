@@ -21,13 +21,15 @@
  *     cache headers are host layout, and a runtime that assembled them would be
  *     modelling a deployment it cannot see (the host drew this line itself,
  *     2026-09-03: a serve location is read from the payload, never constructed here).
- *   - **Init and hydration.** The two lanes differ REALLY here, not incidentally: a
- *     build initializes once per locale, hydrates its executor's answers up front and
- *     then runs the data step for each page over one cache for the whole run; an
- *     isolate initializes per locale and runs the step fresh for each request. Folding
- *     either in would fit one caller and lie to the other. `initPrerender` /
- *     `initPrerenderForLocale` / `loadPageData` / `hydrateDataStore` stay separate
- *     exports, and `prefetchAndHydrate` below is the isolate's two-step, not a general one.
+ *   - **Init and the data step.** The two lanes differ REALLY here, not incidentally: a
+ *     build initializes once per locale and runs the data step for each page over one
+ *     cache for the whole run; an isolate initializes per locale and runs the step fresh
+ *     for each request. Folding either in would fit one caller and lie to the other.
+ *     `initPrerender` / `initPrerenderForLocale` / `loadPageData` / `hydrateDataStore`
+ *     stay separate exports, and `prefetchAndHydrate` below is the isolate's two-step,
+ *     not a general one. ⭐ What both lanes DO share is the last step: the render reads
+ *     exactly the entries its page carries. That is `render`'s `fetchedData`, since
+ *     2026-10-25, and both lanes pass it.
  *   - **Anything build-only.** `injectBuildData` stays in the build lane; it is the
  *     other half of the head seam and has its own parity guard.
  */
@@ -65,6 +67,12 @@ export function createPageRenderer({ website, shell }) {
    *   Page, which the build lane already holds from its own loop.
    * @param {Object} [options]
    * @param {Object} [options.inject] - extra options forwarded to `injectPageContent`
+   * @param {Array<{config: Object, data: *, meta?: Object}>} [options.fetchedData] - the entries
+   *   the page carries: the `content.fetchedData` its HTML embeds, which the browser boots with.
+   *   ⭐ Given, the render reads exactly these. The Website forgets what it held, answers and the
+   *   parametric pages made from them (`Website#forgetData`), and files these, all in this
+   *   synchronous call, so a Website reused across requests renders each against its own and
+   *   no other request runs in between. Absent, the render reads whatever the store holds.
    * @returns {{ outcome: 'rendered'|'notFound'|'failed', html: string|null,
    *   page: Object|null, error: {type: string, message: string}|null }}
    *   `notFound` means the URL names nothing, and `html` says whether there is a page to
@@ -75,7 +83,19 @@ export function createPageRenderer({ website, shell }) {
    *   - `page` set, `html: null`, `error` set — that not-found state broke while rendering.
    *     Send your own not-found page; `error` says what broke.
    */
-  function render(target, { inject = {} } = {}) {
+  function render(target, { inject = {}, fetchedData } = {}) {
+    // ⭐ BEFORE THE ROUTE IS RESOLVED: a parametric page is made from the store when it is first
+    // resolved, so resolving first would make it from what an earlier request left there.
+    // ⛔ Until 2026-10-25 a host that reused one Website hydrated each request's answers on top of
+    // every earlier request's, and a section that reads the store itself (kit's `useFetched`)
+    // could render answers its page did not carry, so the browser's first render differed.
+    if (fetchedData !== undefined) {
+      if (!Array.isArray(fetchedData)) {
+        throw new Error('createPageRenderer: `fetchedData` must be the array of entries the page carries')
+      }
+      website.forgetData()
+      hydrateDataStore(website, fetchedData)
+    }
     const resolved = typeof target === 'string' ? resolvePage(website, target) : target
 
     // ⛔ Not an error: nothing matched, which is a genuine 404 and the caller's to

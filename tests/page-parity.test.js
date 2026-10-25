@@ -21,10 +21,12 @@ import { describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import React from 'react'
 import { renderToString } from 'react-dom/server'
+import { deriveCacheKey } from '@uniweb/core/datastore'
 import { initPrerender, renderLayout } from '../src/ssr-renderer.js'
 import { initUniweb } from '../src/setup.js'
 import { hydrateDataStore } from '../src/wire-foundation.js'
 import { loadPageData } from '../src/load-page-data.js'
+import { createPageRenderer } from '../src/page-renderer.js'
 import { videoMoves } from '../src/background.js'
 import Layout from '../src/components/Layout.jsx'
 
@@ -45,10 +47,19 @@ const Grid = ({ block }) => h('div', { className: 'grid' }, h(globalThis.uniweb.
 const Nav = () => h('nav', null, 'Menu')
 const Docs = ({ header, body, left, footer }) =>
   h('div', { className: 'docs' }, header, h('aside', null, left), h('main', null, body), footer)
+// Reads the store itself on its first render, as kit's `useFetched` does, for a key its page does
+// not declare. `peekKey` is the posts list's key, set by the test that renders it.
+let peekKey = null
+const Peek = () => {
+  const held = peekKey ? globalThis.uniweb.activeWebsite.dataStore.get(peekKey) : null
+  return h('p', { className: 'peek' }, held ? `held ${held.data.length}` : 'nothing held')
+}
+// A parametric page's title, which it takes from its record when it is made.
+const PostTitle = ({ block }) => h('h2', null, block.page.title)
 
 const foundation = {
   default: {
-    meta: { Hero: {}, Posts: { data: { posts: null } }, Painted: { background: 'self' }, Grid: {}, Nav: {} },
+    meta: { Hero: {}, Posts: { data: { posts: null } }, Painted: { background: 'self' }, Grid: {}, Nav: {}, Peek: {}, PostTitle: {} },
     capabilities: { layouts: { Docs } },
   },
   Hero,
@@ -56,6 +67,8 @@ const foundation = {
   Painted,
   Grid,
   Nav,
+  Peek,
+  PostTitle,
 }
 
 const section = (type, params = {}, more = {}) => ({ type, content: {}, params, ...more })
@@ -102,6 +115,8 @@ const site = {
       sections: [section('Grid', {}, { subsections: [section('Hero', { title: 'One' }), section('Hero', { title: 'Two' })] })],
     },
     { route: '/docs', title: 'Docs', layout: { name: 'Docs' }, sections: [section('Hero')] },
+    { route: '/peek', title: 'Peek', sections: [section('Peek')] },
+    { route: '/posts/:slug', isDynamic: true, paramName: 'slug', title: 'Post', sections: [section('PostTitle')] },
   ],
 }
 
@@ -126,11 +141,14 @@ function bothWays(route, { fetchedData = [] } = {}) {
   prerenderSite.setActivePage(route)
   const prerender = renderToString(renderLayout(prerenderSite.getPage(route), prerenderSite))
 
+  return { browser: browserFirst(route, fetchedData), prerender }
+}
+
+/** The browser's first render of the page at `route`, booted with the data the page carries. */
+function browserFirst(route, fetchedData) {
   const browserSite = initUniweb({ content: { ...structuredClone(site), fetchedData }, foundation }).activeWebsite
   browserSite.setActivePage(route)
-  const browser = renderToString(h(Layout, { page: browserSite.getPage(route), website: browserSite }))
-
-  return { browser, prerender }
+  return renderToString(h(Layout, { page: browserSite.getPage(route), website: browserSite }))
 }
 
 describe('a whole page renders the same in the browser as in the prerender', () => {
@@ -181,6 +199,59 @@ describe('a whole page renders the same in the browser as in the prerender', () 
     const { browser, prerender } = bothWays('/docs')
     expect(prerender).toBe(browser)
     expect(prerender).toMatch(/^<div class="docs">/)
+  })
+})
+
+describe('⭐ one Website reused across requests renders each against what its page carries', () => {
+  // A host renders request after request on one Website. The browser boots each page with the
+  // data that page carries and nothing else, so the render must read that and nothing else.
+  const SHELL = '<html><head></head><body><div id="root"></div></body></html>'
+  const rootOf = (html) => html.match(/<div id="root">([\s\S]*)<\/div><\/body>/)[1]
+  const reused = async () => {
+    const website = initPrerender(structuredClone(site), foundation, []).activeWebsite
+    const posts = await loadPageData({ website, route: '/posts', fetch: files.fetch })
+    peekKey = deriveCacheKey(posts.find((e) => e.outcome === 'fetched').config)
+    return { website, renderer: createPageRenderer({ website, shell: SHELL }), posts }
+  }
+
+  it('a section reading the store finds only its own page’s answers, and the browser agrees', async () => {
+    const { renderer, posts } = await reused()
+    renderer.render('/posts', { fetchedData: posts })
+    const second = rootOf(renderer.render('/peek', { fetchedData: [] }).html)
+    expect(second).toBe(browserFirst('/peek', []))
+    expect(second).toContain('nothing held')
+  })
+
+  it('CONTROL — hydrated on top of the request before, it shows that request’s answers', async () => {
+    const { website, renderer, posts } = await reused()
+    hydrateDataStore(website, posts)
+    renderer.render('/posts')
+    const second = rootOf(renderer.render('/peek').html)
+    expect(second).toContain('held 2')
+    expect(second).not.toBe(browserFirst('/peek', []))
+  })
+
+  // The same post, edited between two requests: the second carries the new title.
+  const edited = (posts) => posts.map((e) =>
+    Array.isArray(e.data) ? { ...e, data: e.data.map((p) => (p.$name === 'a' ? { ...p, title: 'A, edited' } : p)) } : e)
+
+  it('a parametric page is made from the answers its request carries, not an earlier one’s', async () => {
+    const { renderer, posts } = await reused()
+    expect(rootOf(renderer.render('/posts/a', { fetchedData: posts }).html)).toContain('<h2>A</h2>')
+    const second = rootOf(renderer.render('/posts/a', { fetchedData: edited(posts) }).html)
+    expect(second).toBe(browserFirst('/posts/a', edited(posts)))
+    expect(second).toContain('<h2>A, edited</h2>')
+  })
+
+  it('CONTROL — emptying the store alone keeps the page the first request’s answers made', async () => {
+    const { website, renderer, posts } = await reused()
+    hydrateDataStore(website, posts)
+    renderer.render('/posts/a')
+    website.dataStore.clear()
+    hydrateDataStore(website, edited(posts))
+    const second = rootOf(renderer.render('/posts/a').html)
+    expect(second).toContain('<h2>A</h2>')
+    expect(second).not.toBe(browserFirst('/posts/a', edited(posts)))
   })
 })
 

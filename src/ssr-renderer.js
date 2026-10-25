@@ -342,8 +342,8 @@ export function renderLayout(page, website) {
   }
 
   // Mirror Layout.jsx: wrap body + each area in a thin div carrying its
-  // view-transition-name, so the prerendered HTML matches what the SPA hydrates
-  // and the browser can animate regions independently on client navigation.
+  // view-transition-name, so the prerendered HTML matches the page the SPA renders
+  // in its place and the browser can animate regions independently on client navigation.
   const areaNames = Object.keys(areas)
   const transitions = website.viewTransitions
     ? resolveLayoutTransitions(areaNames, layoutMeta?.transitions)
@@ -701,7 +701,7 @@ export function injectPageContent(html, renderedContent, page, options = {}) {
 
   // Pre-paint appearance script. Prerendered HTML carries real content styled
   // from :root (light) tokens, so a dark visitor would see a flash of light
-  // before the bundle hydrates and applies the class. Read off the page's
+  // before the bundle boots and applies the class. Read off the page's
   // website back-ref rather than a parameter: every lane builds the same graph,
   // so this needs no plumbing and no per-lane opt-in. Idempotent, because
   // @uniweb/build's injectBuildData may run over this HTML afterwards.

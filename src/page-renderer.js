@@ -22,11 +22,12 @@
  *     modelling a deployment it cannot see (the host drew this line itself,
  *     2026-09-03: a serve location is read from the payload, never constructed here).
  *   - **Init and hydration.** The two lanes differ REALLY here, not incidentally: a
- *     build initializes once and hydrates every collection up front, an isolate
- *     initializes per locale and prefetches per route. Folding either in would fit
- *     one caller and lie to the other. `initPrerender` / `initPrerenderForLocale` /
- *     `prefetchPageData` / `hydrateDataStore` stay separate exports, and
- *     `prefetchAndHydrate` below is the isolate's two-step, not a general one.
+ *     build initializes once per locale, hydrates its executor's answers up front and
+ *     then runs the data step for each page over one cache for the whole run; an
+ *     isolate initializes per locale and runs the step fresh for each request. Folding
+ *     either in would fit one caller and lie to the other. `initPrerender` /
+ *     `initPrerenderForLocale` / `loadPageData` / `hydrateDataStore` stay separate
+ *     exports, and `prefetchAndHydrate` below is the isolate's two-step, not a general one.
  *   - **Anything build-only.** `injectBuildData` stays in the build lane; it is the
  *     other half of the head seam and has its own parity guard.
  */
@@ -55,8 +56,8 @@ export function createPageRenderer({ website, shell }) {
    * ⭐ Returns an OUTCOME rather than throwing or returning a bare string, because
    * the two callers branch differently on the same three cases and neither wants an
    * exception: a build logs and keeps going so one broken section cannot fail a whole
-   * site, an isolate decides a status code and a cache policy. Same reasoning as
-   * `prefetchPageData`'s per-entry outcome.
+   * site, an isolate decides a status code and a cache policy. Same reasoning as the
+   * per-entry outcome `loadPageData` returns.
    *
    * @param {string|Object} target - a route (`/blog/1`, resolved through the same
    *   matcher the browser uses, so a dynamic route works) or an already-resolved
@@ -143,13 +144,14 @@ export function createPageRenderer({ website, shell }) {
  * on the Website it is handed: the keys each component declares, the layout the page actually
  * draws, and the transport the site chose for a key. `content` is no longer read — the graph
  * carries everything — and stays in the signature for callers that pass it.
- * ⛔ `prefetchPageData` works from the payload alone and cannot know any of those; it asks for
- * every fetch on every level instead, and still gets four cases wrong. Prefer this entry.
+ * ⛔ `prefetchPageData`, which it replaced, worked from the payload alone and could know none of
+ * those: it asked for every fetch on every level and still got four cases wrong. It was removed
+ * on 2026-09-20.
  *
- * ⛔ The build lane does NOT call this: it hydrates every collection once, before
- * its page loop, from its own executor that honours the author's `prerender:` flag.
- * That difference is why this is a named isolate helper and not a step inside
- * `render`.
+ * ⛔ The build lane does NOT call this: it runs `loadPageData` itself for each page, with one
+ * cache for the whole run (which this entry does not take) and `prerender: 'author'`, and keeps
+ * the entries to embed in that page's HTML. That difference is why this is a named isolate
+ * helper and not a step inside `render`.
  *
  * @returns {Promise<Array<{config: Object, outcome: string, data: any, error?: string}>>}
  */
@@ -162,8 +164,8 @@ export async function prefetchAndHydrate({ website, content, route, locale = nul
     throw new Error('prefetchAndHydrate: `website` must be an initialized Website with a dataStore')
   }
 
-  // ⛔ THE TRANSPORT IS REQUIRED HERE, unlike on `prefetchPageData`, and this is the
-  // one place the difference matters.
+  // ⛔ THE TRANSPORT IS REQUIRED HERE, unlike on `loadPageData`, which falls back to the
+  // global `fetch` when it is handed none (`createDefaultFetcher`).
   //
   // A function does NOT survive every isolate boundary. Measured by a host against
   // a real isolate loader, 2026-09-03: passed through an

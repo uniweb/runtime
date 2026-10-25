@@ -84,6 +84,31 @@ describe('prepareProps — content.data from the declared keys', () => {
     expect(said[0]).toMatch(/Help: the `faq` concept block is not in content\.data/)
   })
 
+  it("dev: a block inside an item is that item's, and never reported", () => {
+    // What the parser makes of a card grid with a `yaml:meta` block in each card: every block in
+    // the sequence, none in the section's own data — they are `items[n].data.meta`.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const sequence = [2025, 2024, 2023].map((year) => ({ type: 'dataBlock', tag: 'meta', data: { year } }))
+    prepareProps(makeBlock({ held: {}, sequence, dev: true, type: 'CardGrid' }), null, null)
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it("dev: the section's own block is reported even when an item has one under the same tag", () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const sequence = [
+      { type: 'dataBlock', tag: 'meta', data: { year: 2025 } },
+      { type: 'dataBlock', tag: 'meta', data: { year: 2024 } },
+    ]
+    prepareProps(makeBlock({ held: { meta: { year: 2025 } }, sequence, dev: true, type: 'Timeline' }), null, null)
+    expect(warn.mock.calls.map(([m]) => m)).toEqual([expect.stringMatching(/Timeline: the `meta` data block is not in content\.data/)])
+  })
+
+  it('dev: a key held from a prerendered answer is not a block, and is not reported as one', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    prepareProps(makeBlock({ held: { talks: [{ slug: 'a' }] }, sequence: [], dev: true, type: 'Catalog' }), null, null)
+    expect(warn).not.toHaveBeenCalled()
+  })
+
   it('CONTROL — silent outside dev', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const block = makeBlock({ held: { notes: {} }, sequence: [{ type: 'dataBlock', tag: 'notes', data: {} }], type: 'Quiet' })

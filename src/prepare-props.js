@@ -133,9 +133,10 @@ export function applyDefaults(params, defaults) {
  *
  * A key declared `single: true` then holds one record, or `null` (`holdOneRecord`).
  *
- * A tagged data block under a key the component does not declare is left out, and said so
- * in dev (`warnUndeclaredBlocks`); it stays in `content.sequence`. The data object is
- * rebuilt on each render from those sources, never from the last render's.
+ * A tagged block the section holds under a key the component does not declare is left out, and
+ * said so in dev (`warnUndeclaredBlocks`); it stays in `content.sequence`. A block inside an item
+ * is that item's (`content.items[n].data`), never held here. The data object is rebuilt on each
+ * render from those sources, never from the last render's.
  *
  * ⛔ Until 2026-09-14 this merged every delivered key into what the section held, so a
  * section received every fetch that reached it and every tagged block it had.
@@ -149,7 +150,8 @@ function assembleData(block, meta, entityData) {
     else if (entityData && entityData[key] !== undefined) data[key] = entityData[key]
     else data[key] = null
   }
-  warnUndeclaredBlocks(block, declared)
+  // What the section holds and this leaves out — the keys the dev warning reports.
+  warnUndeclaredBlocks(block, Object.keys(held).filter((key) => !Object.hasOwn(data, key)))
   block.parsedContent.data = data
   return declared
 }
@@ -177,26 +179,36 @@ function holdOneRecord(block, declared) {
 }
 
 /**
- * Say once, in dev, that a tagged block — a data block or a concept block — did not reach its
- * section's component: its key is not declared. The block is still in `content.sequence`, where a component that
- * renders the sequence finds it.
+ * Say once, in dev, that a tagged block the section holds — a data block or a concept block — did
+ * not reach its component: its key is not declared. `assembleData` passes the keys it left out, so
+ * this names exactly what the component did not receive. The block is still in `content.sequence`,
+ * where a component that renders the sequence finds it.
+ *
+ * ⭐ AN ITEM'S BLOCK IS NEVER ONE OF THEM. The parser keeps a block inside an item with that item
+ * (`content.items[n].data`), which asks no declaration, and only the section's own blocks reach
+ * `block.heldData`. ⛔ Until 2026-10-25 this walked `content.sequence`, which lists every element of
+ * the section, its items' included, and so reported each card's `meta` block in a card grid as left
+ * out of `content.data`, where it never belonged.
  */
 const warnedBlocks = new Set()
-function warnUndeclaredBlocks(block, declared) {
-  if (!block.website?.entityStore?.dev) return
-  const keys = new Set(declared.map(([key]) => key))
-  for (const item of block.parsedContent?.sequence || []) {
-    // A data block (```yaml:tag) and a concept block (```md:tag) both land under their tag, so
-    // both need the key declared. ⛔ Until 2026-09-29 only a data block was reported, and an
-    // undeclared concept block left content.data without a word.
-    const kind = item?.type === 'dataBlock' ? 'data block' : item?.type === 'concept_block' ? 'concept block' : null
-    if (!kind || typeof item.tag !== 'string' || keys.has(item.tag)) continue
-    const memo = `${block.type}::${item.tag}`
+function warnUndeclaredBlocks(block, leftOut) {
+  if (!leftOut.length || !block.website?.entityStore?.dev) return
+  const sequence = block.parsedContent?.sequence || []
+  for (const tag of leftOut) {
+    const memo = `${block.type}::${tag}`
     if (warnedBlocks.has(memo)) continue
+    // The section's own block under the tag is the first in the sequence: the parser cuts the
+    // sequence into slices, and the section's own content is the first (`groups.js`). None means
+    // the key holds a fetch's prerendered answer, which is not a block.
+    // A data block (```yaml:tag) and a concept block (```md:tag) both land under their tag, so
+    // both need the key declared. ⛔ Until 2026-09-29 only a data block was reported.
+    const element = sequence.find((e) => (e?.type === 'dataBlock' || e?.type === 'concept_block') && e.tag === tag)
+    if (!element) continue
     warnedBlocks.add(memo)
+    const kind = element.type === 'dataBlock' ? 'data block' : 'concept block'
     console.warn(
-      `[uniweb] ${block.type}: the \`${item.tag}\` ${kind} is not in content.data — ${block.type} does not ` +
-        `declare \`${item.tag}\` in its meta.js \`data:\`. It stays in content.sequence.`
+      `[uniweb] ${block.type}: the \`${tag}\` ${kind} is not in content.data — ${block.type} does not ` +
+        `declare \`${tag}\` in its meta.js \`data:\`. It stays in content.sequence.`
     )
   }
 }

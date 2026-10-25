@@ -26,6 +26,7 @@ import DataStore, { deriveCacheKey } from '@uniweb/core/datastore'
 import { resolvePage } from './resolve-page.js'
 import { getComponentMeta } from './prepare-props.js'
 import { createDefaultFetcher } from './default-fetcher.js'
+import { requireTransport } from './require-transport.js'
 
 /**
  * Every block the page's render can reach: its body and the layout areas it uses (the runtime's own
@@ -53,7 +54,8 @@ function blocksOf(page) {
  * @param {Object} options
  * @param {Object} options.website - the initialized Website the render will use (`initPrerender`)
  * @param {string|Object} options.route - the route, or an already-resolved Page
- * @param {Function} options.fetch - the transport, per request
+ * @param {Function} options.fetch - the transport, per request. Required: a missing one is refused,
+ *   never replaced by the ambient `fetch` (`require-transport.js`)
  * @param {boolean} [options.dev]
  * @param {string|null} [options.locale] - ⛔ NOT a locale to fetch in: the Website is already
  *   locale-sliced (`initPrerenderForLocale`) and every address is resolved in ITS locale. Passing
@@ -74,6 +76,9 @@ export async function loadPageData({ website, route, fetch, dev = false, locale 
   if (prerender !== 'author' && prerender !== 'always') {
     throw new Error(`loadPageData: prerender must be 'author' or 'always', got ${JSON.stringify(prerender)}`)
   }
+  // Before the route is resolved: a lost transport is the caller's wiring, and an unknown route
+  // must not hide it.
+  requireTransport(fetch, 'loadPageData')
   const active = website?.getActiveLocale?.() ?? null
   if (locale && active && locale !== active) {
     throw new Error(

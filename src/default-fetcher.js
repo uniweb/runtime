@@ -70,7 +70,10 @@ import {
  *   fetches outside a browser (an SSR isolate) decides how a site-relative
  *   address is dispatched — through its own origin or a service binding — and
  *   hands that in. Defaults to the global `fetch`, resolved at call time so a
- *   test stub installed later is honoured.
+ *   test stub installed later is honoured. ⛔ The entries a host calls
+ *   (`loadPageData`, `prefetchAndHydrate`, `collectSiteRecords`) never reach this
+ *   default: they refuse a missing transport (`require-transport.js`). It serves
+ *   the browser and a harness that builds its own fetcher.
  * @returns {{ cacheKey: (req: Object) => string, resolve: (req: Object, ctx: Object) => Promise<{ data, error?, meta? }> }}
  */
 export function createDefaultFetcher({ basePath = '', dev = false, fetch: fetchImpl = null } = {}) {

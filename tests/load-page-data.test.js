@@ -310,4 +310,30 @@ describe('the step asks for what the render reads', () => {
       loadPageData({ website: uniweb.activeWebsite, route: '/posts', fetch: transport().fetch, locale: 'en' }),
     ).resolves.toBeInstanceOf(Array)
   })
+
+  it('⛔ a transport that did not arrive is REFUSED, not replaced by the ambient fetch', async () => {
+    // The default fetcher falls back to `globalThis.fetch`, so in an isolate a lost transport would
+    // become the isolate's own network, and with an absolute address the request would come back
+    // `fetched`. Refused before the route is resolved, so an unknown route cannot hide it.
+    const website = initPrerender(site(), foundation, []).activeWebsite
+    for (const bad of [undefined, null, {}, 'fetch']) {
+      await expect(loadPageData({ website, route: '/posts', fetch: bad })).rejects.toThrow(/loadPageData: `fetch` must be a function/)
+    }
+    await expect(loadPageData({ website, route: '/nope' })).rejects.toThrow(/must be a function/)
+  })
+
+  it('CONTROL — the ambient fetch is still reachable, by saying so', async () => {
+    // The refusal removes the accident, not the option.
+    const { fetch, asked } = transport()
+    const prev = globalThis.fetch
+    globalThis.fetch = fetch
+    try {
+      const website = initPrerender(site(), foundation, []).activeWebsite
+      const entries = await loadPageData({ website, route: '/posts', fetch: globalThis.fetch })
+      expect(entries.some((e) => e.outcome === 'fetched')).toBe(true)
+      expect(asked.some((url) => url.includes('/data/posts.json'))).toBe(true)
+    } finally {
+      globalThis.fetch = prev
+    }
+  })
 })

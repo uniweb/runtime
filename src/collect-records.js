@@ -48,6 +48,7 @@
 import { resolveFetchConfigs } from '@uniweb/core/fetch-config'
 import { resolveRecordsService } from '@uniweb/core/records-service'
 import { createDefaultFetcher } from './default-fetcher.js'
+import { requireTransport } from './require-transport.js'
 
 /**
  * Ask a site's records service for every record its declared queries return.
@@ -56,7 +57,8 @@ import { createDefaultFetcher } from './default-fetcher.js'
  * @param {Object} options
  * @param {string} options.locale - the locale to ask in; it is a route segment
  *   of the service's address, so there is no asking without one
- * @param {Function} options.fetch - the transport, `(url, init) => Response`
+ * @param {Function} options.fetch - the transport, `(url, init) => Response`. Required: a missing
+ *   one is refused, never replaced by the ambient `fetch` (`require-transport.js`)
  * @param {AbortSignal} [options.signal]
  * @param {string[]} [options.only] - restrict to these query names
  * @param {boolean} [options.whole=false] - what to ask for. `false` is the brief a
@@ -84,6 +86,10 @@ export async function collectSiteRecords(
   content,
   { locale, fetch, signal, only = null, whole = false, maxPages } = {},
 ) {
+  // ⛔ Before the empties below: those are states of a site, while a lost transport is the caller's
+  // wiring, and a site with no live records must not hide it.
+  requireTransport(fetch, 'collectSiteRecords')
+
   const config = content?.config
   const services = config?.services ?? null
   const queries = config?.queries ?? null

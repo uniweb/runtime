@@ -121,6 +121,16 @@ describe('collectSiteRecords', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
+  it('⛔ a transport that did not arrive is REFUSED — before the empties above, which a site with no live records would otherwise hide it behind', async () => {
+    // The empties are states of a SITE; a lost transport is the caller's wiring, and the default
+    // fetcher would replace it with the ambient network.
+    for (const bad of [undefined, null, {}, 'fetch']) {
+      await expect(collectSiteRecords(CONTENT, { locale: 'en', fetch: bad })).rejects.toThrow(/collectSiteRecords: `fetch` must be a function/)
+    }
+    const noService = { config: { ...CONTENT.config, services: { search: '/_search' } } }
+    await expect(collectSiteRecords(noService, { locale: 'en' })).rejects.toThrow(/must be a function/)
+  })
+
   // ── Three gaps a consumer found on 2026-09-06, each pinned where it was missing.
 
   it('asks for WHOLE records when the caller wants them; briefs by default, by omission', async () => {

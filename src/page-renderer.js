@@ -34,6 +34,7 @@
 import { resolvePage, renderPage, classifyRenderError, injectPageContent } from './ssr-renderer.js'
 import { hydrateDataStore } from './wire-foundation.js'
 import { loadPageData } from './load-page-data.js'
+import { requireTransport } from './require-transport.js'
 
 /**
  * A renderer bound to one initialized Website and one shell.
@@ -164,33 +165,11 @@ export async function prefetchAndHydrate({ website, content, route, locale = nul
     throw new Error('prefetchAndHydrate: `website` must be an initialized Website with a dataStore')
   }
 
-  // ⛔ THE TRANSPORT IS REQUIRED HERE, unlike on `loadPageData`, which falls back to the
-  // global `fetch` when it is handed none (`createDefaultFetcher`).
-  //
-  // A function does NOT survive every isolate boundary. Measured by a host against
-  // a real isolate loader, 2026-09-03: passed through an
-  // entrypoint's `fetch(Request)` with a JSON body the transport arrives
-  // **`undefined`**; passed as an argument to an RPC method it arrives as a callable
-  // function and the isolate invokes it. Only the RPC shape carries it.
-  //
-  // ⚠️ And `undefined` is not where it stops, which is the part their measurement
-  // could not see from outside our code. `createDefaultFetcher` resolves the
-  // transport as `fetchImpl || globalThis.fetch`, so a transport that failed to cross
-  // silently becomes THE ISOLATE'S OWN NETWORK — outside the host's timeout, byte
-  // budget and site-relative address resolution. With an absolute address it does not
-  // even fail: the request goes out from the wrong place and comes back
-  // `outcome: 'fetched'`. A wiring mistake wearing a success.
-  //
-  // ⇒ So the entry whose only caller crosses that boundary demands a real function
-  // rather than defaulting. A Node or browser caller that genuinely wants the global
-  // passes `fetch: globalThis.fetch` — one word, and it says so.
-  if (typeof fetch !== 'function') {
-    throw new Error(
-      'prefetchAndHydrate: `fetch` must be a function. A transport does not survive a ' +
-      'JSON-serialized isolate boundary — pass it as an RPC method argument. ' +
-      'To use the ambient fetch deliberately, pass `fetch: globalThis.fetch`.'
-    )
-  }
+  // ⛔ THE TRANSPORT IS REQUIRED, as on every entry a host calls to have the runtime fetch for
+  // it: one that did not cross the isolate boundary is refused here, never replaced by the
+  // isolate's own network (`require-transport.js`, which records the measurement). Checked here
+  // as well as in `loadPageData` so the message names the entry the caller called.
+  requireTransport(fetch, 'prefetchAndHydrate')
   // ⛔ `locale` is forwarded to be CHECKED, not applied: the Website is locale-sliced already, so a
   // caller whose two disagree gets an error rather than a page prerendered in one language with the
   // data of another.

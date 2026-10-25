@@ -84,15 +84,20 @@ export function createPageRenderer({ website, shell }) {
    *     Send your own not-found page; `error` says what broke.
    */
   function render(target, { inject = {}, fetchedData } = {}) {
+    if (fetchedData !== undefined && !Array.isArray(fetchedData)) {
+      throw new Error('createPageRenderer: `fetchedData` must be the array of entries the page carries')
+    }
+    // ⭐ FIRST, THIS GRAPH IS THE ONE `globalThis.uniweb` NAMES. A block's component, the props
+    // pipeline and kit in the foundation reach the site through the global, and every graph built
+    // since this one was points it elsewhere — a host holds several in one isolate. The render is
+    // synchronous, so the value set here is the one it reads throughout (`Website#makeCurrent`).
+    website.makeCurrent()
     // ⭐ BEFORE THE ROUTE IS RESOLVED: a parametric page is made from the store when it is first
     // resolved, so resolving first would make it from what an earlier request left there.
     // ⛔ Until 2026-10-25 a host that reused one Website hydrated each request's answers on top of
     // every earlier request's, and a section that reads the store itself (kit's `useFetched`)
     // could render answers its page did not carry, so the browser's first render differed.
     if (fetchedData !== undefined) {
-      if (!Array.isArray(fetchedData)) {
-        throw new Error('createPageRenderer: `fetchedData` must be the array of entries the page carries')
-      }
       website.forgetData()
       hydrateDataStore(website, fetchedData)
     }

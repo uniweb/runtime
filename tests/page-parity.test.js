@@ -27,6 +27,7 @@ import { initUniweb } from '../src/setup.js'
 import { hydrateDataStore } from '../src/wire-foundation.js'
 import { loadPageData } from '../src/load-page-data.js'
 import { createPageRenderer } from '../src/page-renderer.js'
+import { getComponentMeta } from '../src/prepare-props.js'
 import { videoMoves } from '../src/background.js'
 import Layout from '../src/components/Layout.jsx'
 
@@ -56,10 +57,12 @@ const Peek = () => {
 }
 // A parametric page's title, which it takes from its record when it is made.
 const PostTitle = ({ block }) => h('h2', null, block.page.title)
+// Reaches the site through the global, as kit's `useWebsite` does: `getUniweb().activeWebsite`.
+const Who = () => h('p', { className: 'who' }, globalThis.uniweb.activeWebsite.name)
 
 const foundation = {
   default: {
-    meta: { Hero: {}, Posts: { data: { posts: null } }, Painted: { background: 'self' }, Grid: {}, Nav: {}, Peek: {}, PostTitle: {} },
+    meta: { Hero: {}, Posts: { data: { posts: null } }, Painted: { background: 'self' }, Grid: {}, Nav: {}, Peek: {}, PostTitle: {}, Who: {} },
     capabilities: { layouts: { Docs } },
   },
   Hero,
@@ -69,6 +72,7 @@ const foundation = {
   Nav,
   Peek,
   PostTitle,
+  Who,
 }
 
 const section = (type, params = {}, more = {}) => ({ type, content: {}, params, ...more })
@@ -116,6 +120,7 @@ const site = {
     },
     { route: '/docs', title: 'Docs', layout: { name: 'Docs' }, sections: [section('Hero')] },
     { route: '/peek', title: 'Peek', sections: [section('Peek')] },
+    { route: '/who', title: 'Who', sections: [section('Who')] },
     { route: '/posts/:slug', isDynamic: true, paramName: 'slug', title: 'Post', sections: [section('PostTitle')] },
   ],
 }
@@ -252,6 +257,39 @@ describe('⭐ one Website reused across requests renders each against what its p
     const second = rootOf(renderer.render('/posts/a').html)
     expect(second).toContain('<h2>A</h2>')
     expect(second).not.toBe(browserFirst('/posts/a', edited(posts)))
+  })
+})
+
+describe('⭐ several graphs in one process — each door reads its own', () => {
+  // `globalThis.uniweb` names one Uniweb, and every graph built points it at itself. A host holds
+  // several in one isolate (sites, publishes, locales), so the render and the step point it back.
+  const SHELL = '<html><head></head><body><div id="root"></div></body></html>'
+  const rootOf = (html) => html.match(/<div id="root">([\s\S]*)<\/div><\/body>/)[1]
+  const graph = (content = site, f = foundation) => initPrerender(structuredClone(content), f, []).activeWebsite
+  const another = () => graph({ ...site, config: { ...site.config, name: 'Other' } })
+
+  it('a section reaching the site through the global finds the graph it renders, not the newest', () => {
+    const website = graph()
+    another()
+    const html = rootOf(createPageRenderer({ website, shell: SHELL }).render('/who', { fetchedData: [] }).html)
+    expect(html).toBe(browserFirst('/who', []))
+    expect(html).toContain('<p class="who">T</p>')
+  })
+
+  it('CONTROL — rendered past the door, it reads the newest graph', () => {
+    const website = graph()
+    another()
+    website.setActivePage('/who')
+    expect(renderToString(renderLayout(website.getPage('/who'), website))).toContain('<p class="who">Other</p>')
+  })
+
+  it('the data step asks what its own foundation declares, not the newest graph’s', async () => {
+    const website = graph()
+    // a graph whose foundation declares no data for `Posts`, built after it
+    graph(site, { ...foundation, default: { ...foundation.default, meta: { ...foundation.default.meta, Posts: {} } } })
+    expect(getComponentMeta('Posts').data).toBeUndefined()
+    const asked = await loadPageData({ website, route: '/posts', fetch: files.fetch })
+    expect(asked.some((e) => e.outcome === 'fetched' && e.config.as === 'posts')).toBe(true)
   })
 })
 

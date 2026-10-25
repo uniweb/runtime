@@ -88,6 +88,11 @@ export async function loadPageData({ website, route, fetch, dev = false, locale 
       '(`initPrerenderForLocale`) rather than asking this step for another language.'
     )
   }
+  // ⭐ This graph is the one `globalThis.uniweb` names while the step reads it, which it does here,
+  // before its first `await`: each block's component meta and the layout the page draws come
+  // through the global, and a host holding several graphs in one isolate has it naming the newest
+  // (`Website#makeCurrent`).
+  website.makeCurrent()
   const resolved = typeof route === 'string' ? resolvePage(website, route) : route
   // Nothing matched: a genuine 404, and the caller's to turn into one. Nothing to fetch.
   if (!resolved) return []

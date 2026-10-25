@@ -12,6 +12,7 @@ import { prepareProps, getComponentMeta } from '../prepare-props.js'
 import Background from './Background.jsx'
 import { sectionStickyProps, sectionScrollMargin } from '../sticky.js'
 import { noteBodySection } from '../sticky-top.js'
+import { noteSectionWrapper } from '../sticky-check.js'
 
 /**
  * Valid color contexts
@@ -172,8 +173,15 @@ export default function BlockRenderer({ block, as = 'section', stickySelf = fals
   // On a page whose layout has a sticky area, a link to this section lands below it.
   const margin = sectionScrollMargin(block, stickySelf)
   if (margin) wrapperProps.style = { ...wrapperProps.style, ...margin }
-  // A body section's element, for the measurement of what is stuck over the body (`../sticky-top.js`).
-  if (stickySelf === 'section' || stickySelf === true) wrapperProps.ref = (element) => noteBodySection(block, element)
+  // A body section's element, for the measurement of what is stuck over the body (`../sticky-top.js`);
+  // in dev, every section's, so `uniweb dev`'s sticky check knows a component's outermost element.
+  const bodySection = stickySelf === 'section' || stickySelf === true
+  if (bodySection || import.meta.env?.DEV) {
+    wrapperProps.ref = (element) => {
+      if (bodySection) noteBodySection(block, element)
+      if (import.meta.env?.DEV) noteSectionWrapper(element)
+    }
+  }
 
   // Merge Component.className (static classes declared on the component function)
   // Order: context-{theme} + block.state.className + Component.className

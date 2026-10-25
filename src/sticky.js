@@ -3,9 +3,11 @@
  * (`components/Layout.jsx`, `BlockRenderer.jsx`) and the prerender's (`ssr-renderer.js`) make the
  * same boxes sticky, and a prerendered page does not change when the browser renders over it.
  *
- * ⭐ NO BOX A COMPONENT DRAWS CAN STICK. `position: sticky` moves an element only within its
- * parent's box, and a component's markup sits in boxes as tall as itself: the section's wrapper,
- * the layout area's wrapper (`area-wrappers.js`), the built-in layout's zone (`default-layout.js`).
+ * ⭐ A COMPONENT'S OUTERMOST ELEMENT CANNOT STICK. `position: sticky` moves an element only within
+ * its parent's box, and a component sits in boxes as tall as itself: the section's wrapper, the
+ * layout area's wrapper (`area-wrappers.js`), the built-in layout's zone (`default-layout.js`). (An
+ * element inside a component can stick within a taller box the component draws — a side panel in
+ * the row beside a list — which is the component's own layout and asks nothing of this module.)
  * So a section asks — `sticky:`, one of a section's own settings (`@uniweb/schemas/section`),
  * defaulted by its type's `meta.js` — and the runtime makes sticky the box that can:
  *

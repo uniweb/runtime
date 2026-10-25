@@ -1,19 +1,19 @@
 /**
  * A section that stays in view — `sticky:`, one of a section's own settings (2026-10-19).
  *
- * No box a component draws can stick: `position: sticky` moves an element only within its
- * parent's box, and a component's markup sits in boxes as tall as itself. So the runtime makes
- * sticky the box that can — a body section's own wrapper; for any other area, the zone in the
- * built-in layout, the area wrapper in a foundation's — and both renderers make the same one.
+ * A component's outermost element cannot stick: `position: sticky` moves an element only within its
+ * parent's box, and a component sits in boxes as tall as itself. So the runtime makes sticky the
+ * box that can — a body section's own wrapper; for any other area, the zone in the built-in
+ * layout, the area wrapper in a foundation's — and both renderers make the same one.
  */
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { initPrerender, renderLayout } from '../src/ssr-renderer.js'
 import Layout from '../src/components/Layout.jsx'
 import { stickyStyle, areaStickiness, layoutStickiness, sectionStickyStyle, STICKY_SECTION_TOP } from '../src/sticky.js'
 import { areaWrapperStyle, resolveLayoutLayers } from '../src/area-wrappers.js'
-import { canStick, clippingAncestor } from '../src/sticky-check.js'
+import { canStick, clippingAncestor, unmovableAdvice, noteSectionWrapper, warnUnmovableSticky } from '../src/sticky-check.js'
 import { measureStickyTop } from '../src/sticky-top.js'
 import { ChildBlocks } from '../src/components/PageRenderer.jsx'
 
@@ -118,6 +118,93 @@ describe('the dev warning’s rule — a sticky element needs room in the direct
   it('one that sticks sideways needs room sideways', () => {
     const parent = box({ height: 40, width: 2000 })
     expect(stuck(box({ height: 40, width: 200, style: { position: 'sticky', left: '0px' }, parent }))).toBe(true)
+  })
+})
+
+describe('what the dev warning says — whose box holds the element', () => {
+  const prev = globalThis.getComputedStyle
+  afterEach(() => { globalThis.getComputedStyle = prev })
+  const node = ({ parent = null, sticky = null } = {}) => ({
+    _style: { display: 'block' },
+    parentElement: parent,
+    getAttribute: (name) => (name === 'data-uw-sticky' ? sticky : null),
+  })
+  const advice = (el) => {
+    globalThis.getComputedStyle = (n) => n._style
+    return unmovableAdvice(el)
+  }
+
+  it("a section's outermost element — a header's own `sticky top-0` — asks the section to stick", () => {
+    const wrapper = node()
+    noteSectionWrapper(wrapper)
+    expect(advice(node({ parent: wrapper }))).toMatch(/section's outermost element.*give it `sticky: true`/)
+  })
+
+  it('an element inside a component is the component\'s to give room — never told it cannot stick', () => {
+    const said = advice(node({ parent: node({ parent: node() }) }))
+    expect(said).toMatch(/a box the component draws/)
+    expect(said).not.toMatch(/sticky: true/)
+  })
+
+  it('a box the runtime made sticky is confined by the layout around it', () => {
+    expect(advice(node({ parent: node(), sticky: 'area' }))).toMatch(/page\.isSticky\(area\)/)
+  })
+})
+
+describe('the dev warning measures the settled page (warnUnmovableSticky)', () => {
+  const saved = {}
+  beforeEach(() => {
+    for (const key of ['getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame']) saved[key] = globalThis[key]
+    globalThis.getComputedStyle = (n) => n._style
+    globalThis.requestAnimationFrame = (callback) => setTimeout(callback, 0)
+    globalThis.cancelAnimationFrame = (id) => clearTimeout(id)
+  })
+  afterEach(() => {
+    Object.assign(globalThis, saved)
+    vi.restoreAllMocks()
+  })
+  const frames = () => new Promise((resolve) => setTimeout(resolve, 20))
+
+  // A request form beside a catalog: until the catalog's records arrive, its column is only as
+  // tall as the form.
+  function catalogPage() {
+    const visible = { display: 'block', overflowX: 'visible', overflowY: 'visible' }
+    const column = { _style: visible, height: 600, parentElement: null, getAttribute: () => null }
+    column.getBoundingClientRect = () => ({ height: column.height, width: 450 })
+    const form = {
+      _style: { ...visible, position: 'sticky', top: '96px', bottom: 'auto', left: 'auto', right: 'auto' },
+      parentElement: column,
+      getAttribute: () => null,
+      getBoundingClientRect: () => ({ height: 600, width: 450 }),
+    }
+    const doc = { body: { querySelectorAll: () => [form] } }
+    form.ownerDocument = doc
+    let answer
+    const records = new Promise((resolve) => { answer = resolve })
+    return { doc, column, records, answer }
+  }
+
+  it('⭐ waits for the page\'s data — a column its records fill gives the form room', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { doc, column, records, answer } = catalogPage()
+    warnUnmovableSticky(doc, { settled: () => records })
+    await frames()
+    expect(warn).not.toHaveBeenCalled()
+    column.height = 2400
+    answer()
+    await frames()
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('CONTROL — still no room once the data is in, and it says so then', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { doc, records, answer } = catalogPage()
+    warnUnmovableSticky(doc, { settled: () => records })
+    await frames()
+    expect(warn).not.toHaveBeenCalled()
+    answer()
+    await frames()
+    expect(warn.mock.calls.map(([m]) => m)).toEqual([expect.stringMatching(/cannot move.*a box the component draws/)])
   })
 })
 

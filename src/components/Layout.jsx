@@ -117,9 +117,10 @@ export default function Layout({ page, website }) {
   useEffect(() => watchStickyTop(document, bodySectionOf(bodyBlocks?.[0])), [page])
 
   // `uniweb dev` names a sticky element that cannot move — a component's own `sticky`, an area a
-  // layout wraps in an element of its own, a box that clips. Dropped from a published page's runtime.
+  // layout wraps in an element of its own, a box that clips — measured once the page's data is in.
+  // Dropped from a published page's runtime.
   useEffect(() => {
-    if (import.meta.env?.DEV) return warnUnmovableSticky()
+    if (import.meta.env?.DEV) return warnUnmovableSticky(document, { settled: () => website.dataStore.whenIdle() })
   }, [page])
 
   // Use foundation's custom Layout if provided

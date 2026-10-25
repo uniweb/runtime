@@ -445,10 +445,16 @@ export async function prefetchIcons(siteContent, uniweb, onProgress = () => {}) 
       const url = iconUrl(family, name, cdnBase)
       const response = await fetch(url)
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      const svg = await response.text()
-      uniweb.iconCache.set(`${family}:${name}`, svg)
+      return [`${family}:${name}`, await response.text()]
     })
   )
+  // ⭐ Cached in the order the build names the icons (`icons.used`, sorted), never the order their
+  // fetches settle in: the cache is written into every page (`_iconCache`, `__ICON_CACHE__`), so
+  // in arrival order two builds of one site wrote different pages. ⛔ Until 2026-10-25 each icon
+  // was cached as it arrived (measured: three builds of one site, three orders).
+  for (const result of results) {
+    if (result.status === 'fulfilled') uniweb.iconCache.set(...result.value)
+  }
 
   const succeeded = results.filter(r => r.status === 'fulfilled').length
   const failedRefs = icons.filter((_, i) => results[i].status === 'rejected')

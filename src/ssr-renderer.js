@@ -2,11 +2,13 @@
  * SSR Renderer
  *
  * Hook-free rendering pipeline for SSG (build) and server-side SSR.
- * Mirrors BlockRenderer.jsx + Background.jsx using React.createElement
- * directly — no hooks, no JSX, no browser APIs.
+ * Mirrors BlockRenderer.jsx using React.createElement directly — no hooks,
+ * no JSX, no browser APIs. A section's background and the built-in layout are
+ * not mirrored: both renderers draw the one copy (`background.js`,
+ * `default-layout.js`).
  *
  * This is the single source of truth for how blocks render during prerender.
- * When modifying BlockRenderer.jsx or Background.jsx, update this file to match.
+ * When modifying BlockRenderer.jsx, update `renderBlock` here to match.
  *
  * Exports three layers:
  *   1. Rendering functions (renderBlock, renderBlocks, renderLayout, renderBackground)
@@ -18,7 +20,7 @@ import React from 'react'
 import { renderToString } from 'react-dom/server'
 import { createUniweb, resolveDefaultLocale } from '@uniweb/core'
 import { sectionDomId } from '@uniweb/core/section-id'
-import { siteUrl, withOpacity } from './background-shared.js'
+import { Background } from './background.js'
 import { routePatternToRegex, isDynamicRoute } from '@uniweb/core/route-match'
 import { DEFAULT_ICON_BASE, iconUrl } from '@uniweb/core/icon-corpus'
 import { buildSectionOverrides, FONT_LINKS_MARKER } from '@uniweb/theming'
@@ -95,123 +97,17 @@ export function getWrapperProps(block) {
 
 
 /**
- * Render a background element for SSR.
- * Mirrors Background.jsx (color, gradient, image — not video).
- * Video backgrounds require JS for autoplay and are skipped during SSR.
+ * Render a section's background for SSR: the one implementation both renderers draw
+ * (`background.js`). A video background is drawn as its poster — what the browser draws too,
+ * until it has mounted and starts the video.
+ * ⛔ Until 2026-10-25 this was a copy of `Background.jsx`, and drew no video at all.
+ *
+ * @param {Object} background - `block.background`, normalized by core
+ * @returns {React.ReactElement|null}
  */
 export function renderBackground(background) {
   if (!background?.mode) return null
-
-  const containerStyle = {
-    position: 'absolute',
-    inset: '0',
-    overflow: 'hidden',
-    zIndex: 0,
-  }
-
-  const children = []
-
-  // Color background
-  if (background.mode === 'color' && background.color) {
-    children.push(
-      React.createElement('div', {
-        key: 'bg-color',
-        className: 'background-color',
-        style: { position: 'absolute', inset: '0', backgroundColor: background.color },
-        'aria-hidden': 'true',
-      })
-    )
-  }
-
-  // Gradient background (supports string or object with opacity)
-  if (background.mode === 'gradient' && background.gradient) {
-    const g = background.gradient
-
-    let bgValue
-    if (typeof g === 'string') {
-      bgValue = g
-    } else {
-      const {
-        start = 'transparent',
-        end = 'transparent',
-        angle = 0,
-        startPosition = 0,
-        endPosition = 100,
-        startOpacity = 1,
-        endOpacity = 1,
-      } = g
-      const startColor = startOpacity < 1 ? withOpacity(start, startOpacity) : start
-      const endColor = endOpacity < 1 ? withOpacity(end, endOpacity) : end
-      bgValue = `linear-gradient(${angle}deg, ${startColor} ${startPosition}%, ${endColor} ${endPosition}%)`
-    }
-
-    children.push(
-      React.createElement('div', {
-        key: 'bg-gradient',
-        className: 'background-gradient',
-        style: { position: 'absolute', inset: '0', background: bgValue },
-        'aria-hidden': 'true',
-      })
-    )
-  }
-
-  // Image background
-  if (background.mode === 'image' && background.image?.src) {
-    const img = background.image
-    children.push(
-      React.createElement('div', {
-        key: 'bg-image',
-        className: 'background-image',
-        style: {
-          position: 'absolute',
-          inset: '0',
-          backgroundImage: `url(${siteUrl(img.src)})`,
-          backgroundPosition: img.position || 'center',
-          backgroundSize: img.size || 'cover',
-          backgroundRepeat: 'no-repeat',
-        },
-        'aria-hidden': 'true',
-      })
-    )
-  }
-
-  // Overlay (gradient or solid)
-  if (background.overlay?.enabled) {
-    const ov = background.overlay
-    let overlayStyle
-
-    if (ov.gradient) {
-      const g = ov.gradient
-      overlayStyle = {
-        position: 'absolute', inset: '0', pointerEvents: 'none',
-        background: `linear-gradient(${g.angle || 180}deg, ${g.start || 'rgba(0,0,0,0.7)'} ${g.startPosition || 0}%, ${g.end || 'rgba(0,0,0,0)'} ${g.endPosition || 100}%)`,
-        opacity: ov.opacity ?? 0.5,
-      }
-    } else {
-      const baseColor = ov.type === 'light' ? '255, 255, 255' : '0, 0, 0'
-      overlayStyle = {
-        position: 'absolute', inset: '0', pointerEvents: 'none',
-        backgroundColor: `rgba(${baseColor}, ${ov.opacity ?? 0.5})`,
-      }
-    }
-
-    children.push(
-      React.createElement('div', {
-        key: 'bg-overlay',
-        className: ov.gradient ? 'background-overlay background-overlay--gradient' : 'background-overlay background-overlay--solid',
-        style: overlayStyle,
-        'aria-hidden': 'true',
-      })
-    )
-  }
-
-  if (children.length === 0) return null
-
-  return React.createElement('div', {
-    className: `background background--${background.mode}`,
-    style: containerStyle,
-    'aria-hidden': 'true',
-  }, ...children)
+  return React.createElement(Background, background)
 }
 
 /**
@@ -475,10 +371,9 @@ export function initPrerender(content, foundation, extensionsOrOptions, maybeOpt
   }
 
   // The same background a section gets, for kit's `SectionBackground` — a component that
-  // paints its own (`background: 'self'`). Mirrors the SPA's `Background` (setup.js).
-  uniweb.backgroundRenderer = function InlineBackground(background) {
-    return renderBackground(background)
-  }
+  // paints its own (`background: 'self'`). The one implementation, which the browser draws
+  // too (setup.js); its `className` is the layer's. ⛔ Until 2026-10-25 this dropped it.
+  uniweb.backgroundRenderer = Background
 
   // L2 (singleton wiring): defaultInsets, xref.build(), and any future
   // framework-level capability bridge — shared with setup.js so both

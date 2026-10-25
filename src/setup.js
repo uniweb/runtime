@@ -291,7 +291,8 @@ export function initUniweb({ content, foundation, extensions = [], routingCompon
 
   uniweb.childBlockRenderer = ChildBlocks
   // The same background a section gets, for kit's `SectionBackground` — a component that
-  // paints its own (`background: 'self'`). The SSR twin sets its own (`ssr-renderer.js`).
+  // paints its own (`background: 'self'`). The prerender sets the same one (`ssr-renderer.js`):
+  // one implementation (`background.js`), of which this is the browser's, which plays a video.
   uniweb.backgroundRenderer = Background
 
   // L2 (singleton wiring): defaultInsets, xref.build(), and any future

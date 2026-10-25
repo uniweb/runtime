@@ -4,13 +4,13 @@
  *
  * ## Why this module exists
  *
- * Backgrounds are an L3 pair by design: `components/Background.jsx` renders
- * with hooks and DOM, `ssr-renderer.js` renders with `React.createElement`
- * only, and the runtime-layer rule says that
- * pair is twinned on purpose. ⛔ **What it also says is that only the RENDERING
- * is twinned — "pure data → L1, one home" — and two pure helpers had been
- * dragged across the seam with it**: a base-path joiner and a colour-opacity
- * converter, byte-identical in both files.
+ * Backgrounds were an L3 pair until 2026-10-25: `components/Background.jsx`
+ * rendered for the browser and `ssr-renderer.js` with `React.createElement`
+ * only. ⛔ **Only the RENDERING was ever meant to be twinned — "pure data →
+ * L1, one home" — and two pure helpers had been dragged across the seam with
+ * it**: a base-path joiner and a colour-opacity converter, byte-identical in
+ * both files. The rendering is one copy now too (`background.js`: it needs no
+ * hooks or DOM); these stay apart from it because they are not rendering.
  *
  * ⚠️ **And the copies had already drifted from the rule they were copying.**
  * The base-path joiner is `@uniweb/core`'s `applyBasePath`, whose own docblock

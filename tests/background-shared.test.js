@@ -71,15 +71,15 @@ describe('withOpacity', () => {
   })
 })
 
-describe('the twin does not re-grow', () => {
-  it('neither background renderer defines its own copy', async () => {
+describe('the copies do not re-grow', () => {
+  it('no background renderer defines its own copy of a helper', async () => {
     const { readFileSync } = await import('node:fs')
     const { fileURLToPath } = await import('node:url')
-    for (const rel of ['../src/ssr-renderer.js', '../src/components/Background.jsx']) {
+    for (const rel of ['../src/background.js', '../src/ssr-renderer.js', '../src/components/Background.jsx']) {
       const src = readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
-      // ⭐ The L3 pair is twinned on purpose — the RENDERING is.
-      // A pure helper pulled inside that twin silently joins the commitment to
-      // keep two copies in step, which is how these two drifted from core.
+      // A pure helper pulled inside a renderer joins every copy that renderer has. That is how
+      // these two drifted from core while the rendering itself was still twinned (until
+      // 2026-10-25; it is one copy now, `background.js` — `tests/page-parity.test.js`).
       expect(src, `${rel} re-declares a shared helper`).not.toMatch(/function\s+(withOpacity|resolveUrl|siteUrl)\s*\(/)
     }
   })

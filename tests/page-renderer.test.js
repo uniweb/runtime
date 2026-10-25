@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 
 // ⭐ MOCKED AT THE SEAM, DELIBERATELY. `page-renderer.js` contains composition and
 // outcome mapping and nothing else — each step it calls is covered by its own file
-// (`ssr-page-resolution.test.js`, `prefetch.test.js`). Driving a real `renderPage`
+// (`ssr-page-resolution.test.js`, `load-page-data.test.js`). Driving a real `renderPage`
 // here would need a real Website, a real layout and a real React tree, and would
 // then be testing those, not the join. Stubbing the four imported steps tests the
 // only thing this module owns: which outcome each of their answers becomes.
@@ -174,7 +174,9 @@ describe('createPageRenderer — the outcome triple', () => {
 })
 
 describe('prefetchAndHydrate', () => {
-  // The payload shape a backend publishes, matching tests/prefetch.test.js.
+  // Passed because the signature still takes `content`; nothing reads it since the step went to the
+  // Website (2026-09-19), and the step is stubbed above. ⛔ This said it matched `prefetch.test.js`,
+  // deleted with the payload-only prefetch on 2026-09-20.
   const CONTENT = {
     config: {
       base: '/site',

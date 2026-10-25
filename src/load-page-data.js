@@ -68,7 +68,8 @@ function blocksOf(page) {
  *   page asks for the site's and its parent's data and reading each address once is the difference
  *   between N reads and N×M. ⛔ Not for a host serving requests: there a page's data is asked
  *   fresh, and the default (a cache per call) is what does that. A shared cache changes nothing
- *   about what is ASKED or returned — every request is still recorded, hit or miss.
+ *   about what is ASKED or returned — every request is still recorded, hit or miss, and whether a
+ *   record is held whole already is answered from this call's own requests, never the cache's.
  * @returns {Promise<Array<{ config: Object, outcome: 'fetched'|'failed'|'skipped', data: *, meta?: Object, error?: string }>>}
  *   one entry per request the render will make, keyed downstream by `deriveCacheKey(config)`
  */
@@ -117,9 +118,16 @@ export async function loadPageData({ website, route, fetch, dev = false, locale 
     if (!entries.has(key)) entries.set(key, entry)
   }
 
+  // ⭐ WHAT THIS CALL'S OWN REQUESTS ANSWERED — the record index the plan asks "held whole
+  // already?" before it asks for a record (R1). ⛔ Not the cache's: a shared one holds the records
+  // other pages fetched, and a record found there was never asked for, so never recorded, and the
+  // page carried nothing for it (2026-10-25). With a cache of this call's own, the two hold the
+  // same records.
+  const answered = new DataStore()
+
   const recording = {
     peek: (request, ctx) => dispatcher.peek(request, ctx),
-    peekRecord: (id) => dispatcher.peekRecord(id),
+    peekRecord: (id) => answered.getRecord(id),
     dispatch: async (request, ctx) => {
       if (prerender === 'author' && request?.prerender === false) {
         // The author deferred this one to the browser and the caller honours that. Present, so a
@@ -128,6 +136,9 @@ export async function loadPageData({ website, route, fetch, dev = false, locale 
         return { data: null }
       }
       const result = await dispatcher.dispatch(request, ctx)
+      if (!result?.error && result?.data != null) {
+        answered.set(deriveCacheKey(request), result.meta ? { data: result.data, meta: result.meta } : { data: result.data })
+      }
       record(request, result?.error
         ? { config: request, outcome: 'failed', data: null, error: result.error }
         : { config: request, outcome: 'fetched', data: result?.data ?? null, ...(result?.meta ? { meta: result.meta } : {}) })

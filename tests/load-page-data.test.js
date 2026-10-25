@@ -131,6 +131,20 @@ function transport() {
   return { fetch, asked }
 }
 
+/** The same answers from records synced once: each carries a `$uuid`, so the record index files it. */
+function syncedTransport() {
+  const { fetch: answer, asked } = transport()
+  const synced = (body) => (Array.isArray(body) ? body.map(synced)
+    : body?.$name ? { $uuid: `u-${body.$name}`, ...body }
+    : body)
+  const fetch = async (url, init) => {
+    const response = await answer(url, init)
+    const body = synced(await response.json())
+    return { ...response, json: async () => body, text: async () => JSON.stringify(body) }
+  }
+  return { fetch, asked }
+}
+
 /** Every block the page draws, as the renderer reaches them. */
 function blocksOf(page) {
   const out = []
@@ -289,6 +303,28 @@ describe('the step asks for what the render reads', () => {
     expect(list.some((e) => e.config.as === 'posts')).toBe(true)
     expect(record.some((e) => e.config.as === 'posts')).toBe(true)
     expect(record.every((e) => e.outcome === 'fetched')).toBe(true)
+  })
+
+  it('⛔ …and a record an EARLIER page fetched whole is still asked for by the page that shows it', async () => {
+    // Records synced once carry a `$uuid`, so the record index files one fetched whole by it, and a
+    // page about that record asks first whether it is held whole already. Over a shared cache the
+    // answer was another page's: the record page asked nothing for its record and carried none, and
+    // its prerender read the record from a store the browser's never holds. What a page asks must
+    // not depend on which pages asked before it.
+    const featured = { route: '/featured', title: 'Featured', fetch: { query: 'items', as: 'items' }, sections: [section('ItemDetail')] }
+    const website = initPrerender(site({ pages: [featured] }), foundation, []).activeWebsite
+    const { fetch, asked } = syncedTransport()
+    const cache = new DataStore()
+
+    const list = await loadPageData({ website, route: '/featured', fetch, cache })
+    const record = await loadPageData({ website, route: '/items/7', fetch, cache })
+
+    const wholeOf = (entries) => entries.find((e) => e.config.path?.endsWith('/data/items/seven.json'))
+    expect(wholeOf(list)?.outcome).toBe('fetched') // CONTROL: the list page fetched the record whole
+    expect(wholeOf(record)?.outcome).toBe('fetched')
+    expect(wholeOf(record)?.data).toMatchObject({ $uuid: 'u-seven', body: 'Full' })
+    // still read once: the record page's answer came from the cache
+    expect(asked.filter((url) => url.includes('/data/items/seven.json'))).toHaveLength(1)
   })
 
   it('CONTROL — an unknown route asks for nothing', async () => {

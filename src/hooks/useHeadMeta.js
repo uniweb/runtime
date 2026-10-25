@@ -3,6 +3,13 @@
  *
  * Manages document head meta tags for SEO and social sharing.
  * Updates meta tags when page changes in SPA navigation.
+ *
+ * ⭐ The browser twin of `injectPageContent`'s head tags, from the same source
+ * (`Page#getHeadMeta`), so a crawler that runs the page's script reads what one that
+ * does not read. These tags are the framework's: each is set when the page has a value
+ * and removed when it has none — as it must be, or a tag of the page before survives a
+ * navigation. ⛔ Until 2026-10-25 this removed the canonical of every page that did not
+ * author one, after the prerendered HTML had stated it.
  */
 
 import { useEffect, useRef } from 'react'
@@ -20,7 +27,9 @@ const META_TAGS = {
   'og:image': { property: 'og:image' },
   'og:url': { property: 'og:url' },
   'og:type': { property: 'og:type' },
+  'og:site_name': { property: 'og:site_name' },
   'twitter:card': { name: 'twitter:card' },
+  'twitter:site': { name: 'twitter:site' },
   'twitter:title': { name: 'twitter:title' },
   'twitter:description': { name: 'twitter:description' },
   'twitter:image': { name: 'twitter:image' }
@@ -72,19 +81,38 @@ function getOrCreateLinkTag(rel) {
 }
 
 /**
- * Set or remove a meta tag's content
+ * Set or remove a meta tag's content — one tag of each name, whoever wrote the others
  * @param {string} key - Meta tag key
  * @param {string|null} content - Content value (null to remove)
  */
 function setMetaContent(key, content) {
   const element = getOrCreateMetaTag(key)
   if (!element) return
+  const config = META_TAGS[key]
+  for (const extra of document.querySelectorAll(`meta[${config.property ? 'property' : 'name'}="${config.property || config.name}"]`)) {
+    if (extra !== element) extra.remove()
+  }
 
   if (content) {
     element.setAttribute('content', content)
   } else {
     // Remove the tag if no content
     element.remove()
+  }
+}
+
+/**
+ * The page's URL in each locale (`hreflang`), replacing whatever the document carried
+ * @param {Array<{hreflang: string, url: string}>} alternates
+ */
+function setAlternates(alternates) {
+  for (const link of document.querySelectorAll('link[rel="alternate"][hreflang]')) link.remove()
+  for (const { hreflang, url } of alternates || []) {
+    const link = document.createElement('link')
+    link.setAttribute('rel', 'alternate')
+    link.setAttribute('hreflang', hreflang)
+    link.setAttribute('href', url)
+    document.head.appendChild(link)
   }
 }
 
@@ -138,25 +166,29 @@ export function useHeadMeta(meta, options = {}) {
       setMetaContent('og:image', meta.og.image || null)
       setMetaContent('og:url', meta.og.url || null)
       setMetaContent('og:type', 'website')
+      setMetaContent('og:site_name', meta.og.siteName || null)
 
       // Twitter cards (fallback to OG values)
       setMetaContent('twitter:card', meta.og.image ? 'summary_large_image' : 'summary')
+      setMetaContent('twitter:site', meta.twitter?.site || null)
       setMetaContent('twitter:title', meta.og.title || meta.title || null)
       setMetaContent('twitter:description', meta.og.description || meta.description || null)
       setMetaContent('twitter:image', meta.og.image || null)
     }
 
-    // Update canonical link
+    // Update canonical link — the page's own URL unless it authors one, and none when the site's
+    // address is unknown (`Page#getHeadMeta`)
     if (meta.canonical) {
       const canonicalLink = getOrCreateLinkTag('canonical')
       canonicalLink.setAttribute('href', meta.canonical)
-    } else {
-      // Remove canonical if not set
-      const existingCanonical = document.querySelector('link[rel="canonical"]')
-      if (existingCanonical) {
-        existingCanonical.remove()
+      for (const extra of document.querySelectorAll('link[rel="canonical"]')) {
+        if (extra !== canonicalLink) extra.remove()
       }
+    } else {
+      for (const existing of document.querySelectorAll('link[rel="canonical"]')) existing.remove()
     }
+
+    setAlternates(meta.alternates)
 
     // Cleanup function - reset to defaults on unmount
     return () => {
@@ -174,6 +206,9 @@ export function useHeadMeta(meta, options = {}) {
     meta?.og?.description,
     meta?.og?.image,
     meta?.og?.url,
+    meta?.og?.siteName,
+    meta?.twitter?.site,
+    JSON.stringify(meta?.alternates || []),
     siteName
   ])
 }

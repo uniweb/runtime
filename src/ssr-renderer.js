@@ -674,7 +674,7 @@ export { escapeHtml }
  * Common operations shared by both build and cloud:
  * - Replace #root div with rendered HTML
  * - Update page title
- * - Add/update meta description
+ * - Write the page's head tags — description, canonical, hreflang, Open Graph (`writeHeadMeta`)
  * - Inject section override CSS
  * - Inject the pre-paint appearance script
  *
@@ -766,43 +766,64 @@ export function injectPageContent(html, renderedContent, page, options = {}) {
     )
   }
 
-  // Add/update meta description
-  if (page.description) {
-    const metaDesc = `<meta name="description" content="${escapeHtml(page.description)}">`
-    if (result.includes('<meta name="description"')) {
-      result = result.replace(/<meta name="description"[^>]*>/, metaDesc)
-    } else {
-      result = result.replace('</head>', `${metaDesc}\n</head>`)
-    }
-  }
-
-  // Social / SEO meta from the page's effective head metadata (page seo
-  // cascading over site-level seo — see Page.getHeadMeta). The SPA emits these
-  // client-side via useHeadMeta; this is the SSR twin, so crawlers and social
-  // unfurlers (which don't run JS) get them in the static HTML too.
-  const headMeta = page.getHeadMeta?.()
-  if (headMeta) {
-    const og = headMeta.og || {}
-    const keywords = Array.isArray(headMeta.keywords)
-      ? headMeta.keywords.join(', ')
-      : headMeta.keywords
-    const tags = []
-    if (keywords) tags.push(`<meta name="keywords" content="${escapeHtml(keywords)}">`)
-    if (headMeta.robots) tags.push(`<meta name="robots" content="${escapeHtml(headMeta.robots)}">`)
-    if (og.title) tags.push(`<meta property="og:title" content="${escapeHtml(og.title)}">`)
-    if (og.description) tags.push(`<meta property="og:description" content="${escapeHtml(og.description)}">`)
-    if (og.image) tags.push(`<meta property="og:image" content="${escapeHtml(og.image)}">`)
-    if (og.url) tags.push(`<meta property="og:url" content="${escapeHtml(og.url)}">`)
-    tags.push('<meta property="og:type" content="website">')
-    tags.push(`<meta name="twitter:card" content="${og.image ? 'summary_large_image' : 'summary'}">`)
-    if (og.title) tags.push(`<meta name="twitter:title" content="${escapeHtml(og.title)}">`)
-    if (og.description) tags.push(`<meta name="twitter:description" content="${escapeHtml(og.description)}">`)
-    if (og.image) tags.push(`<meta name="twitter:image" content="${escapeHtml(og.image)}">`)
-    if (headMeta.canonical) tags.push(`<link rel="canonical" href="${escapeHtml(headMeta.canonical)}">`)
-    if (tags.length) result = result.replace('</head>', `${tags.join('\n')}\n</head>`)
-  }
+  // ⭐ THE PAGE'S HEAD TAGS — description, canonical, hreflang, Open Graph, Twitter — from the
+  // page's own head metadata (`Page#getHeadMeta`, which the browser writes the same tags from in
+  // `useHeadMeta`), so crawlers and social unfurlers, which run no script, read the page's own.
+  // ⛔ Until 2026-10-25 these were APPENDED, after the static build had written the HOME page's
+  // into the one shell every page is rendered into: each page named the home page its canonical
+  // and carried two og:title and two og:url, the home page's first.
+  result = writeHeadMeta(result, page)
 
   return result
+}
+
+/**
+ * Write a page's head tags into `html`'s head. These tags are the framework's: each is set to the
+ * page's value, replacing any of its name the shell carries, and removed when the page has none —
+ * as the browser does on every navigation (`useHeadMeta`), so hydrating the page changes nothing a
+ * crawler read.
+ *
+ * @param {string} html
+ * @param {Object} page
+ * @returns {string}
+ */
+function writeHeadMeta(html, page) {
+  // A Page states its own (`getHeadMeta`); plain page data, which callers may hand in, its fields.
+  const meta = typeof page?.getHeadMeta === 'function' ? page.getHeadMeta() : { description: page?.description || null }
+  const end = html.indexOf('</head>')
+  if (!meta || end === -1) return html
+  const og = meta.og || {}
+  const keywords = Array.isArray(meta.keywords) ? meta.keywords.join(', ') : meta.keywords
+  const metaTags = [
+    ['name', 'description', meta.description],
+    ['name', 'keywords', keywords],
+    ['name', 'robots', meta.robots],
+    ['property', 'og:type', 'website'],
+    ['property', 'og:site_name', og.siteName],
+    ['property', 'og:title', og.title],
+    ['property', 'og:description', og.description],
+    ['property', 'og:image', og.image],
+    ['property', 'og:url', og.url],
+    ['name', 'twitter:card', og.image ? 'summary_large_image' : 'summary'],
+    ['name', 'twitter:site', meta.twitter?.site],
+    ['name', 'twitter:title', og.title],
+    ['name', 'twitter:description', og.description],
+    ['name', 'twitter:image', og.image],
+  ]
+  // The head alone: the page's content is in the body, and none of it is edited here.
+  let head = html.slice(0, end)
+  const written = []
+  for (const [attr, key, value] of metaTags) {
+    head = head.replace(new RegExp(`<meta\\b[^>]*\\b(?:name|property)=["']${key}["'][^>]*>\\s*`, 'gi'), '')
+    if (value) written.push(`<meta ${attr}="${key}" content="${escapeHtml(value)}">`)
+  }
+  head = head.replace(/<link\b[^>]*\brel=["']canonical["'][^>]*>\s*/gi, '')
+  if (meta.canonical) written.push(`<link rel="canonical" href="${escapeHtml(meta.canonical)}">`)
+  head = head.replace(/<link\b[^>]*\bhreflang=["'][^"']*["'][^>]*>\s*/gi, '')
+  for (const { hreflang, url } of meta.alternates || []) {
+    written.push(`<link rel="alternate" hreflang="${escapeHtml(hreflang)}" href="${escapeHtml(url)}">`)
+  }
+  return `${head}${written.join('\n')}\n${html.slice(end)}`
 }
 
 // ============================================================================

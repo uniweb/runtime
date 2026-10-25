@@ -26,7 +26,7 @@ const SHELL = '<!doctype html><html><head><title>shell</title></head><body><div 
 /** The few DOM calls `useHeadMeta` makes, and a title to read back. */
 function fakeDocument() {
   const element = () => ({ setAttribute() {}, remove() {} })
-  return { title: 'shell', querySelector: () => null, createElement: element, head: { appendChild() {} } }
+  return { title: 'shell', querySelector: () => null, querySelectorAll: () => [], createElement: element, head: { appendChild() {} } }
 }
 
 /** A page as `injectPageContent` reads one: its title, and the website it belongs to. */

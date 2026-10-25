@@ -12,16 +12,19 @@
  * serializers. `Layout` is where the browser's page markup comes from — `PageRenderer` adds no
  * element — so the Router and `PageRenderer` are left out, as in `default-layout-parity.test.js`.
  *
- * ⛔ Measured before 2026-10-25, the two disagreed on an overlay gradient at `angle: 0`, on a video
- * background (the prerender drew none), and on the `className` a component passes for a background
- * it paints itself.
+ * ⛔ Measured before 2026-10-25, the two disagreed on a page whose data the browser fetches (the
+ * prerender painted the empty state, the browser the loading one), on an overlay gradient at
+ * `angle: 0`, on a video background (the prerender drew none), and on the `className` a component
+ * passes for a background it paints itself.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import React from 'react'
 import { renderToString } from 'react-dom/server'
 import { initPrerender, renderLayout } from '../src/ssr-renderer.js'
 import { initUniweb } from '../src/setup.js'
+import { hydrateDataStore } from '../src/wire-foundation.js'
+import { loadPageData } from '../src/load-page-data.js'
 import { videoMoves } from '../src/background.js'
 import Layout from '../src/components/Layout.jsx'
 
@@ -29,6 +32,10 @@ const h = React.createElement
 
 // Section types written as plain components, so what is under test is the runtime's two renderers.
 const Hero = ({ params }) => h('h1', null, params.title || 'Hello')
+const Posts = ({ content, block }) =>
+  block.dataLoading
+    ? h('p', { className: 'loading' }, 'Loading posts…')
+    : h('ul', null, (content.data.posts || []).map((p) => h('li', { key: p.$name }, p.title)))
 // Paints its own background, where it wants it, the way kit's `SectionBackground` does.
 const Painted = ({ block }) =>
   h('div', { className: 'relative' },
@@ -41,19 +48,25 @@ const Docs = ({ header, body, left, footer }) =>
 
 const foundation = {
   default: {
-    meta: { Hero: {}, Painted: { background: 'self' }, Grid: {}, Nav: {} },
+    meta: { Hero: {}, Posts: { data: { posts: null } }, Painted: { background: 'self' }, Grid: {}, Nav: {} },
     capabilities: { layouts: { Docs } },
   },
   Hero,
+  Posts,
   Painted,
   Grid,
   Nav,
 }
 
 const section = (type, params = {}, more = {}) => ({ type, content: {}, params, ...more })
+const POSTS = [{ $name: 'a', title: 'A' }, { $name: 'b', title: 'B' }]
 
 const site = {
-  config: { name: 'T', defaultLanguage: 'en' },
+  config: {
+    name: 'T',
+    defaultLanguage: 'en',
+    queries: { posts: { path: '/data/posts.json' } },
+  },
   theme: {},
   layouts: {
     default: {
@@ -82,6 +95,7 @@ const site = {
         section('Painted', { background: { mode: 'image', image: { src: '/img/self.jpg' } } }),
       ],
     },
+    { route: '/posts', title: 'Posts', fetch: { query: 'posts', as: 'posts' }, sections: [section('Posts')] },
     {
       route: '/grid',
       title: 'Grid',
@@ -91,13 +105,28 @@ const site = {
   ],
 }
 
-/** The page at `route`, rendered by the browser and by the prerender, each over its own lane's boot. */
-function bothWays(route) {
+/** The transport the data step reads through: this site's one file. */
+const files = {
+  fetch: vi.fn(async (url) => ({
+    ok: String(url).includes('/data/posts.json'),
+    status: String(url).includes('/data/posts.json') ? 200 : 404,
+    headers: { get: () => 'application/json' },
+    json: async () => POSTS,
+    text: async () => JSON.stringify(POSTS),
+  })),
+}
+
+/**
+ * The page at `route`, rendered by the browser and by the prerender, each over its own lane's boot.
+ * `fetchedData` is what both lanes were handed — the data step's answers, as a page carries them.
+ */
+function bothWays(route, { fetchedData = [] } = {}) {
   const prerenderSite = initPrerender(structuredClone(site), foundation, []).activeWebsite
+  hydrateDataStore(prerenderSite, fetchedData)
   prerenderSite.setActivePage(route)
   const prerender = renderToString(renderLayout(prerenderSite.getPage(route), prerenderSite))
 
-  const browserSite = initUniweb({ content: structuredClone(site), foundation }).activeWebsite
+  const browserSite = initUniweb({ content: { ...structuredClone(site), fetchedData }, foundation }).activeWebsite
   browserSite.setActivePage(route)
   const browser = renderToString(h(Layout, { page: browserSite.getPage(route), website: browserSite }))
 
@@ -126,6 +155,20 @@ describe('a whole page renders the same in the browser as in the prerender', () 
   it('the class a component passes for the background it paints is the layer’s, in both', () => {
     const { prerender } = bothWays('/')
     expect(prerender).toContain('class="background background--image painted"')
+  })
+
+  it('⭐ a section whose data the browser fetches renders its LOADING state in both', () => {
+    const { browser, prerender } = bothWays('/posts')
+    expect(prerender).toBe(browser)
+    expect(prerender).toContain('Loading posts…')
+  })
+
+  it('the same section with its data in the page renders the data in both', async () => {
+    const website = initPrerender(structuredClone(site), foundation, []).activeWebsite
+    const fetchedData = await loadPageData({ website, route: '/posts', fetch: files.fetch })
+    const { browser, prerender } = bothWays('/posts', { fetchedData })
+    expect(prerender).toBe(browser)
+    expect(prerender).toContain('<li>A</li><li>B</li>')
   })
 
   it('child sections, through each lane’s own child renderer', () => {

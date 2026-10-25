@@ -140,10 +140,19 @@ export function renderBlock(block, { as = 'section', stickySelf = false } = {}) 
   const meta = getComponentMeta(block.type)
   const entityStore = block.website?.entityStore
   let entityData = null
+  let pending = false
   if (entityStore) {
     const resolved = entityStore.resolve(block, meta)
     if (resolved.status === 'ready') entityData = resolved.data
+    pending = resolved.status === 'pending'
   }
+
+  // ⭐ A block whose data is still out is LOADING here, as in the browser, which sets the same flag
+  // before `prepareProps` (`BlockRenderer.jsx`) and fetches the data once it boots. So the page
+  // paints the component's loading state, the one the browser renders in its place.
+  // ⛔ Until 2026-10-25 this was never set, and such a section prerendered its EMPTY state —
+  // "nothing found", or an error — then switched to loading when the browser took over.
+  block.dataLoading = pending
 
   // Build content and params with runtime guarantees.
   // prepareProps handles the full pipeline: entity data merge,

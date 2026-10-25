@@ -246,8 +246,10 @@ export default function PageRenderer() {
     )
   }
 
-  // Wait for content before rendering blocks (split page content).
-  // The prerendered HTML is already visible while we load.
+  // Wait for content before rendering blocks (split page content): reached after an in-app
+  // navigation to a page not loaded yet, and it renders nothing until the sections arrive. Not at
+  // boot — the page a visit starts on carries its own sections (`splitPageSections`) — and never
+  // over the prerendered HTML: the browser's first commit replaces it (`createRoot`, index.jsx).
   if (!contentReady) return null
 
   const appearance = website?.themeData?.appearance

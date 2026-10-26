@@ -49,6 +49,7 @@
   "packageManager": "pnpm@10.30.0",
   "dependencies": {
     "@uniweb/core": "workspace:~",
+    "@uniweb/projections": "workspace:~",
     "@uniweb/theming": "workspace:~"
   },
   "devDependencies": {
@@ -66,6 +67,7 @@
   "uniweb": {
     "bundledDeps": [
       "@uniweb/core",
+      "@uniweb/projections",
       "@uniweb/theming"
     ]
   }

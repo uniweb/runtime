@@ -48,9 +48,6 @@ export const EXTERNAL = [
   /^react-dom(\/.*)?$/,
   /^react-router-dom(\/.*)?$/,
   /^@uniweb\/core(\/.*)?$/,
-  // A page's head links its markdown by this package's rules (`src/head-meta.js`), and the build
-  // writes that markdown with the same package: an inlined copy would be the drift described above.
-  /^@uniweb\/projections(\/.*)?$/,
   /^@uniweb\/semantic-parser(\/.*)?$/,
   /^@uniweb\/theming(\/.*)?$/,
 ]

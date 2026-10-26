@@ -5,7 +5,7 @@
  * Updates meta tags when page changes in SPA navigation.
  *
  * ⭐ The browser twin of `injectPageContent`'s head tags, from the same source
- * (`pageHeadMeta`), so a crawler that runs the page's script reads what one that
+ * (`Page#getHeadMeta`), so a crawler that runs the page's script reads what one that
  * does not read. These tags are the framework's: each is set when the page has a value
  * and removed when it has none — as it must be, or a tag of the page before survives a
  * navigation. ⛔ Until 2026-10-25 this removed the canonical of every page that did not
@@ -117,20 +117,6 @@ function setAlternates(alternates) {
 }
 
 /**
- * The link to the page's markdown, replacing whatever the document carried
- * @param {string|null} href
- */
-function setMarkdownLink(href) {
-  for (const link of document.querySelectorAll('link[rel="alternate"][type="text/markdown"]')) link.remove()
-  if (!href) return
-  const link = document.createElement('link')
-  link.setAttribute('rel', 'alternate')
-  link.setAttribute('type', 'text/markdown')
-  link.setAttribute('href', href)
-  document.head.appendChild(link)
-}
-
-/**
  * useHeadMeta hook
  *
  * @param {Object} meta - Head metadata
@@ -203,7 +189,6 @@ export function useHeadMeta(meta, options = {}) {
     }
 
     setAlternates(meta.alternates)
-    setMarkdownLink(meta.markdown || null)
 
     // Cleanup function - reset to defaults on unmount
     return () => {
@@ -224,7 +209,6 @@ export function useHeadMeta(meta, options = {}) {
     meta?.og?.siteName,
     meta?.twitter?.site,
     JSON.stringify(meta?.alternates || []),
-    meta?.markdown,
     siteName
   ])
 }

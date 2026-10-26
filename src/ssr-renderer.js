@@ -37,7 +37,6 @@ import { layoutStickiness, sectionStickyProps, sectionScrollMargin, zoneProps } 
 import { DefaultLayout } from './default-layout.js'
 import { renderAppearanceBootScript } from './appearance.js'
 import { documentTitle } from './document-title.js'
-import { pageHeadMeta } from './head-meta.js'
 import { escapeHtml } from '@uniweb/core/page-shell'
 
 // Re-export L2 helpers so the public `@uniweb/runtime/ssr` surface
@@ -585,8 +584,7 @@ export { escapeHtml }
  * Common operations shared by both build and cloud:
  * - Replace #root div with rendered HTML
  * - Update page title
- * - Write the page's head tags — description, canonical, hreflang, Open Graph, the link to its
- *   markdown (`writeHeadMeta`)
+ * - Write the page's head tags — description, canonical, hreflang, Open Graph (`writeHeadMeta`)
  * - Inject section override CSS
  * - Inject the pre-paint appearance script
  *
@@ -678,10 +676,9 @@ export function injectPageContent(html, renderedContent, page, options = {}) {
     )
   }
 
-  // ⭐ THE PAGE'S HEAD TAGS — description, canonical, hreflang, Open Graph, Twitter, the link to its
-  // markdown — from the page's own head metadata (`pageHeadMeta`, which the browser writes the same
-  // tags from in `useHeadMeta`), so crawlers, social unfurlers and agents, which run no script,
-  // read the page's own.
+  // ⭐ THE PAGE'S HEAD TAGS — description, canonical, hreflang, Open Graph, Twitter — from the
+  // page's own head metadata (`Page#getHeadMeta`, which the browser writes the same tags from in
+  // `useHeadMeta`), so crawlers and social unfurlers, which run no script, read the page's own.
   // ⛔ Until 2026-10-25 these were APPENDED, after the static build had written the HOME page's
   // into the one shell every page is rendered into: each page named the home page its canonical
   // and carried two og:title and two og:url, the home page's first.
@@ -701,8 +698,8 @@ export function injectPageContent(html, renderedContent, page, options = {}) {
  * @returns {string}
  */
 function writeHeadMeta(html, page) {
-  // A Page states its own (`pageHeadMeta`); plain page data, which callers may hand in, its fields.
-  const meta = typeof page?.getHeadMeta === 'function' ? pageHeadMeta(page) : { description: page?.description || null }
+  // A Page states its own (`getHeadMeta`); plain page data, which callers may hand in, its fields.
+  const meta = typeof page?.getHeadMeta === 'function' ? page.getHeadMeta() : { description: page?.description || null }
   const end = html.indexOf('</head>')
   if (!meta || end === -1) return html
   const og = meta.og || {}
@@ -736,8 +733,6 @@ function writeHeadMeta(html, page) {
   for (const { hreflang, url } of meta.alternates || []) {
     written.push(`<link rel="alternate" hreflang="${escapeHtml(hreflang)}" href="${escapeHtml(url)}">`)
   }
-  head = head.replace(/<link\b(?=[^>]*\brel=["']alternate["'])(?=[^>]*\btype=["']text\/markdown["'])[^>]*>\s*/gi, '')
-  if (meta.markdown) written.push(`<link rel="alternate" type="text/markdown" href="${escapeHtml(meta.markdown)}">`)
   return `${head}${written.join('\n')}\n${html.slice(end)}`
 }
 

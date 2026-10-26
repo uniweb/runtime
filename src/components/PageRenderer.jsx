@@ -11,7 +11,6 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import BlockRenderer from './BlockRenderer.jsx'
 import Layout from './Layout.jsx'
 import { useHeadMeta } from '../hooks/useHeadMeta.js'
-import { pageHeadMeta } from '../head-meta.js'
 import { useSectionViews } from '../hooks/useSectionViews.js'
 import { buildSectionOverrides } from '@uniweb/theming'
 import { carryQuery } from '@uniweb/core/resolve-route'
@@ -183,7 +182,7 @@ export default function PageRenderer() {
   }
 
   // Head metadata — compute for all cases (redirect pages get a fallback)
-  const headMeta = (typeof page?.getHeadMeta === 'function' && pageHeadMeta(page)) || {
+  const headMeta = page?.getHeadMeta?.() || {
     title: isNotFound ? 'Page Not Found' : (page?.title || 'Website'),
     description: page?.description || ''
   }

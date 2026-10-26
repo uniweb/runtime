@@ -20,7 +20,6 @@ vi.mock('react', async (importOriginal) => {
 import { Website } from '@uniweb/core'
 import { useHeadMeta } from '../src/hooks/useHeadMeta.js'
 import { injectPageContent } from '../src/ssr-renderer.js'
-import { pageHeadMeta } from '../src/head-meta.js'
 
 const ADDRESS = 'https://octocat.github.io/handbook/'
 
@@ -32,29 +31,24 @@ const STALE_SHELL = [
   `<meta property="og:url" content="${ADDRESS}">`,
   '<meta name="twitter:title" content="Acme">',
   '<link rel="alternate" hreflang="en" href="https://example.com/">',
-  '<link rel="alternate" type="text/markdown" href="/index.md">',
   '</head><body><div id="root"></div></body></html>',
 ].join('\n')
 
-function content(config = {}) {
-  return {
-    config: { name: 'Acme', defaultLanguage: 'en', seo: { image: '/og/default.png' }, ...config },
-    theme: {},
-    pages: [
-      { route: '/', isIndex: true, title: 'Home', sections: [] },
-      { route: '/books', title: 'Books', sections: [] },
-      { route: '/books/field-guide', title: 'Field Guide', description: 'A book.', sections: [] },
-      { route: '/private', title: 'Private', seo: { noindex: true }, sections: [] },
-    ],
-  }
+function site(config = {}) {
+  return new Website({
+    content: {
+      config: { name: 'Acme', defaultLanguage: 'en', seo: { image: '/og/default.png' }, ...config },
+      theme: {},
+      pages: [
+        { route: '/', isIndex: true, title: 'Home', sections: [] },
+        { route: '/books', title: 'Books', sections: [] },
+        { route: '/books/field-guide', title: 'Field Guide', description: 'A book.', sections: [] },
+      ],
+    },
+  })
 }
 
-const site = (config) => new Website({ content: content(config) })
-
 const pageOf = (website, route) => website.pages.find((p) => p.route === route)
-
-const isMarkdownLink = (tag) => tag.startsWith('link alternate text/markdown ')
-const isHreflangLink = (tag) => tag.startsWith('link alternate ') && !isMarkdownLink(tag)
 
 /** The head's SEO tags, as `kind key value` lines. */
 function headTags(html) {
@@ -65,9 +59,8 @@ function headTags(html) {
   }
   for (const [tag] of head.matchAll(/<link [^>]*>/g)) {
     const rel = tag.match(/rel="([^"]+)"/)?.[1]
-    const type = tag.match(/type="([^"]+)"/)?.[1] || ''
     const hreflang = tag.match(/hreflang="([^"]+)"/)?.[1] || ''
-    tags.push(`link ${rel}${type ? ` ${type}` : ''}${hreflang ? ` ${hreflang}` : ''} ${tag.match(/href="([^"]+)"/)?.[1]}`)
+    tags.push(`link ${rel}${hreflang ? ` ${hreflang}` : ''} ${tag.match(/href="([^"]+)"/)?.[1]}`)
   }
   return tags.sort()
 }
@@ -106,7 +99,7 @@ function fakeDocument(seedHtml = '') {
     tags() {
       return nodes.map((n) => n.tag === 'meta'
         ? `meta ${'property' in n.attrs ? `property=${n.attrs.property}` : `name=${n.attrs.name}`} ${n.attrs.content}`
-        : `link ${n.attrs.rel}${n.attrs.type ? ` ${n.attrs.type}` : ''}${n.attrs.hreflang ? ` ${n.attrs.hreflang}` : ''} ${n.attrs.href}`).sort()
+        : `link ${n.attrs.rel}${n.attrs.hreflang ? ` ${n.attrs.hreflang}` : ''} ${n.attrs.href}`).sort()
     },
   }
 }
@@ -132,10 +125,10 @@ describe('the prerendered head', () => {
   })
 
   it('drops the shell’s hreflang for a site in one locale, and writes a multilingual page’s own', () => {
-    expect(tags.some(isHreflangLink)).toBe(false)
+    expect(tags.some((t) => t.startsWith('link alternate'))).toBe(false)
     const two = site({ url: 'https://example.com', languages: ['en', 'fr'] })
     expect(headTags(injectPageContent(STALE_SHELL, '<p>x</p>', pageOf(two, '/books')))
-      .filter(isHreflangLink)).toEqual([
+      .filter((t) => t.startsWith('link alternate'))).toEqual([
       'link alternate en https://example.com/books',
       'link alternate fr https://example.com/fr/books',
       'link alternate x-default https://example.com/books',
@@ -156,39 +149,6 @@ describe('the prerendered head', () => {
   })
 })
 
-describe('the link to the page’s markdown', () => {
-  const markdownLinks = (website, route) =>
-    headTags(injectPageContent(STALE_SHELL, '<p>x</p>', pageOf(website, route))).filter(isMarkdownLink)
-
-  it('⭐ names the markdown the site index links the page to — once, whatever the shell carried', () => {
-    expect(markdownLinks(site(), '/books/field-guide')).toEqual(['link alternate text/markdown /books/field-guide.md'])
-  })
-
-  it('is absolute on the site’s address, and the root’s is index.md', () => {
-    expect(markdownLinks(site({ url: ADDRESS, trailingSlash: true }), '/')).toEqual([
-      `link alternate text/markdown ${ADDRESS}index.md`,
-    ])
-  })
-
-  it('carries the locale’s prefix in a locale other than the default', () => {
-    const fr = site({ languages: ['en', 'fr'], activeLocale: 'fr' })
-    expect(markdownLinks(fr, '/books')).toEqual(['link alternate text/markdown /fr/books.md'])
-  })
-
-  it('is left out for a page the index leaves out, and when `agents:` turns markdown off', () => {
-    expect(markdownLinks(site(), '/private')).toEqual([])
-    expect(markdownLinks(site({ agents: false }), '/books')).toEqual([])
-    expect(markdownLinks(site({ agents: { exclude: ['/books'] } }), '/books/field-guide')).toEqual([])
-  })
-
-  it('follows the content a rebuild brings', () => {
-    const website = site()
-    expect(pageHeadMeta(pageOf(website, '/books')).markdown).toBe('/books.md')
-    website.rebuild({ content: content({ agents: { markdown: false } }) })
-    expect(pageHeadMeta(pageOf(website, '/books')).markdown).toBe(null)
-  })
-})
-
 describe('⭐ parity — hydrating the page changes nothing a crawler read', () => {
   for (const [label, config, route] of [
     ['a record page under a base path', { url: ADDRESS, trailingSlash: true }, '/books/field-guide'],
@@ -201,7 +161,7 @@ describe('⭐ parity — hydrating the page changes nothing a crawler read', () 
       const page = pageOf(website, route)
       const html = injectPageContent(STALE_SHELL, '<p>x</p>', page)
       globalThis.document = fakeDocument(html)
-      useHeadMeta(pageHeadMeta(page), { siteName: website.name })
+      useHeadMeta(page.getHeadMeta(), { siteName: website.name })
       expect(globalThis.document.tags()).toEqual(headTags(html))
     })
   }
@@ -213,13 +173,12 @@ describe('⭐ parity — navigating leaves exactly the next page’s tags, none 
     ['from a record page to the home page', { url: ADDRESS, trailingSlash: true }, '/books/field-guide', '/'],
     ['between pages in two locales', { url: 'https://example.com', languages: ['en', 'fr'] }, '/', '/books'],
     ['to a page with no description', { url: ADDRESS }, '/books/field-guide', '/books'],
-    ['to a page whose markdown is not linked', { url: ADDRESS }, '/books', '/private'],
   ]) {
     it(label, () => {
       const website = site(config)
       globalThis.document = fakeDocument(injectPageContent(STALE_SHELL, '<p>x</p>', pageOf(website, from)))
       const next = pageOf(website, to)
-      useHeadMeta(pageHeadMeta(next), { siteName: website.name })
+      useHeadMeta(next.getHeadMeta(), { siteName: website.name })
       expect(globalThis.document.tags()).toEqual(headTags(injectPageContent(STALE_SHELL, '<p>x</p>', next)))
     })
   }

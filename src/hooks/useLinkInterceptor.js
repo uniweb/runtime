@@ -64,7 +64,7 @@ function shouldNavigate(event) {
  * @param {EventTarget} target - The event target
  * @returns {HTMLAnchorElement|null}
  */
-function findAnchorElement(target) {
+export function findAnchorElement(target) {
   let element = target
   while (element && element !== document.body) {
     if (element.tagName === 'A') {
@@ -73,6 +73,44 @@ function findAnchorElement(target) {
     element = element.parentElement
   }
   return null
+}
+
+/**
+ * A link the runtime may route, or null: an anchor whose href stays on this site, downloads
+ * nothing and opens in this tab.
+ *
+ * `routeHref` is where the browser would go, as a path: the href resolved against this page's
+ * URL, so a query (`?tab=2`) or a relative href (`about`) is judged like any other path. The base
+ * path comes off, because React Router and locale detection work with router-relative paths (a
+ * <Link reload> carries the base).
+ *
+ * ⛔ Until 2026-10-24 an href that was not a path counted as the default locale's, so on any
+ * other locale's page it was a page load: a query or a relative link reloaded the page, and left
+ * an editor's preview frame.
+ *
+ * @param {HTMLAnchorElement|null} anchor
+ * @returns {{ anchor: HTMLAnchorElement, href: string, routeHref: string, website: Object }|null}
+ */
+export function inAppLink(anchor) {
+  const href = anchor?.getAttribute('href')
+  if (!href || !isInternalLink(href)) return null
+  if (anchor.hasAttribute('download')) return null
+  const target = anchor.getAttribute('target')
+  if (target && target !== '_self') return null
+
+  const website = globalThis.uniweb?.activeWebsite
+  const basePath = website?.basePath || ''
+  const resolved = new URL(href, window.location.href)
+  let routeHref = resolved.pathname + resolved.search + resolved.hash
+  if (basePath && routeHref.startsWith(basePath)) {
+    routeHref = routeHref.slice(basePath.length) || '/'
+  }
+  return { anchor, href, routeHref, website }
+}
+
+/** Whether a page of `website` has content not fetched yet: a site whose content is split. */
+function hasPagesToFetch(website) {
+  return !!website?.pages?.some((page) => page.hasContent() && !page.isContentLoaded())
 }
 
 /**
@@ -149,40 +187,9 @@ export function useLinkInterceptor(options = {}) {
       // Check if we should handle this click
       if (!shouldNavigate(event)) return
 
-      // Find the anchor element
-      const anchor = findAnchorElement(event.target)
-      if (!anchor) return
-
-      // Get the href
-      const href = anchor.getAttribute('href')
-      if (!href) return
-
-      // Check if it's an internal link
-      if (!isInternalLink(href)) return
-
-      // Check for download attribute
-      if (anchor.hasAttribute('download')) return
-
-      // Check for target="_blank" or other non-self targets
-      const target = anchor.getAttribute('target')
-      if (target && target !== '_self') return
-
-      const website = globalThis.uniweb?.activeWebsite
-      const basePath = website?.basePath || ''
-
-      // Where the browser would go, as a path: the href resolved against this page's URL, so
-      // a query (`?tab=2`) or a relative href (`about`) is judged like any other path. The
-      // base path comes off, because React Router and locale detection work with
-      // router-relative paths (a <Link reload> carries the base).
-      //
-      // ⛔ Until 2026-10-24 an href that was not a path counted as the default locale's, so
-      // on any other locale's page it was a page load: a query or a relative link reloaded
-      // the page, and left an editor's preview frame.
-      const resolved = new URL(href, window.location.href)
-      let routeHref = resolved.pathname + resolved.search + resolved.hash
-      if (basePath && routeHref.startsWith(basePath)) {
-        routeHref = routeHref.slice(basePath.length) || '/'
-      }
+      const link = inAppLink(findAnchorElement(event.target))
+      if (!link) return
+      const { anchor, href, routeHref, website } = link
 
       // A link to another locale's page is a page load, since that locale is its own document,
       // and the browser makes it. A host that switches locale its own way (`uniweb.localeSwitch`:
@@ -220,11 +227,27 @@ export function useLinkInterceptor(options = {}) {
       navigateInApp(navigate, routeHref)
     }
 
-    // Add click listener to document
     document.addEventListener('click', handleClick)
+
+    // ⭐ A page is fetched while the reader is about to follow a link to it (`link-intent.js`),
+    // on a site with pages still to fetch. A site whose pages all came with it never downloads
+    // that module. `cancelled` covers an effect torn down before the module arrives.
+    let cancelled = false
+    let stopIntent = null
+    if (hasPagesToFetch(globalThis.uniweb?.activeWebsite)) {
+      import('../link-intent.js')
+        .then((m) => {
+          if (!cancelled) stopIntent = m.watchLinkIntent()
+        })
+        .catch(() => {
+          // Without it, a click still holds the page until its content arrives.
+        })
+    }
 
     return () => {
       document.removeEventListener('click', handleClick)
+      cancelled = true
+      if (stopIntent) stopIntent()
     }
   }, [enabled, navigate])
 }

@@ -37,6 +37,7 @@ import { layoutStickiness, sectionStickyProps, sectionScrollMargin, zoneProps } 
 import { DefaultLayout } from './default-layout.js'
 import { renderAppearanceBootScript } from './appearance.js'
 import { documentTitle } from './document-title.js'
+import { recordStartPage } from './start-page.js'
 import { escapeHtml } from '@uniweb/core/page-shell'
 
 // Re-export L2 helpers so the public `@uniweb/runtime/ssr` surface
@@ -360,6 +361,8 @@ export function initPrerender(content, foundation, extensionsOrOptions, maybeOpt
   // Uniweb constructor wires foundation, capabilities, layoutMeta, handlers,
   // and extensions at construction time — see `@uniweb/core`'s src/uniweb.js.
   const uniweb = createUniweb(content, foundation, extensions)
+  // Before anything renders: the active page every render starts from (`start-page.js`).
+  recordStartPage(uniweb.activeWebsite)
 
   // Set base path from site config for subdirectory deployments
   if (content.config?.base && uniweb.activeWebsite?.setBasePath) {
@@ -398,7 +401,10 @@ export function initPrerender(content, foundation, extensionsOrOptions, maybeOpt
 
   // Register SSR-safe routing so useRouting()/useActiveRoute() work during prerender.
   // renderPage() calls website.setActivePage() before rendering each page,
-  // so activePage.route always reflects the page being rendered.
+  // so activePage.route reflects the page being rendered — except the site's
+  // not-found page, which no route names. Through `createPageRenderer` it renders
+  // with the page the Website starts with (`start-page.js`); through
+  // `generate404Html`, with the page rendered last.
   const website = uniweb.activeWebsite
   uniweb.routingComponents = {
     useLocation: () => {

@@ -22,7 +22,7 @@ import { readFileSync } from 'node:fs'
 import React from 'react'
 import { renderToString } from 'react-dom/server'
 import { deriveCacheKey } from '@uniweb/core/datastore'
-import { initPrerender, renderLayout } from '../src/ssr-renderer.js'
+import { initPrerender, renderLayout, renderPage } from '../src/ssr-renderer.js'
 import { initUniweb } from '../src/setup.js'
 import { hydrateDataStore } from '../src/wire-foundation.js'
 import { loadPageData } from '../src/load-page-data.js'
@@ -59,10 +59,12 @@ const Peek = () => {
 const PostTitle = ({ block }) => h('h2', null, block.page.title)
 // Reaches the site through the global, as kit's `useWebsite` does: `getUniweb().activeWebsite`.
 const Who = () => h('p', { className: 'who' }, globalThis.uniweb.activeWebsite.name)
+// The page the site holds as active while it renders, as a header marking the current page reads it.
+const Active = () => h('p', { className: 'active' }, globalThis.uniweb.activeWebsite.activePage?.route)
 
 const foundation = {
   default: {
-    meta: { Hero: {}, Posts: { data: { posts: null } }, Painted: { background: 'self' }, Grid: {}, Nav: {}, Peek: {}, PostTitle: {}, Who: {} },
+    meta: { Hero: {}, Posts: { data: { posts: null } }, Painted: { background: 'self' }, Grid: {}, Nav: {}, Peek: {}, PostTitle: {}, Who: {}, Active: {} },
     capabilities: { layouts: { Docs } },
   },
   Hero,
@@ -73,6 +75,7 @@ const foundation = {
   Peek,
   PostTitle,
   Who,
+  Active,
 }
 
 const section = (type, params = {}, more = {}) => ({ type, content: {}, params, ...more })
@@ -123,6 +126,7 @@ const site = {
     { route: '/who', title: 'Who', sections: [section('Who')] },
     { route: '/posts/:slug', isDynamic: true, paramName: 'slug', title: 'Post', sections: [section('PostTitle')] },
   ],
+  notFound: { route: '/404', title: 'Not found', sections: [section('Active')] },
 }
 
 /** The transport the data step reads through: this site's one file. */
@@ -154,6 +158,16 @@ function browserFirst(route, fetchedData) {
   const browserSite = initUniweb({ content: { ...structuredClone(site), fetchedData }, foundation }).activeWebsite
   browserSite.setActivePage(route)
   return renderToString(h(Layout, { page: browserSite.getPage(route), website: browserSite }))
+}
+
+/**
+ * The browser's first render at a `path` that names no page: the boot makes no page active for it
+ * (`index.jsx`), and `PageRenderer` draws the site's not-found page through the same `Layout`.
+ */
+function browserNotFound(path) {
+  const browserSite = initUniweb({ content: { ...structuredClone(site), fetchedData: [] }, foundation }).activeWebsite
+  browserSite.setActivePage(path)
+  return renderToString(h(Layout, { page: browserSite.getNotFoundPage(), website: browserSite }))
 }
 
 describe('a whole page renders the same in the browser as in the prerender', () => {
@@ -257,6 +271,32 @@ describe('⭐ one Website reused across requests renders each against what its p
     const second = rootOf(renderer.render('/posts/a').html)
     expect(second).toContain('<h2>A</h2>')
     expect(second).not.toBe(browserFirst('/posts/a', edited(posts)))
+  })
+
+  it('⭐ a URL naming no page is the site’s not-found page, with the active page the browser starts with', async () => {
+    // A request after another one: the not-found page has no route to be made active by, so it
+    // renders with the page the Website started with, as the browser's first render does there.
+    const { renderer } = await reused()
+    renderer.render('/who', { fetchedData: [] })
+    const r = renderer.render('/no-such-page', { fetchedData: [] })
+    expect(r.outcome).toBe('notFound')
+    expect(rootOf(r.html)).toBe(browserNotFound('/no-such-page'))
+    expect(rootOf(r.html)).toContain('<p class="active">/</p>')
+  })
+
+  it('…and so is the not-found page handed in as a Page, after another request', async () => {
+    const { website, renderer } = await reused()
+    renderer.render('/who', { fetchedData: [] })
+    const html = rootOf(renderer.render(website.getNotFoundPage(), { fetchedData: [] }).html)
+    expect(html).toBe(browserNotFound('/no-such-page'))
+    expect(html).toContain('<p class="active">/</p>')
+  })
+
+  it('CONTROL — rendered past the door after another page, the not-found page keeps that page active', async () => {
+    // What `generate404Html` does: `renderPage` alone, which cannot make the not-found page active.
+    const { website, renderer } = await reused()
+    renderer.render('/who', { fetchedData: [] })
+    expect(renderPage(website.getNotFoundPage(), website).renderedContent).toContain('<p class="active">/who</p>')
   })
 })
 

@@ -228,6 +228,25 @@ describe('the step asks for what the render reads', () => {
     expect(createPageRenderer({ website: found.website, shell }).render('/posts/b').outcome).not.toBe('notFound')
   })
 
+  it('⭐ a URL naming no page asks for the site’s not-found page’s data — the page its render draws', async () => {
+    // The page the browser shows for such a URL and `render` draws for it, so its data is what the
+    // step asks for: here what its layout's header and left areas declare, as for any page.
+    const content = { ...site(), notFound: { route: '/404', title: 'Not found', sections: [section('Plain')] } }
+    const website = initPrerender(content, foundation, []).activeWebsite
+    const { fetch } = transport()
+    const keys = (entries) => entries.map((e) => [deriveCacheKey(e.config), e.outcome])
+    const byRoute = await loadPageData({ website, route: '/no-such-page', fetch })
+    const byPage = await loadPageData({ website, route: website.getNotFoundPage(), fetch })
+    expect(byRoute.length).toBeGreaterThan(0)
+    expect(keys(byRoute)).toEqual(keys(byPage))
+  })
+
+  it('…and asks nothing for a site with no not-found page', async () => {
+    const website = initPrerender(site(), foundation, []).activeWebsite
+    expect(website.getNotFoundPage()).toBeFalsy()
+    expect(await loadPageData({ website, route: '/no-such-page', fetch: transport().fetch })).toEqual([])
+  })
+
   it('⛔ a fetch NO section declares is not asked — a parent page’s query on a child that does not read it', async () => {
     const { entries, asked, statuses } = await serve('/posts/about')
     expect(statuses.every((s) => s.status !== 'pending')).toBe(true)

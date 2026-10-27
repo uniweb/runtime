@@ -39,13 +39,16 @@ const page = (route) => ({ route })
  * A Website stub whose `__render` says what `renderPage` answered for a route:
  * an ok result, a returned `{error}`, or a throw. A route in `missing` resolves to a
  * page whose record does not exist — core's `notFound: true` — as a parametric page
- * does when the data answers that its record is not there.
+ * does when the data answers that its record is not there. `notFound` is the route of
+ * the site's not-found page, which `getPage` never returns, as core's never does.
  */
-function websiteStub(routes, answers = {}, missing = []) {
+function websiteStub(routes, answers = {}, missing = [], notFound = null) {
+  const notFoundPage = notFound ? page(notFound) : null
   return {
     makeCurrent: () => {},
     getPage: (route) =>
       missing.includes(route) ? { ...page(route), notFound: true } : routes.includes(route) ? page(route) : undefined,
+    getNotFoundPage: () => notFoundPage,
     pages: routes.map(page),
     __render: (p) => {
       const a = answers[p.route]
@@ -105,15 +108,45 @@ describe('createPageRenderer — the outcome triple', () => {
     expect(r.html).not.toContain('HIJACKED')
   })
 
-  it('an unmatched route is `notFound`, NOT `failed`', () => {
+  it('an unmatched route on a site with no not-found page is `notFound`, NOT `failed`', () => {
     // The distinction a caller keys a status code on. `notFound` means nothing
-    // matched — a 404 the host serves its own page for; `failed` means a page
-    // matched and rendering it broke, which is a 500 or a client-side fallback.
+    // matched — a 404, for which this site has no page, so the host sends the shell;
+    // `failed` means a page matched and rendering it broke, which is a 500 or a
+    // client-side fallback.
     const r = createPageRenderer({ website: websiteStub(['/a']), shell: SHELL }).render('/nope')
     expect(r.outcome).toBe('notFound')
     expect(r.page).toBeNull()
     expect(r.error).toBeNull()
     expect(r.html).toBeNull()
+  })
+
+  it('⭐ an unmatched route renders the site’s not-found page, as `notFound`', () => {
+    // What the browser shows for a URL naming nothing (`PageRenderer.jsx`), so a host sends
+    // `html` and never chooses the page itself. No route names that page, `/404` included.
+    const w = websiteStub(['/a'], {}, [], '/404')
+    const renderer = createPageRenderer({ website: w, shell: SHELL })
+    for (const route of ['/nope', '/404']) {
+      const r = renderer.render(route)
+      expect(r.outcome).toBe('notFound')
+      expect(r.page).toBe(w.getNotFoundPage())
+      expect(r.error).toBeNull()
+      expect(r.html).toContain('<h1>/404</h1>')
+    }
+  })
+
+  it('…and stays `notFound` when the not-found page breaks while rendering', () => {
+    const w = websiteStub(['/a'], { '/404': 'throw' }, [], '/404')
+    const r = createPageRenderer({ website: w, shell: SHELL }).render('/nope')
+    expect(r.outcome).toBe('notFound')
+    expect(r.html).toBeNull()
+    expect(r.page).toBe(w.getNotFoundPage())
+    expect(r.error.type).toBe('classified')
+  })
+
+  it('CONTROL — a Page is rendered as given: the not-found page handed in is `rendered`', () => {
+    // The fallback is for a ROUTE that names nothing. A caller holding the Page chose it.
+    const w = websiteStub(['/a'], {}, [], '/404')
+    expect(createPageRenderer({ website: w, shell: SHELL }).render(w.getNotFoundPage()).outcome).toBe('rendered')
   })
 
   it('a returned render error is `failed`, and carries the classification through', () => {
@@ -147,8 +180,8 @@ describe('createPageRenderer — the outcome triple', () => {
 
   it('…and stays `notFound` when that not-found state breaks while rendering', () => {
     // Whether the URL names anything is known before rendering. A component that throws
-    // on a missing record must not turn a not-found into a failure: the caller sends its
-    // own not-found page, and `error` says what broke.
+    // on a missing record must not turn a not-found into a failure: the caller sends the
+    // shell, and `error` says what broke.
     const w = websiteStub([], { '/blog/gone': 'throw', '/blog/void': 'error' }, ['/blog/gone', '/blog/void'])
     const renderer = createPageRenderer({ website: w, shell: SHELL })
     for (const route of ['/blog/gone', '/blog/void']) {

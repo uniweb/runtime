@@ -37,6 +37,7 @@ import { resolvePage, renderPage, classifyRenderError, injectPageContent } from 
 import { hydrateDataStore } from './wire-foundation.js'
 import { loadPageData } from './load-page-data.js'
 import { requireTransport } from './require-transport.js'
+import { restoreStartPage } from './start-page.js'
 
 /**
  * A renderer bound to one initialized Website and one shell.
@@ -64,7 +65,9 @@ export function createPageRenderer({ website, shell }) {
    *
    * @param {string|Object} target - a route (`/blog/1`, resolved through the same
    *   matcher the browser uses, so a dynamic route works) or an already-resolved
-   *   Page, which the build lane already holds from its own loop.
+   *   Page, which the build lane already holds from its own loop. A route that names
+   *   no page renders the site's not-found page (`website.getNotFoundPage()`), as the
+   *   browser does for it.
    * @param {Object} [options]
    * @param {Object} [options.inject] - extra options forwarded to `injectPageContent`
    * @param {Array<{config: Object, data: *, meta?: Object}>} [options.fetchedData] - the entries
@@ -76,12 +79,14 @@ export function createPageRenderer({ website, shell }) {
    * @returns {{ outcome: 'rendered'|'notFound'|'failed', html: string|null,
    *   page: Object|null, error: {type: string, message: string}|null }}
    *   `notFound` means the URL names nothing, and `html` says whether there is a page to
-   *   send for it:
-   *   - `page: null`, `html: null` — no route matched. Send your own not-found page.
-   *   - `page` set, `html` set — the page's record does not exist, and `html` is the page
-   *     rendered in its own not-found state. Send it, with your not-found status.
-   *   - `page` set, `html: null`, `error` set — that not-found state broke while rendering.
-   *     Send your own not-found page; `error` says what broke.
+   *   send for it. Send `html` with your not-found status when it is set, and the shell
+   *   when it is not:
+   *   - `page` set, `html` set — the site's not-found page, for a route that names no page;
+   *     or a page whose record does not exist, rendered in its own not-found state.
+   *   - `page: null`, `html: null` — no route matched, and the site has no not-found page.
+   *     The browser shows its default not-found message.
+   *   - `page` set, `html: null`, `error` set — that page broke while rendering; `error`
+   *     says what broke.
    */
   function render(target, { inject = {}, fetchedData } = {}) {
     if (fetchedData !== undefined && !Array.isArray(fetchedData)) {
@@ -101,11 +106,17 @@ export function createPageRenderer({ website, shell }) {
       website.forgetData()
       hydrateDataStore(website, fetchedData)
     }
-    const resolved = typeof target === 'string' ? resolvePage(website, target) : target
+    const named = typeof target === 'string' ? resolvePage(website, target) : target
+    // ⭐ A ROUTE THAT NAMES NO PAGE RENDERS THE SITE'S NOT-FOUND PAGE, as the browser does for
+    // it (`PageRenderer.jsx`), and the data step asks for that page's data (`loadPageData`). No
+    // route names it (`/404` is never routable), so this is the only way a route reaches it.
+    // ⛔ Until 2026-10-26 this answered `notFound` with nothing to send, and a host that wanted
+    // the site's page had to fetch its data and render it as a Page itself.
+    const resolved = named ?? (typeof target === 'string' ? website.getNotFoundPage() : null)
 
-    // ⛔ Not an error: nothing matched, which is a genuine 404 and the caller's to
-    // turn into one — a build skips it, an isolate serves its 404 page with a 404
-    // status. Returning `failed` here would make those indistinguishable.
+    // ⛔ Not an error: nothing matched and the site has no not-found page — a genuine 404,
+    // and the caller's to turn into one: a build skips it, an isolate sends the shell with a
+    // 404 status. Returning `failed` here would make those indistinguishable.
     if (!resolved) return { outcome: 'notFound', html: null, page: null, error: null }
 
     // ⭐ **THE INDEX-CHILD PROMOTION APPLIES TO BOTH TARGET FORMS** — ruled
@@ -125,11 +136,17 @@ export function createPageRenderer({ website, shell }) {
     // (`Website#_createDynamicPage`), never on a failed or missing fetch. It renders the
     // page's own not-found state — a record miss is not a route miss — and the outcome
     // says `notFound` all the same, so a caller keying its status on the outcome sends a
-    // not-found response without reading anything new. Known before rendering, so it
-    // holds even when that render breaks. ⛔ Until 2026-09-30 this was `rendered`, and a
+    // not-found response without reading anything new. The site's not-found page, rendered
+    // for a route that names no page, is `notFound` the same way. Known before rendering, so
+    // it holds even when that render breaks. ⛔ Until 2026-09-30 this was `rendered`, and a
     // host that answered by the outcome sent 200 for a URL naming no record.
-    const missing = page?.notFound === true
+    const missing = !named || page?.notFound === true
 
+    // ⭐ EVERY RENDER STARTS FROM THE ACTIVE PAGE THE WEBSITE STARTED WITH (`start-page.js`).
+    // `renderPage` then makes the page it renders active by its route, and the not-found page
+    // has none. ⛔ Until 2026-10-26 it rendered with whatever page this Website rendered last, so
+    // on a Website reused across requests its header could show the previous request's page.
+    restoreStartPage(website)
     let result
     try {
       result = renderPage(page, website)

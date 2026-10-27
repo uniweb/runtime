@@ -164,8 +164,8 @@ function browserFirst(route, fetchedData) {
  * The browser's first render at a `path` that names no page: the boot makes no page active for it
  * (`index.jsx`), and `PageRenderer` draws the site's not-found page through the same `Layout`.
  */
-function browserNotFound(path) {
-  const browserSite = initUniweb({ content: { ...structuredClone(site), fetchedData: [] }, foundation }).activeWebsite
+function browserNotFound(path, content = site) {
+  const browserSite = initUniweb({ content: { ...structuredClone(content), fetchedData: [] }, foundation }).activeWebsite
   browserSite.setActivePage(path)
   return renderToString(h(Layout, { page: browserSite.getNotFoundPage(), website: browserSite }))
 }
@@ -290,6 +290,17 @@ describe('⭐ one Website reused across requests renders each against what its p
     const html = rootOf(renderer.render(website.getNotFoundPage(), { fetchedData: [] }).html)
     expect(html).toBe(browserNotFound('/no-such-page'))
     expect(html).toContain('<p class="active">/</p>')
+  })
+
+  it('…and on a site whose root parametric page matches `/404`, that page is not made active', () => {
+    // The not-found page's own route, `/404`, names a page here: `/:slug` with slug `404`. A path
+    // of two segments names nothing, so it is the not-found page that renders.
+    const slugSite = { ...site, pages: [...site.pages, { route: '/:slug', isDynamic: true, paramName: 'slug', title: 'Slug', sections: [section('Hero')] }] }
+    const website = initPrerender(structuredClone(slugSite), foundation, []).activeWebsite
+    const r = createPageRenderer({ website, shell: SHELL }).render('/no/such-page', { fetchedData: [] })
+    expect(r.outcome).toBe('notFound')
+    expect(rootOf(r.html)).toBe(browserNotFound('/no/such-page', slugSite))
+    expect(rootOf(r.html)).toContain('<p class="active">/</p>')
   })
 
   it('CONTROL — rendered past the door after another page, the not-found page keeps that page active', async () => {

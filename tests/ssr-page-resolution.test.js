@@ -41,6 +41,7 @@ function makeWebsite(pages = {}) {
   return {
     setActivePage() {},
     getPage: (route) => pages[route],
+    getNotFoundPage: () => null,
     getRemoteLayout: () => null,
     getLayoutMeta: () => null,
     getAreaBlocks: () => null,

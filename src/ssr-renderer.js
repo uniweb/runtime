@@ -530,7 +530,11 @@ export function classifyRenderError(err) {
  * @returns {{ renderedContent: string, sectionOverrideCSS: string } | { error: { type: string, message: string } }}
  */
 export function renderPage(page, website) {
-  website.setActivePage(page.route)
+  // ⛔ The site's not-found page is never made active by its route. No route names it, and on a
+  // site whose parametric page matches `/404` (a root `/:slug`) that route names THAT page, which
+  // then rendered as the active one. It renders with the active page it finds: the Website's
+  // first, through `createPageRenderer` (`start-page.js`), as in the browser.
+  if (page !== website.getNotFoundPage()) website.setActivePage(page.route)
 
   // A page that claims content but yields no blocks has not been loaded — it is
   // not an empty page. `Page#bodyBlocks` returns [] when its sections are absent

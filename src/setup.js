@@ -31,6 +31,7 @@ import {
 import { ChildBlocks } from './components/PageRenderer.jsx'
 import Background from './components/Background.jsx'
 import { wireFoundationCapabilities, hydrateDataStore, ensureThemeCss } from './wire-foundation.js'
+import { injectFontLinks } from './font-links.js'
 import { navigateInApp } from './navigation.js'
 
 // Re-export so existing consumers importing hydrateDataStore from
@@ -274,6 +275,9 @@ export function initUniweb({ content, foundation, extensions = [], routingCompon
   if (typeof document === 'undefined' || !document.getElementById('uniweb-theme')) {
     ensureThemeCss(uniweb, foundation)
   }
+  // And the theme's font links, which the CSS alone does not bring: a page that came
+  // with neither would otherwise set every imported family in a system face.
+  injectFontLinks(uniweb.activeWebsite?.themeData)
 
   uniweb.routingComponents = routingComponents
   uniweb.localeSwitch = localeSwitch

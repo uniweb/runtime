@@ -17,17 +17,23 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => () => {},
   useLocation: () => ({ pathname: '/', hash: '' }),
 }))
-const { prefetchContent } = vi.hoisted(() => ({ prefetchContent: vi.fn() }))
-vi.mock('../src/navigation.js', () => ({ navigateInApp: vi.fn(), prefetchContent }))
+const { prefetchPage } = vi.hoisted(() => ({ prefetchPage: vi.fn() }))
+// The page's fetch is `navigation.test.js`'s subject; whether the site reads data is the real rule.
+vi.mock('../src/navigation.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  navigateInApp: vi.fn(),
+  prefetchPage,
+}))
 
 import { Website } from '@uniweb/core'
 import { useLinkInterceptor } from '../src/hooks/useLinkInterceptor.js'
 import { watchLinkIntent } from '../src/link-intent.js'
 
-function site({ split = true, basePath } = {}) {
+function site({ split = true, basePath, queries } = {}) {
   const website = new Website({
     content: {
       config: {
+        ...(queries ? { queries } : {}),
         name: 'T',
         defaultLanguage: 'en',
         languages: ['en', 'fr'],
@@ -70,7 +76,7 @@ beforeEach(() => {
     addEventListener: (type, handler) => { on[type] = handler },
     removeEventListener: (type) => { delete on[type] },
   }
-  prefetchContent.mockClear()
+  prefetchPage.mockClear()
 })
 afterEach(() => {
   vi.useRealTimers()
@@ -90,9 +96,9 @@ describe('watchLinkIntent: a link a reader is about to follow has its page fetch
     watchLinkIntent()
     on.pointerover({ target: link() })
     vi.advanceTimersByTime(64)
-    expect(prefetchContent).not.toHaveBeenCalled()
+    expect(prefetchPage).not.toHaveBeenCalled()
     vi.advanceTimersByTime(1)
-    expect(prefetchContent).toHaveBeenCalledWith('/About-Us')
+    expect(prefetchPage).toHaveBeenCalledWith('/About-Us')
   })
 
   it('once, while the pointer moves within it', () => {
@@ -104,20 +110,20 @@ describe('watchLinkIntent: a link a reader is about to follow has its page fetch
     on.pointerout({ target: a, relatedTarget: label })
     on.pointerover({ target: label })
     vi.advanceTimersByTime(25)
-    expect(prefetchContent).toHaveBeenCalledTimes(1)
+    expect(prefetchPage).toHaveBeenCalledTimes(1)
   })
 
   it('at once when it is pressed, since a touch has no hover', () => {
     watchLinkIntent()
     on.pointerdown({ target: link() })
-    expect(prefetchContent).toHaveBeenCalledTimes(1)
+    expect(prefetchPage).toHaveBeenCalledTimes(1)
   })
 
   it('when focus stays on it', () => {
     watchLinkIntent()
     on.focusin({ target: link() })
     vi.advanceTimersByTime(65)
-    expect(prefetchContent).toHaveBeenCalledTimes(1)
+    expect(prefetchPage).toHaveBeenCalledTimes(1)
   })
 
   it('but not for a pointer passing over it', () => {
@@ -127,7 +133,7 @@ describe('watchLinkIntent: a link a reader is about to follow has its page fetch
     vi.advanceTimersByTime(30)
     on.pointerout({ target: a, relatedTarget: null })
     vi.advanceTimersByTime(100)
-    expect(prefetchContent).not.toHaveBeenCalled()
+    expect(prefetchPage).not.toHaveBeenCalled()
   })
 
   it('nor for focus moving on past it', () => {
@@ -136,7 +142,7 @@ describe('watchLinkIntent: a link a reader is about to follow has its page fetch
     on.focusin({ target: a })
     on.focusout({ target: a, relatedTarget: anchor({ href: '/' }) })
     vi.advanceTimersByTime(100)
-    expect(prefetchContent).not.toHaveBeenCalled()
+    expect(prefetchPage).not.toHaveBeenCalled()
   })
 
   it('nor on a connection that asks to save data', () => {
@@ -150,7 +156,7 @@ describe('watchLinkIntent: a link a reader is about to follow has its page fetch
     on.pointerover({ target: link() })
     stop()
     vi.advanceTimersByTime(100)
-    expect(prefetchContent).not.toHaveBeenCalled()
+    expect(prefetchPage).not.toHaveBeenCalled()
     expect(on).toEqual({})
   })
 })
@@ -166,10 +172,16 @@ describe('useLinkInterceptor: which sites and links prefetch', () => {
   it('a site with pages to fetch watches for intent, by router path', async () => {
     await arm(site({ basePath: '/docs/' }))
     on.pointerdown({ target: anchor({ href: '/docs/About-Us' }) })
-    expect(prefetchContent).toHaveBeenCalledWith('/About-Us')
+    expect(prefetchPage).toHaveBeenCalledWith('/About-Us')
   })
 
-  it('a site whose pages all came with it does not load the module', async () => {
+  it('a site whose pages all came with it, and that reads data, watches for intent', async () => {
+    await arm(site({ split: false, queries: { articles: { schema: '@/article' } } }))
+    on.pointerdown({ target: anchor({ href: '/About-Us' }) })
+    expect(prefetchPage).toHaveBeenCalledWith('/About-Us')
+  })
+
+  it('a site whose pages all came with it, and that reads no data, does not load the module', async () => {
     await arm(site({ split: false }))
     expect(on.click).toBeTypeOf('function')
     expect(on.pointerdown).toBeUndefined()
@@ -185,6 +197,6 @@ describe('useLinkInterceptor: which sites and links prefetch', () => {
   ])('a link to %s fetches nothing', async (_, attrs) => {
     await arm(site())
     on.pointerdown({ target: anchor(attrs) })
-    expect(prefetchContent).not.toHaveBeenCalled()
+    expect(prefetchPage).not.toHaveBeenCalled()
   })
 })

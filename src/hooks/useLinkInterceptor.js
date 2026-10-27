@@ -15,7 +15,7 @@
 import { useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { localeOfPath } from '@uniweb/core/resolve-route'
-import { navigateInApp } from '../navigation.js'
+import { navigateInApp, readsData } from '../navigation.js'
 
 /**
  * Check if a URL is internal (same origin, no external protocol)
@@ -108,8 +108,12 @@ export function inAppLink(anchor) {
   return { anchor, href, routeHref, website }
 }
 
-/** Whether a page of `website` has content not fetched yet: a site whose content is split. */
+/**
+ * Whether a page of `website` can have something to fetch before it is shown: content not here
+ * yet, on a site whose content is split, or data, which a site declaring queries reads.
+ */
 function hasPagesToFetch(website) {
+  if (readsData(website)) return true
   return !!website?.pages?.some((page) => page.hasContent() && !page.isContentLoaded())
 }
 

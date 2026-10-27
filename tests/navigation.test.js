@@ -186,6 +186,114 @@ describe('the current page is held until the next one can be shown', () => {
   })
 })
 
+describe('the page is held for its data too', () => {
+  /**
+   * A page whose sections read data. The entity store answers `resolve` as the test says, and
+   * `fetch` once `answer()` is called; the site declares the queries given.
+   */
+  function dataPage({ split = false, queries = { posts: {} }, blocks = [{ type: 'List' }], resolve = () => ({ status: 'pending' }), dynamic = false } = {}) {
+    let answer
+    const fetched = new Promise((resolveFetch) => { answer = resolveFetch })
+    const store = {
+      resolve: vi.fn(resolve),
+      fetch: vi.fn(() => fetched),
+      fetchPageRecord: vi.fn(() => Promise.resolve(null)),
+    }
+    const page = split ? splitPage() : loadedPage()
+    Object.assign(page, {
+      website: { config: { queries }, entityStore: store },
+      getBodyBlocks: vi.fn(() => blocks),
+      getLayoutAreas: () => ({}),
+      dynamicContext: dynamic ? { paramName: 'slug', paramValue: 'a' } : null,
+    })
+    return { page, store, answer: () => answer({ data: {}, errors: null }) }
+  }
+
+  it('asks what its sections read once its content is here, and swaps when that is here too', async () => {
+    const { navigateInApp } = await load()
+    const { page, store, answer } = dataPage({ split: true })
+    site({ '/b': page })
+    viewTransitions({ supported: false })
+    const navigate = vi.fn()
+
+    navigateInApp(navigate, '/b')
+    await tick()
+    expect(store.fetch).not.toHaveBeenCalled()
+
+    page.arrive()
+    await vi.waitFor(() => expect(store.fetch).toHaveBeenCalledTimes(1))
+    expect(navigate).not.toHaveBeenCalled()
+
+    answer()
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/b', undefined))
+  })
+
+  it('asks only what the cache does not answer', async () => {
+    const { navigateInApp } = await load()
+    const held = { type: 'Held' }
+    const missing = { type: 'Missing' }
+    const { page, store } = dataPage({
+      blocks: [held, missing],
+      resolve: (block) => ({ status: block === held ? 'ready' : 'pending' }),
+    })
+    site({ '/b': page })
+    viewTransitions({ supported: false })
+
+    navigateInApp(vi.fn(), '/b')
+    expect(store.fetch).toHaveBeenCalledTimes(1)
+    expect(store.fetch.mock.calls[0][0]).toBe(missing)
+  })
+
+  it('asks a parametric page\'s own record, which names it', async () => {
+    const { navigateInApp } = await load()
+    const { page, store } = dataPage({ dynamic: true })
+    site({ '/b': page })
+    viewTransitions({ supported: false })
+
+    navigateInApp(vi.fn(), '/b')
+    expect(store.fetchPageRecord).toHaveBeenCalledWith(page)
+  })
+
+  it('walks no section on a site that declares no query', async () => {
+    const { navigateInApp } = await load()
+    const { page } = dataPage({ queries: {} })
+    site({ '/b': page })
+    viewTransitions({ supported: false })
+    const navigate = vi.fn()
+
+    navigateInApp(navigate, '/b')
+    expect(page.getBodyBlocks).not.toHaveBeenCalled()
+    expect(navigate).toHaveBeenCalledWith('/b', undefined)
+  })
+
+  it('goes when the data takes longer than the wait', async () => {
+    vi.useFakeTimers()
+    const { navigateInApp } = await load()
+    const { page } = dataPage()
+    site({ '/b': page })
+    viewTransitions({ supported: false })
+    const navigate = vi.fn()
+
+    navigateInApp(navigate, '/b')
+    await vi.advanceTimersByTimeAsync(999)
+    expect(navigate).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(navigate).toHaveBeenCalledWith('/b', undefined)
+  })
+
+  it('prefetchPage asks the content and then the data, and nothing waits on a failure', async () => {
+    const { prefetchPage } = await load()
+    const { page, store } = dataPage({ split: true })
+    site({ '/b': page })
+
+    const asked = prefetchPage('/b#top')
+    expect(page.loadContent).toHaveBeenCalled()
+    page.fail()
+    await expect(asked).resolves.toBeUndefined()
+    expect(store.fetch).not.toHaveBeenCalled()
+  })
+})
+
 describe('the animated swap ends at the committed page', () => {
   it('resolves its update callback when the page is committed, not when navigate returns', async () => {
     const { navigateInApp, pageCommitted } = await load()

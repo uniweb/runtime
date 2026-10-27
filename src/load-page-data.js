@@ -27,26 +27,7 @@ import { resolveRequestedPage } from './resolve-page.js'
 import { getComponentMeta } from './prepare-props.js'
 import { createDefaultFetcher } from './default-fetcher.js'
 import { requireTransport } from './require-transport.js'
-
-/**
- * Every block the page's render can reach: its body and the layout areas it uses (the runtime's own
- * layout choice — the page's `layout:`, else the foundation's default, else the site's default set,
- * minus any area the page hides), plus what those blocks hold.
- */
-function blocksOf(page) {
-  const out = []
-  const walk = (list) => {
-    for (const block of list || []) {
-      if (!block) continue
-      out.push(block)
-      walk(block.childBlocks)
-      walk(block.insets)
-    }
-  }
-  walk(page.getBodyBlocks?.() ?? page.bodyBlocks)
-  for (const area of Object.values(page.getLayoutAreas?.() ?? {})) walk(area)
-  return out
-}
+import { blocksOf } from './page-blocks.js'
 
 /**
  * Fetch what one route's render will read.
@@ -136,7 +117,11 @@ export async function loadPageData({ website, route, fetch, dev = false, locale 
   const answered = new DataStore()
 
   const recording = {
-    peek: (request, ctx) => dispatcher.peek(request, ctx),
+    // ⭐ What the plan uses without asking (`keyProgram`'s held steps) is what THIS call's own
+    // requests answered, as `peekRecord` is: the page carries every answer its render reads, so
+    // it may use nothing it did not ask for itself — not another page's answer in a cache the
+    // static build shares.
+    peek: (request) => answered.get(deriveCacheKey(request)),
     peekRecord: (id) => answered.getRecord(id),
     dispatch: async (request, ctx) => {
       if (prerender === 'author' && request?.prerender === false) {

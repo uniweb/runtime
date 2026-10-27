@@ -1,26 +1,28 @@
 /**
  * Prefetch on intent: a link's page is fetched while the reader is about to follow it.
  *
- * Only a site whose content is split loads this module (`useLinkInterceptor`). A site whose
- * pages all arrived with it never downloads it, so the runtime every site carries pays only for
+ * Only a site with something to fetch before a page is shown loads this module
+ * (`useLinkInterceptor`): split content not here yet, or data, which a site declaring queries
+ * reads. A site with neither never downloads it, so the runtime every site carries pays only for
  * the decision.
  *
- * A pointer resting on a link, or focus staying on one, for INTENT_DELAY fetches the split
- * content of the page the link goes to. A press fetches it at once, since a touch has no hover.
- * The click that follows then usually finds the content here, and the page changes without
- * waiting (`navigation.js`). A pointer sweeping across a rail of links fetches nothing, and
- * nothing is fetched for a connection that asks to save data.
+ * A pointer resting on a link, or focus staying on one, for INTENT_DELAY fetches what the page
+ * the link goes to will read: its split content, then its sections' data, whatever is not held
+ * already. A press fetches it at once, since a touch has no hover. The click that follows then
+ * usually finds it all here, and the page changes without waiting (`navigation.js`). A pointer
+ * sweeping across a rail of links fetches nothing, and nothing is fetched for a connection that
+ * asks to save data.
  */
 
-import { prefetchContent } from './navigation.js'
+import { prefetchPage } from './navigation.js'
 import { findAnchorElement, inAppLink, localeSwitchOf } from './hooks/useLinkInterceptor.js'
 
 /** How long a pointer rests on a link, or focus stays on it, before its page is fetched. */
 const INTENT_DELAY = 65
 
 /**
- * Fetch the split content of the page a link goes to, when a click on it would navigate in the
- * app: not a fragment on this page, a `<Link reload>`, or a page in another locale.
+ * Fetch what the page a link goes to will read, when a click on it would navigate in the app: not
+ * a fragment on this page, a `<Link reload>`, or a page in another locale.
  *
  * @param {HTMLAnchorElement} anchor
  */
@@ -28,7 +30,7 @@ function prefetchFor(anchor) {
   const link = inAppLink(anchor)
   if (!link || link.href.startsWith('#') || anchor.hasAttribute('data-reload')) return
   if (localeSwitchOf(link.routeHref, link.website)) return
-  prefetchContent(link.routeHref)
+  prefetchPage(link.routeHref)
 }
 
 /**

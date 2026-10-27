@@ -21,7 +21,7 @@ vi.mock('react-router-dom', () => ({
 // The navigation itself is `navigation.test.js`'s subject: here it hands the route straight on.
 vi.mock('../src/navigation.js', () => ({
   navigateInApp: (navigate, to, ...options) => navigate(to, ...options),
-  prefetchContent: vi.fn(),
+  readsData: () => false,
 }))
 
 import { Website } from '@uniweb/core'

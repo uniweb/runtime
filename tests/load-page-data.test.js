@@ -247,6 +247,23 @@ describe('the step asks for what the render reads', () => {
     expect(await loadPageData({ website, route: '/no-such-page', fetch: transport().fetch })).toEqual([])
   })
 
+  it('⭐ a URL naming a page served from elsewhere asks for the not-found page’s data, not its own', async () => {
+    // The render draws the not-found page for it, as the browser's first load does: the host did not
+    // proxy it (`createPageRenderer`). The page's own section declares the posts.
+    const shop = { route: '/shop', title: 'Shop', rewrite: 'https://shop.example.com/', fetch: { query: 'posts', as: 'posts' }, sections: [section('PostList')] }
+    const content = { ...site({ pages: [shop] }), notFound: { route: '/404', title: 'Not found', sections: [section('Plain')] } }
+    const website = initPrerender(content, foundation, []).activeWebsite
+    const { fetch } = transport()
+    const keys = (entries) => entries.map((e) => [deriveCacheKey(e.config), e.outcome])
+    const byRoute = await loadPageData({ website, route: '/shop', fetch })
+    expect(byRoute.length).toBeGreaterThan(0)
+    expect(keys(byRoute)).toEqual(keys(await loadPageData({ website, route: website.getNotFoundPage(), fetch })))
+    expect(byRoute.map((e) => e.config.as)).not.toContain('posts')
+    // CONTROL — handed in as a Page, the page's own data is asked for.
+    const own = await loadPageData({ website, route: website.getPage('/shop'), fetch })
+    expect(own.map((e) => e.config.as)).toContain('posts')
+  })
+
   it('⛔ a fetch NO section declares is not asked — a parent page’s query on a child that does not read it', async () => {
     const { entries, asked, statuses } = await serve('/posts/about')
     expect(statuses.every((s) => s.status !== 'pending')).toBe(true)

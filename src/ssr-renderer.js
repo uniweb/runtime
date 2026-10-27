@@ -403,8 +403,9 @@ export function initPrerender(content, foundation, extensionsOrOptions, maybeOpt
   // renderPage() calls website.setActivePage() before rendering each page,
   // so activePage.route reflects the page being rendered — except the site's
   // not-found page, which no route names. Through `createPageRenderer` it renders
-  // with the page the Website starts with (`start-page.js`); through
-  // `generate404Html`, with the page rendered last.
+  // with the page a route served from elsewhere names, else the page the Website
+  // starts with (`start-page.js`); through `generate404Html`, with the page
+  // rendered last.
   const website = uniweb.activeWebsite
   uniweb.routingComponents = {
     useLocation: () => {

@@ -33,7 +33,8 @@
  *   - **Anything build-only.** `injectBuildData` stays in the build lane; it is the
  *     other half of the head seam and has its own parity guard.
  */
-import { resolvePage, renderPage, classifyRenderError, injectPageContent } from './ssr-renderer.js'
+import { renderPage, classifyRenderError, injectPageContent } from './ssr-renderer.js'
+import { resolveRequestedPage } from './resolve-page.js'
 import { hydrateDataStore } from './wire-foundation.js'
 import { loadPageData } from './load-page-data.js'
 import { requireTransport } from './require-transport.js'
@@ -67,7 +68,9 @@ export function createPageRenderer({ website, shell }) {
    *   matcher the browser uses, so a dynamic route works) or an already-resolved
    *   Page, which the build lane already holds from its own loop. A route that names
    *   no page renders the site's not-found page (`website.getNotFoundPage()`), as the
-   *   browser does for it.
+   *   browser does for it, and so does a route naming a page served from elsewhere
+   *   (`rewrite:`): a request for it that reaches a renderer was not proxied, and the
+   *   browser's first load of it draws the not-found page too.
    * @param {Object} [options]
    * @param {Object} [options.inject] - extra options forwarded to `injectPageContent`
    * @param {Array<{config: Object, data: *, meta?: Object}>} [options.fetchedData] - the entries
@@ -81,10 +84,12 @@ export function createPageRenderer({ website, shell }) {
    *   `notFound` means the URL names nothing, and `html` says whether there is a page to
    *   send for it. Send `html` with your not-found status when it is set, and the shell
    *   when it is not:
-   *   - `page` set, `html` set — the site's not-found page, for a route that names no page;
-   *     or a page whose record does not exist, rendered in its own not-found state.
-   *   - `page: null`, `html: null` — no route matched, and the site has no not-found page.
-   *     The browser shows its default not-found message.
+   *   - `page` set, `html` set — the site's not-found page, for a route that names no page
+   *     or a page served from elsewhere; or a page whose record does not exist, rendered in
+   *     its own not-found state.
+   *   - `page: null`, `html: null` — no route matched, or it names a page served from
+   *     elsewhere, and the site has no not-found page. The browser shows its default
+   *     not-found message.
    *   - `page` set, `html: null`, `error` set — that page broke while rendering; `error`
    *     says what broke.
    */
@@ -106,10 +111,12 @@ export function createPageRenderer({ website, shell }) {
       website.forgetData()
       hydrateDataStore(website, fetchedData)
     }
-    const named = typeof target === 'string' ? resolvePage(website, target) : target
+    const named = typeof target === 'string' ? resolveRequestedPage(website, target) : target
     // ⭐ A ROUTE THAT NAMES NO PAGE RENDERS THE SITE'S NOT-FOUND PAGE, as the browser does for
     // it (`PageRenderer.jsx`), and the data step asks for that page's data (`loadPageData`). No
     // route names it (`/404` is never routable), so this is the only way a route reaches it.
+    // A route naming a page served from elsewhere is answered the same way: the host did not
+    // proxy it (`resolveRequestedPage`).
     // ⛔ Until 2026-10-26 this answered `notFound` with nothing to send, and a host that wanted
     // the site's page had to fetch its data and render it as a Page itself.
     const resolved = named ?? (typeof target === 'string' ? website.getNotFoundPage() : null)
@@ -142,11 +149,15 @@ export function createPageRenderer({ website, shell }) {
     // host that answered by the outcome sent 200 for a URL naming no record.
     const missing = !named || page?.notFound === true
 
-    // ⭐ EVERY RENDER STARTS FROM THE ACTIVE PAGE THE WEBSITE STARTED WITH (`start-page.js`).
+    // ⭐ EVERY RENDER STARTS FROM THE ACTIVE PAGE THE WEBSITE STARTED WITH (`start-page.js`),
+    // then makes active the page the route names, as the browser's boot does (`index.jsx`).
     // `renderPage` then makes the page it renders active by its route, and the not-found page
-    // has none. ⛔ Until 2026-10-26 it rendered with whatever page this Website rendered last, so
-    // on a Website reused across requests its header could show the previous request's page.
+    // has none: it renders with the page a route served from elsewhere names, as in the browser,
+    // or with the start page. ⛔ Until 2026-10-26 it rendered with whatever page this Website
+    // rendered last, so on a Website reused across requests its header could show the previous
+    // request's page.
     restoreStartPage(website)
+    if (typeof target === 'string') website.setActivePage(target)
     let result
     try {
       result = renderPage(page, website)

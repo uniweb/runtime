@@ -4,10 +4,10 @@ import { describe, it, expect, vi } from 'vitest'
 // outcome mapping and nothing else — each step it calls is covered by its own file
 // (`ssr-page-resolution.test.js`, `load-page-data.test.js`). Driving a real `renderPage`
 // here would need a real Website, a real layout and a real React tree, and would
-// then be testing those, not the join. Stubbing the four imported steps tests the
-// only thing this module owns: which outcome each of their answers becomes.
+// then be testing those, not the join. Stubbing the three render steps tests the
+// only thing this module owns: which outcome each of their answers becomes. The route
+// lookup (`resolve-page.js`) is not stubbed: it only asks the Website, which is the stub.
 vi.mock('../src/ssr-renderer.js', () => ({
-  resolvePage: (website, route) => website.getPage(route),
   renderPage: (page, website) => website.__render(page),
   classifyRenderError: (err) => ({ type: 'classified', message: err.message }),
   injectPageContent: (shell, content, page, opts) =>
@@ -40,15 +40,22 @@ const page = (route) => ({ route })
  * an ok result, a returned `{error}`, or a throw. A route in `missing` resolves to a
  * page whose record does not exist — core's `notFound: true` — as a parametric page
  * does when the data answers that its record is not there. `notFound` is the route of
- * the site's not-found page, which `getPage` never returns, as core's never does.
+ * the site's not-found page, which `getPage` never returns, as core's never does. A
+ * route in `rewrites` names a page served from elsewhere: `getPage` returns that page
+ * and `resolveRoute` says `rewrite`, as core's do.
  */
-function websiteStub(routes, answers = {}, missing = [], notFound = null) {
+function websiteStub(routes, answers = {}, missing = [], notFound = null, rewrites = []) {
   const notFoundPage = notFound ? page(notFound) : null
+  const named = (route) => routes.includes(route) || rewrites.includes(route)
   return {
     makeCurrent: () => {},
+    resolveRoute: (route) => ({
+      kind: rewrites.includes(route) ? 'rewrite' : named(route) || missing.includes(route) ? 'page' : 'notFound',
+    }),
     getPage: (route) =>
-      missing.includes(route) ? { ...page(route), notFound: true } : routes.includes(route) ? page(route) : undefined,
+      missing.includes(route) ? { ...page(route), notFound: true } : named(route) ? page(route) : undefined,
     getNotFoundPage: () => notFoundPage,
+    setActivePage: () => {},
     pages: routes.map(page),
     __render: (p) => {
       const a = answers[p.route]
@@ -147,6 +154,31 @@ describe('createPageRenderer — the outcome triple', () => {
     // The fallback is for a ROUTE that names nothing. A caller holding the Page chose it.
     const w = websiteStub(['/a'], {}, [], '/404')
     expect(createPageRenderer({ website: w, shell: SHELL }).render(w.getNotFoundPage()).outcome).toBe('rendered')
+  })
+
+  it('⭐ a route naming a page served from elsewhere renders the site’s not-found page, as `notFound`', () => {
+    // A request for it reached a renderer, so the host did not proxy it, and the browser's first
+    // load of it draws the not-found page (`PageRenderer.jsx`). The page's own content is not drawn.
+    const w = websiteStub(['/a'], {}, [], '/404', ['/shop'])
+    const r = createPageRenderer({ website: w, shell: SHELL }).render('/shop')
+    expect(r.outcome).toBe('notFound')
+    expect(r.page).toBe(w.getNotFoundPage())
+    expect(r.error).toBeNull()
+    expect(r.html).toContain('<h1>/404</h1>')
+    expect(r.html).not.toContain('<h1>/shop</h1>')
+  })
+
+  it('…and on a site with no not-found page it is `notFound` with nothing to send', () => {
+    const r = createPageRenderer({ website: websiteStub(['/a'], {}, [], null, ['/shop']), shell: SHELL }).render('/shop')
+    expect(r).toEqual({ outcome: 'notFound', html: null, page: null, error: null })
+  })
+
+  it('CONTROL — that page handed in as a Page is rendered as given', () => {
+    // A caller holding the Page chose it, as with the not-found page above.
+    const w = websiteStub(['/a'], {}, [], '/404', ['/shop'])
+    const r = createPageRenderer({ website: w, shell: SHELL }).render(w.getPage('/shop'))
+    expect(r.outcome).toBe('rendered')
+    expect(r.html).toContain('<h1>/shop</h1>')
   })
 
   it('a returned render error is `failed`, and carries the classification through', () => {

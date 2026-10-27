@@ -161,8 +161,9 @@ function browserFirst(route, fetchedData) {
 }
 
 /**
- * The browser's first render at a `path` that names no page: the boot makes no page active for it
- * (`index.jsx`), and `PageRenderer` draws the site's not-found page through the same `Layout`.
+ * The browser's first render at a `path` that names no page, or names a page served from elsewhere
+ * that the host did not proxy: the boot makes the page the path names active, so none for the
+ * first (`index.jsx`), and `PageRenderer` draws the site's not-found page through the same `Layout`.
  */
 function browserNotFound(path, content = site) {
   const browserSite = initUniweb({ content: { ...structuredClone(content), fetchedData: [] }, foundation }).activeWebsite
@@ -301,6 +302,30 @@ describe('⭐ one Website reused across requests renders each against what its p
     expect(r.outcome).toBe('notFound')
     expect(rootOf(r.html)).toBe(browserNotFound('/no/such-page', slugSite))
     expect(rootOf(r.html)).toContain('<p class="active">/</p>')
+  })
+
+  // A page served from elsewhere, which the host did not proxy: a request for it reached the renderer.
+  const shopSite = { ...site, pages: [...site.pages, { route: '/shop', title: 'Shop', rewrite: 'https://shop.example.com/', sections: [section('Hero', { title: 'Shop' })] }] }
+
+  it('⭐ a URL naming a page served from elsewhere is the not-found page, with that page active, as in the browser', async () => {
+    // The browser's first load of it draws the not-found page, and its boot has made the page the URL
+    // names active (`index.jsx`, `PageRenderer.jsx`). After another request, as a host renders.
+    const website = initPrerender(structuredClone(shopSite), foundation, []).activeWebsite
+    const renderer = createPageRenderer({ website, shell: SHELL })
+    renderer.render('/who', { fetchedData: [] })
+    const r = renderer.render('/shop', { fetchedData: [] })
+    expect(r.outcome).toBe('notFound')
+    expect(rootOf(r.html)).toBe(browserNotFound('/shop', shopSite))
+    expect(rootOf(r.html)).toContain('<p class="active">/shop</p>')
+    expect(rootOf(r.html)).not.toContain('<h1>Shop</h1>')
+  })
+
+  it('CONTROL — the not-found page handed in as a Page has the start page active, as the browser does not there', () => {
+    // A Page carries no URL, so nothing names the page the browser has active at `/shop`.
+    const website = initPrerender(structuredClone(shopSite), foundation, []).activeWebsite
+    const html = rootOf(createPageRenderer({ website, shell: SHELL }).render(website.getNotFoundPage(), { fetchedData: [] }).html)
+    expect(html).toContain('<p class="active">/</p>')
+    expect(html).not.toBe(browserNotFound('/shop', shopSite))
   })
 
   it('CONTROL — rendered past the door after another page, the not-found page keeps that page active', async () => {

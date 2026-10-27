@@ -23,7 +23,7 @@
  * @module
  */
 import DataStore, { deriveCacheKey } from '@uniweb/core/datastore'
-import { resolvePage } from './resolve-page.js'
+import { resolveRequestedPage } from './resolve-page.js'
 import { getComponentMeta } from './prepare-props.js'
 import { createDefaultFetcher } from './default-fetcher.js'
 import { requireTransport } from './require-transport.js'
@@ -54,7 +54,8 @@ function blocksOf(page) {
  * @param {Object} options
  * @param {Object} options.website - the initialized Website the render will use (`initPrerender`)
  * @param {string|Object} options.route - the route, or an already-resolved Page. A route that names
- *   no page asks for the site's not-found page's data, the page its render draws.
+ *   no page, or a page served from elsewhere (`rewrite:`), asks for the site's not-found page's
+ *   data, the page its render draws.
  * @param {Function} options.fetch - the transport, per request. Required: a missing one is refused,
  *   never replaced by the ambient `fetch` (`require-transport.js`)
  * @param {boolean} [options.dev]
@@ -94,10 +95,10 @@ export async function loadPageData({ website, route, fetch, dev = false, locale 
   // through the global, and a host holding several graphs in one isolate has it naming the newest
   // (`Website#makeCurrent`).
   website.makeCurrent()
-  const named = typeof route === 'string' ? resolvePage(website, route) : route
-  // ⭐ A route that names no page renders the site's not-found page (`createPageRenderer`), so it
-  // is that page's data the render reads. With no such page: a genuine 404, the caller's to turn
-  // into one, and nothing to fetch.
+  const named = typeof route === 'string' ? resolveRequestedPage(website, route) : route
+  // ⭐ A route that names no page, or a page served from elsewhere (`resolveRequestedPage`), renders
+  // the site's not-found page (`createPageRenderer`), so it is that page's data the render reads.
+  // With no such page: a genuine 404, the caller's to turn into one, and nothing to fetch.
   const resolved = named ?? (typeof route === 'string' ? website.getNotFoundPage() : null)
   if (!resolved) return []
   // ⭐ The same promotion the render applies: a content-less folder renders its designated child,

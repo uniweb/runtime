@@ -39,3 +39,22 @@
 export function resolvePage(website, route) {
   return website.getPage(route)
 }
+
+/**
+ * The page a request for `route` renders, for the doors that render the page a visit starts on
+ * (`createPageRenderer`, and its data step `loadPageData`): `resolvePage`, except a page served from
+ * elsewhere.
+ *
+ * ⭐ A page with `rewrite:` is the host's to proxy, before the app loads. A request for one that
+ * reaches a renderer was not proxied, so the doors answer it as the browser's first load of it does
+ * (`PageRenderer.jsx`): with the site's not-found page, as a static build emits no file there.
+ * ⛔ Until 2026-10-27 they rendered that page's own content as an ordinary page, and the browser
+ * replaced it with the not-found page at boot.
+ *
+ * @param {Website} website
+ * @param {string} route - The requested path
+ * @returns {Page|undefined} undefined when the route names no page, or a page served from elsewhere
+ */
+export function resolveRequestedPage(website, route) {
+  return website.resolveRoute(route).kind === 'rewrite' ? undefined : resolvePage(website, route)
+}

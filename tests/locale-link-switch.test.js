@@ -18,7 +18,8 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => navigate,
   useLocation: () => ({ pathname: '/', hash: '' }),
 }))
-vi.mock('../src/setup.js', () => ({ prefetchContent: vi.fn(), prefersReducedMotion: false }))
+// The navigation itself is `navigation.test.js`'s subject: here it hands the route straight on.
+vi.mock('../src/navigation.js', () => ({ navigateInApp: (navigate, to, ...options) => navigate(to, ...options) }))
 
 import { Website } from '@uniweb/core'
 import { useLinkInterceptor, localeSwitchOf } from '../src/hooks/useLinkInterceptor.js'

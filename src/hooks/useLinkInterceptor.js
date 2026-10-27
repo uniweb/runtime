@@ -15,7 +15,7 @@
 import { useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { localeOfPath } from '@uniweb/core/resolve-route'
-import { prefetchContent, prefersReducedMotion } from '../setup.js'
+import { navigateInApp } from '../navigation.js'
 
 /**
  * Check if a URL is internal (same origin, no external protocol)
@@ -214,20 +214,10 @@ export function useLinkInterceptor(options = {}) {
         return
       }
 
-      // Use React Router navigation (with router-relative path)
-      // React Router will handle the path, and our useEffect above
-      // will handle scrolling to hash after navigation completes
-      const useTransition = website?.viewTransitions && document.startViewTransition
-        && !prefersReducedMotion
-
-      if (useTransition) {
-        document.startViewTransition(async () => {
-          await prefetchContent(routeHref)
-          navigate(routeHref)
-        })
-      } else {
-        navigate(routeHref)
-      }
+      // React Router takes the router-relative path, and the effect above scrolls to a fragment
+      // once the page is there. Like a <Link>, the click holds this page until the next one's
+      // content has arrived, and the swap is animated when view transitions apply (`navigation.js`).
+      navigateInApp(navigate, routeHref)
     }
 
     // Add click listener to document

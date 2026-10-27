@@ -31,6 +31,7 @@ import {
 import { ChildBlocks } from './components/PageRenderer.jsx'
 import Background from './components/Background.jsx'
 import { wireFoundationCapabilities, hydrateDataStore, ensureThemeCss } from './wire-foundation.js'
+import { navigateInApp } from './navigation.js'
 
 // Re-export so existing consumers importing hydrateDataStore from
 // setup.js keep working. The implementation moved to wire-foundation.js
@@ -38,56 +39,18 @@ import { wireFoundationCapabilities, hydrateDataStore, ensureThemeCss } from './
 // without dragging react-dom/server into the SPA bundle.
 export { hydrateDataStore }
 
-// ─── View Transition Wrappers ───────────────────────────────────────────────
+// `@uniweb/runtime/setup` has exported these since view transitions landed. They live with the
+// navigation that uses them now.
+export { prefetchContent, prefersReducedMotion } from './navigation.js'
+
+// ─── In-app navigation ──────────────────────────────────────────────────────
 //
-// When the foundation enables viewTransitions, navigation is wrapped in
-// document.startViewTransition() to animate page changes. Split content
-// is prefetched inside the transition callback so the user never sees
-// a blank or loading state.
+// Kit's <Link> and useRouting().useNavigate() reach the router through these, so every
+// navigation they make goes through `navigateInApp` (`navigation.js`): the current page is
+// held until the next one's content is here, and the swap is animated when view transitions
+// apply.
 
-/**
- * Prefetch split page content with a timeout.
- * Resolves when content is loaded or the timeout expires — whichever
- * comes first. This keeps the old-page screenshot from freezing too
- * long on slow connections. If the timeout wins, navigation proceeds
- * and the PageRenderer loading gate handles the rest.
- */
-const CONTENT_PREFETCH_TIMEOUT = 1000
-export const prefersReducedMotion =
-  typeof window !== 'undefined'
-  && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-export function prefetchContent(route) {
-  const website = globalThis.uniweb?.activeWebsite
-  if (!route || !website) return
-
-  const targetPage = website.getPage(route)
-  if (!targetPage?.hasContent?.() || targetPage.isContentLoaded?.()) return
-
-  return Promise.race([
-    targetPage.loadContent(),
-    new Promise((resolve) => setTimeout(resolve, CONTENT_PREFETCH_TIMEOUT)),
-  ])
-}
-
-/**
- * Prefetch split content and navigate inside a view transition.
- * Falls back to plain navigation when transitions are not available.
- */
-function navigateWithTransition(navigate, to, options) {
-  const vt = globalThis.uniweb?.foundationConfig?.viewTransitions
-  if (vt && document.startViewTransition && !prefersReducedMotion) {
-    document.startViewTransition(async () => {
-      const route = typeof to === 'string' ? to : to?.pathname
-      await prefetchContent(route)
-      navigate(to, options)
-    })
-  } else {
-    navigate(to, options)
-  }
-}
-
-const ViewTransitionLink = React.forwardRef(function ViewTransitionLink(
+const InAppLink = React.forwardRef(function InAppLink(
   { onClick, replace, state, preventScrollReset, ...props },
   ref,
 ) {
@@ -98,12 +61,13 @@ const ViewTransitionLink = React.forwardRef(function ViewTransitionLink(
     if (e.defaultPrevented) return
     if (e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) return
     if (e.button !== 0) return
-
-    const vt = globalThis.uniweb?.foundationConfig?.viewTransitions
-    if (!vt || !document.startViewTransition || prefersReducedMotion) return
+    // Another tab or frame is the browser's to open. Kit passes a link's `target` on.
+    if (props.target && props.target !== '_self') return
 
     e.preventDefault()
-    navigateWithTransition(navigate, props.to, { replace, state, preventScrollReset })
+    // A link to the page already shown replaces its history entry, as React Router's own does.
+    const here = e.currentTarget.href === window.location.href
+    navigateInApp(navigate, props.to, { replace: replace ?? here, state, preventScrollReset })
   }
 
   return React.createElement(RouterLink, {
@@ -116,13 +80,10 @@ const ViewTransitionLink = React.forwardRef(function ViewTransitionLink(
   })
 })
 
-/**
- * View-transition-aware useNavigate hook.
- * The returned function wraps navigation in startViewTransition() when enabled.
- */
+/** React Router's `useNavigate`, its navigations made through `navigateInApp`. */
 function useNavigate() {
   const navigate = useRouterNavigate()
-  return (to, options) => navigateWithTransition(navigate, to, options)
+  return (to, options) => navigateInApp(navigate, to, options)
 }
 
 /**
@@ -130,7 +91,7 @@ function useNavigate() {
  * its own when it wraps DynamicApp in a MemoryRouter.
  */
 const DEFAULT_ROUTING_COMPONENTS = {
-  Link: ViewTransitionLink,
+  Link: InAppLink,
   useNavigate,
   useParams,
   useLocation,

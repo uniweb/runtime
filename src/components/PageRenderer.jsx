@@ -6,12 +6,13 @@
  * Manages head meta tags for SEO and social sharing.
  */
 
-import React, { useMemo, useEffect, useReducer, useRef } from 'react'
+import React, { useMemo, useEffect, useLayoutEffect, useReducer, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import BlockRenderer from './BlockRenderer.jsx'
 import Layout from './Layout.jsx'
 import { useHeadMeta } from '../hooks/useHeadMeta.js'
 import { useSectionViews } from '../hooks/useSectionViews.js'
+import { pageCommitted } from '../navigation.js'
 import { buildSectionOverrides } from '@uniweb/theming'
 import { carryQuery } from '@uniweb/core/resolve-route'
 import { Default404 } from '../default-404.js'
@@ -206,6 +207,10 @@ export default function PageRenderer() {
 
   useHeadMeta(headMeta, { siteName })
 
+  // ⭐ The DOM holds the page the router committed, and the browser has not painted it yet. A view
+  // transition waiting on the navigation may capture it now (`navigation.js`).
+  useLayoutEffect(() => { pageCommitted() }, [location])
+
   // For dynamic pages created before collection data was available (hard reload),
   // the page title starts as the template name (e.g. '[id]'). Subscribe to
   // DataStore updates so we re-render once the collection loads — _createDynamicPage
@@ -246,10 +251,12 @@ export default function PageRenderer() {
     )
   }
 
-  // Wait for content before rendering blocks (split page content): reached after an in-app
-  // navigation to a page not loaded yet, and it renders nothing until the sections arrive. Not at
-  // boot — the page a visit starts on carries its own sections (`splitPageSections`) — and never
-  // over the prerendered HTML: the browser's first commit replaces it (`createRoot`, index.jsx).
+  // Wait for content before rendering blocks (split page content); nothing renders until the
+  // sections arrive. An in-app navigation waits for them before it reaches here
+  // (`navigation.js`), so this is the fallback: content slower than that wait, or a navigation made
+  // around the runtime's. Not at boot — the page a visit starts on carries its own sections
+  // (`splitPageSections`) — and never over the prerendered HTML: the browser's first commit
+  // replaces it (`createRoot`, index.jsx).
   if (!contentReady) return null
 
   const appearance = website?.themeData?.appearance

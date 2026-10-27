@@ -181,6 +181,14 @@ describe('useLinkInterceptor: which sites and links prefetch', () => {
     expect(prefetchPage).toHaveBeenCalledWith('/About-Us')
   })
 
+  it('a site whose page declares a fetch, with no queries listed, watches for intent', async () => {
+    const website = site({ split: false })
+    website.getPage('/About-Us').fetch = { query: 'articles', path: '/data/articles.json', as: 'articles' }
+    await arm(website)
+    on.pointerdown({ target: anchor({ href: '/About-Us' }) })
+    expect(prefetchPage).toHaveBeenCalledWith('/About-Us')
+  })
+
   it('a site whose pages all came with it, and that reads no data, does not load the module', async () => {
     await arm(site({ split: false }))
     expect(on.click).toBeTypeOf('function')

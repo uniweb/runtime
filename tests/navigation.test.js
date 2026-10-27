@@ -254,16 +254,36 @@ describe('the page is held for its data too', () => {
     expect(store.fetchPageRecord).toHaveBeenCalledWith(page)
   })
 
-  it('walks no section on a site that declares no query', async () => {
+  // ⛔ A hosted site's schema-less query is not projected into `config.queries`: its fetch carries
+  // the file's `path`. A gate on `config.queries` skipped such a site's data (measured 2026-10-27).
+  it('asks a page\'s data whether or not the site lists its queries', async () => {
     const { navigateInApp } = await load()
-    const { page } = dataPage({ queries: {} })
+    const { page, store } = dataPage({ queries: null })
     site({ '/b': page })
     viewTransitions({ supported: false })
-    const navigate = vi.fn()
 
-    navigateInApp(navigate, '/b')
+    navigateInApp(vi.fn(), '/b')
+    expect(store.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('a prefetch asks the data a fetch on the page declares, with no `config.queries`', async () => {
+    const { prefetchPage } = await load()
+    const { page, store } = dataPage({ queries: null })
+    page.fetch = { query: 'articles', path: '/data/articles.json', as: 'articles' }
+    site({ '/b': page })
+
+    prefetchPage('/b')
+    expect(store.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('a prefetch builds no section of a page no fetch can be seen reaching', async () => {
+    const { prefetchPage } = await load()
+    const { page, store } = dataPage({ queries: null })
+    site({ '/b': page })
+
+    prefetchPage('/b')
     expect(page.getBodyBlocks).not.toHaveBeenCalled()
-    expect(navigate).toHaveBeenCalledWith('/b', undefined)
+    expect(store.fetch).not.toHaveBeenCalled()
   })
 
   it('goes when the data takes longer than the wait', async () => {

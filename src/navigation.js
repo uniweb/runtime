@@ -80,29 +80,47 @@ function isReady(page) {
 }
 
 /**
- * Whether the site declares a query. Data comes from a named query (`config.queries`), so a site
- * that declares none reads none, and its pages are not walked for it.
+ * Whether a fetch can be seen reaching `page` without building its sections: the site declares
+ * queries (`config.queries`), or a fetch sits on the page, its parent page or the site, or the page
+ * is parametric and asks for its own record. A section's own `fetch:` is read only once its block is
+ * built, so a page whose data is declared on its sections alone is not seen here.
+ *
+ * ⛔ `config.queries` alone is not the test. A hosted site's schema-less query is not projected
+ * there: its fetch carries the file's `path` (measured 2026-10-27 on a site's blog: no
+ * `config.queries`, the page's fetch `{ query, path, as }`). A gate on it skipped that blog's data.
+ *
+ * @param {Object} page
+ * @returns {boolean}
+ */
+function declaresData(page) {
+  const config = page.website?.config
+  const queries = config?.queries
+  if (queries && typeof queries === 'object' && Object.keys(queries).length > 0) return true
+  return !!(page.fetch || page.parent?.fetch || config?.fetch || page.dynamicContext)
+}
+
+/**
+ * Whether a page of `website` declares data where it can be seen without building sections (see
+ * `declaresData`): what decides whether prefetching on intent is worth its module.
  *
  * @param {Object|null|undefined} website
  * @returns {boolean}
  */
 export function readsData(website) {
-  const queries = website?.config?.queries
-  return !!queries && typeof queries === 'object' && Object.keys(queries).length > 0
+  return !!website?.pages?.some((page) => declaresData(page))
 }
 
 /**
  * Ask what `page`'s render will read and the cache does not hold: off a parametric page, the
  * page's own record, which names it; and each block's data, by the same call the renderer makes
- * after mount (`EntityStore.fetch`).
+ * after mount (`EntityStore.fetch`). It builds the page's blocks, which its render is about to do.
  *
  * @param {Object} page - its content here
  * @returns {Promise|undefined} undefined when nothing was asked
  */
 function dataOf(page) {
-  const website = page.website
-  const store = website?.entityStore
-  if (!store || !readsData(website)) return
+  const store = page.website?.entityStore
+  if (!store) return
   const asks = []
   if (page.dynamicContext) asks.push(store.fetchPageRecord(page))
   for (const block of blocksOf(page)) {
@@ -116,13 +134,19 @@ function dataOf(page) {
  * The wait for what `page`'s render reads and is not here yet: its split content, then, its
  * sections known, their data.
  *
+ * ⚖️ A navigation asks for the data of every page it goes to, since building the blocks is work its
+ * render does a moment later. A prefetch is a guess the reader may not follow, so it asks only where
+ * data can be seen reaching the page (`declaresData`), and leaves sections unbuilt elsewhere.
+ *
  * @param {Object|null} page
+ * @param {{ speculative?: boolean }} [options]
  * @returns {Promise|undefined} undefined when it is all here
  */
-function loadPage(page) {
+function loadPage(page, { speculative = false } = {}) {
   if (!page) return
-  if (!isReady(page)) return page.loadContent().then(() => dataOf(page))
-  return dataOf(page)
+  const data = () => (speculative && !declaresData(page) ? undefined : dataOf(page))
+  if (!isReady(page)) return page.loadContent().then(data)
+  return data()
 }
 
 /** `wait`, or the end of HOLD_TIMEOUT, whichever comes first. */
@@ -152,7 +176,7 @@ export function prefetchContent(route) {
  * @returns {Promise|undefined} undefined when it is all here
  */
 export function prefetchPage(route) {
-  return loadPage(pageAt(route))?.catch(() => {})
+  return loadPage(pageAt(route), { speculative: true })?.catch(() => {})
 }
 
 // The navigation the next swap belongs to. A later navigation supersedes one still waiting for

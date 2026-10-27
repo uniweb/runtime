@@ -2,9 +2,9 @@
  * Prefetch on intent: a link's page is fetched while the reader is about to follow it.
  *
  * Only a site with something to fetch before a page is shown loads this module
- * (`useLinkInterceptor`): split content not here yet, or data, which a site declaring queries
- * reads. A site with neither never downloads it, so the runtime every site carries pays only for
- * the decision.
+ * (`useLinkInterceptor`): split content not here yet, or data a page declares where it can be seen
+ * (`readsData`, `navigation.js`). A site with neither never downloads it, so the runtime every site
+ * carries pays only for the decision.
  *
  * A pointer resting on a link, or focus staying on one, for INTENT_DELAY fetches what the page
  * the link goes to will read: its split content, then its sections' data, whatever is not held

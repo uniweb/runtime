@@ -110,7 +110,8 @@ export function inAppLink(anchor) {
 
 /**
  * Whether a page of `website` can have something to fetch before it is shown: content not here
- * yet, on a site whose content is split, or data, which a site declaring queries reads.
+ * yet, on a site whose content is split, or data a page declares where it can be seen
+ * (`readsData`).
  */
 function hasPagesToFetch(website) {
   if (readsData(website)) return true

@@ -4,7 +4,7 @@
  * A site payload carries TWO unrelated things under the name `icons`, and the
  * runtime has one reader for each:
  *
- *   content.icons         { used, families, bySource, count }   the build's MANIFEST
+ *   content.icons         { used, families, count }             the build's MANIFEST
  *   content.config.icons  { cdnUrl, cdn }                       the site's CONFIG
  *
  * `setup.js` passed the first where the second was wanted, so `cdnUrl` read as
@@ -47,7 +47,6 @@ function makePayload({ cdnUrl, cdn } = {}) {
     icons: {
       used: ['lu:house'],
       families: ['lu'],
-      bySource: { 'lu:house': ['pages/home/1-hero.md'] },
       count: 1,
     },
   }

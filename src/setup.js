@@ -144,8 +144,8 @@ const ICON_FAMILY_MAP = {
  * build's icon MANIFEST, which sits at `content.icons`. A payload carries both
  * under that name and they are unrelated shapes:
  *
- *   content.config.icons  { cdnUrl, cdn }                    ← this
- *   content.icons         { used, families, bySource, count } ← the manifest
+ *   content.config.icons  { cdnUrl, cdn }             ← this
+ *   content.icons         { used, families, count }   ← the manifest
  *
  * Exported for tests only; `index.jsx` names its imports, so this is not part
  * of the package's public surface.

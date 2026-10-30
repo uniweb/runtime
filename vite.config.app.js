@@ -191,5 +191,23 @@ export default defineConfig({
     // them leaves nothing dangling. (`dist/ssr.js` keeps its map and its
     // reference — it ships as a module, and the pair travels together.)
     sourcemap: 'hidden',
+    // ⛔ NO PRELOAD LIST ON A DYNAMIC IMPORT. Vite wraps each `import()` with the
+    // chunks it needs, and has the browser preload them by a path built from
+    // `base`: `/assets/…`, on the page's own origin. This shell is served from an
+    // address of its own, so every one of those requests was a 404 — 12 to 14 on a
+    // first load in Chromium and WebKit, measured 2026-10-30 on live sites on 1.2.12
+    // and 1.3.0.
+    //
+    // Correct paths (`base: './'`) would only keep a list with nothing to do. A host
+    // already preloads the entry's static closure (`manifest.preloads`), and a lazy
+    // chunk here needs nothing beyond it, so a list could name only the chunk its
+    // `import()` is fetching that moment. With 120 ms on each request, a live page
+    // booted the same without the lists, within noise, and with no failed request.
+    //
+    // `html` keeps its own list: `index.html` has other readers, and what it preloads
+    // is another question (`scripts/entry-preloads.js`).
+    modulePreload: {
+      resolveDependencies: (_file, deps, { hostType }) => (hostType === 'html' ? deps : []),
+    },
   },
 })

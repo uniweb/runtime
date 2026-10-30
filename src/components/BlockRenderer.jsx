@@ -139,8 +139,8 @@ export default function BlockRenderer({ block, as = 'section', stickySelf = fals
 
   // Build content and params with runtime guarantees.
   // prepareProps handles the full pipeline: entity data merge onto
-  // block.parsedContent.data, foundation content handler invocation,
-  // guaranteed content structure, schema application, and param defaults.
+  // block.parsedContent.data, foundation data and content handlers,
+  // param defaults, guaranteed content structure, and the props handler.
   // See prepare-props.js for the pipeline details.
   const prepared = prepareProps(block, meta, entityData)
   const params = prepared.params

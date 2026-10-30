@@ -157,8 +157,8 @@ export function renderBlock(block, { as = 'section', stickySelf = false } = {}) 
 
   // Build content and params with runtime guarantees.
   // prepareProps handles the full pipeline: entity data merge,
-  // foundation content handler invocation, guaranteed content
-  // structure, schema application, and param defaults.
+  // foundation data and content handlers, param defaults, guaranteed
+  // content structure, and the props handler.
   // See prepare-props.js for the pipeline details.
   const prepared = prepareProps(block, meta, entityData)
   const params = prepared.params

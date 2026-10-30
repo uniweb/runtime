@@ -54,7 +54,9 @@ import { blocksOf } from './page-blocks.js'
  *   about what is ASKED or returned — every request is still recorded, hit or miss, and whether a
  *   record is held whole already is answered from this call's own requests, never the cache's.
  * @returns {Promise<Array<{ config: Object, outcome: 'fetched'|'failed'|'skipped', data: *, meta?: Object, error?: string }>>}
- *   one entry per request the render will make, keyed downstream by `deriveCacheKey(config)`
+ *   one entry per request the render will make, keyed downstream by `deriveCacheKey(config)`.
+ *   ⛔ The page's data and nothing else: a host counts this list to decide how long to keep the
+ *   page, so one more entry shortens its life, and one that fails can end it.
  */
 export async function loadPageData({ website, route, fetch, dev = false, locale = null, prerender = 'always', cache = null }) {
   if (prerender !== 'author' && prerender !== 'always') {

@@ -409,3 +409,72 @@ describe('the step asks for what the render reads', () => {
     }
   })
 })
+
+/**
+ * ⭐ WHAT CROSSES THE DOOR. A host hands in a transport and reads what comes back, and it knows
+ * nothing else about this step: the transport says how an address is reached, an entry's `config`
+ * and `data` are the runtime's, and the list's length decides how long the host keeps the page.
+ */
+describe('what crosses the door', () => {
+  const EXTERNAL = 'https://api.example.test/v1/posts?limit=2'
+  const external = () => site({
+    pages: [{ route: '/ext', title: 'Ext', fetch: { url: EXTERNAL, as: 'posts' }, sections: [section('PostList')] }],
+  })
+  const response = (body, status = 200) => ({
+    ok: status < 400,
+    status,
+    statusText: String(status),
+    headers: { get: () => 'application/json' },
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  })
+  const entryFor = (entries) => entries.find((entry) => entry.config.url === EXTERNAL)
+
+  it('⭐ an absolute address reaches the transport exactly as written', async () => {
+    const website = initPrerender(external(), foundation, []).activeWebsite
+    const asked = []
+    const fetch = async (url) => { asked.push(String(url)); return response(POSTS) }
+    const entries = await loadPageData({ website, route: '/ext', fetch })
+    expect(asked).toContain(EXTERNAL)
+    expect(entryFor(entries)).toMatchObject({ outcome: 'fetched', data: POSTS })
+  })
+
+  it('a transport that refuses is an answer: the entry says `failed`', async () => {
+    const website = initPrerender(external(), foundation, []).activeWebsite
+    const entries = await loadPageData({ website, route: '/ext', fetch: async () => response(null, 404) })
+    expect(entryFor(entries)).toMatchObject({ outcome: 'failed', data: null })
+    expect(entryFor(entries).error).toContain('404')
+  })
+
+  it('…and so is one that throws: nothing reaches the caller but the entry', async () => {
+    const website = initPrerender(external(), foundation, []).activeWebsite
+    const fetch = async () => { throw new Error('cannot place this address') }
+    const entries = await loadPageData({ website, route: '/ext', fetch })
+    expect(entryFor(entries)).toMatchObject({ outcome: 'failed', error: 'cannot place this address' })
+  })
+
+  it('⭐ an entry carried unread is what the browser reads: as JSON, without its `outcome`', async () => {
+    const server = initPrerender(external(), foundation, []).activeWebsite
+    const entries = await loadPageData({ website: server, route: '/ext', fetch: async () => response(POSTS) })
+    const carried = JSON.parse(JSON.stringify(
+      entries.filter((entry) => entry.outcome === 'fetched').map(({ outcome: _read, ...entry }) => entry)
+    ))
+
+    const browser = initPrerender(external(), foundation, []).activeWebsite
+    hydrateDataStore(browser, carried)
+    const block = browser.getPage('/ext').getBodyBlocks()[0]
+    expect(browser.entityStore.resolve(block, getComponentMeta(block.type))).toMatchObject({ status: 'ready' })
+  })
+
+  it('⛔ a page with no data has an empty list, whatever else it holds: an entry would shorten its life', async () => {
+    const icon = { type: 'image', attrs: { role: 'icon', library: 'lu', name: 'house' } }
+    const content = { type: 'doc', content: [{ type: 'paragraph', content: [icon] }] }
+    const website = initPrerender({
+      ...site({ pages: [{ route: '/icons', title: 'Icons', sections: [section('Plain', { content })] }] }),
+      layouts: {},
+    }, foundation, []).activeWebsite
+    const fetch = vi.fn(async () => response(null, 404))
+    expect(await loadPageData({ website, route: '/icons', fetch })).toEqual([])
+    expect(fetch).not.toHaveBeenCalled()
+  })
+})

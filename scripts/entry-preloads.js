@@ -30,9 +30,18 @@
  *
  * ⇒ **The rule is "what must be loaded before anything can run" — the entry's
  * transitive STATIC closure — not "what some other producer happens to emit".**
- * A bridge is fetched when the foundation resolves its bare specifiers, which
- * is after the entry has run; whether that is worth a preload hint is a
- * separate question with a separate answer, and it is not this field.
+ * A bridge a foundation names is fetched when the foundation resolves its bare
+ * specifiers, which is after the entry has run; whether that is worth a preload
+ * hint is a separate question with a separate answer, and it is not this field.
+ *
+ * The entry also imports four `_importmap/` files itself (core, theming, the
+ * default fetcher, the foundation loader), so they are in the closure and
+ * `prefix` leaves them out: they load one wave late. That costs nothing
+ * measurable, because the foundation's own bridges arrive in that wave anyway.
+ * Measured 2026-10-30, 120 ms on each request, alternating builds: stating them
+ * boots in 719 ms against 736 ms in WebKit and 441 ms against 424 ms in
+ * Chromium, the ranges overlapping. So fewer chunks is no gain either: the whole
+ * closure in one chunk, 10 requests against 29, boots in 708 ms and 460 ms.
  *
  * ## ⛔ Bridges do not belong in this field — ASKED AND ANSWERED, 2026-08-19
  *

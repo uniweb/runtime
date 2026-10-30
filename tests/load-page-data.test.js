@@ -21,6 +21,7 @@ import { getComponentMeta } from '../src/prepare-props.js'
 import { hydrateDataStore } from '../src/wire-foundation.js'
 import { loadPageData } from '../src/load-page-data.js'
 import { createPageRenderer } from '../src/page-renderer.js'
+import { ICON_WAIT_MS, MAX_ICON_REQUESTS } from '../src/page-icons.js'
 
 const POSTS = [
   { $name: 'a', title: 'A' },
@@ -466,7 +467,7 @@ describe('what crosses the door', () => {
     expect(browser.entityStore.resolve(block, getComponentMeta(block.type))).toMatchObject({ status: 'ready' })
   })
 
-  it('⛔ a page with no data has an empty list, whatever else it holds: an entry would shorten its life', async () => {
+  it('⛔ a page with no data has an empty list, whatever else it asks for: an entry would shorten its life', async () => {
     const icon = { type: 'image', attrs: { role: 'icon', library: 'lu', name: 'house' } }
     const content = { type: 'doc', content: [{ type: 'paragraph', content: [icon] }] }
     const website = initPrerender({
@@ -475,6 +476,143 @@ describe('what crosses the door', () => {
     }, foundation, []).activeWebsite
     const fetch = vi.fn(async () => response(null, 404))
     expect(await loadPageData({ website, route: '/icons', fetch })).toEqual([])
-    expect(fetch).not.toHaveBeenCalled()
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+})
+
+/**
+ * ⭐ A PAGE'S ICONS: asked for in the step, kept on the graph, and never reported. What the render
+ * does with them is `page-parity.test.js`'s.
+ */
+describe('a page’s icons', () => {
+  const SVG = '<svg viewBox="0 0 24 24"><path d="M0 0"/></svg>'
+  const HOST = 'https://icons.example.test'
+  const icon = (library, name) => ({ type: 'image', attrs: { role: 'icon', library, name } })
+  const doc = (...nodes) => ({ type: 'doc', content: [{ type: 'paragraph', content: nodes }] })
+  const iconSection = (...nodes) => section('Plain', { content: doc(...nodes) })
+  const iconSite = (sections, { icons, layouts = {} } = {}) => ({
+    ...site({
+      config: icons ? { icons } : {},
+      pages: [{ route: '/icons', title: 'Icons', sections }],
+    }),
+    layouts,
+  })
+  const answer = (body, status = 200) => ({
+    ok: status < 400,
+    status,
+    statusText: String(status),
+    headers: { get: () => 'image/svg+xml' },
+    text: async () => body,
+    json: async () => JSON.parse(body),
+  })
+
+  async function step(content, fetch = vi.fn(async () => answer(SVG)), options = {}) {
+    const uniweb = initPrerender(content, foundation, [])
+    const entries = await loadPageData({ website: uniweb.activeWebsite, route: '/icons', fetch, ...options })
+    return { entries, cache: uniweb.iconCache, asked: fetch.mock.calls.map(([url]) => url), uniweb, fetch }
+  }
+
+  it('⭐ asks for each one at the host’s base, keeps it on the graph, and reports nothing', async () => {
+    const { entries, cache, asked } = await step(
+      iconSite([iconSection(icon('lu', 'house'), icon('lu', 'house'), icon('hi2', 'star'))], { icons: { base: HOST } })
+    )
+    expect(asked.sort()).toEqual([`${HOST}/hi2/hi2-star.svg`, `${HOST}/lu/lu-house.svg`])
+    expect(Object.fromEntries(cache)).toEqual({ 'lu:house': SVG, 'hi2:star': SVG })
+    expect(entries, 'an entry would change how long a host keeps the page').toEqual([])
+  })
+
+  it('…with the page’s data reported as ever', async () => {
+    const { fetch: files } = transport()
+    const fetch = vi.fn(async (url, init) => (String(url).endsWith('.svg') ? answer(SVG) : files(url, init)))
+    const content = {
+      ...site({ pages: [{ route: '/icons', title: 'Icons', fetch: { query: 'posts', as: 'posts' }, sections: [section('PostList', { content: doc(icon('lu', 'house')) })] }] }),
+      layouts: {},
+    }
+    const { entries, cache } = await step(content, fetch)
+    expect(entries.map((entry) => [entry.config.as, entry.outcome])).toEqual([['posts', 'fetched']])
+    expect(cache.get('lu:house')).toBe(SVG)
+  })
+
+  it('reads the default origin where the host states none', async () => {
+    const { asked } = await step(iconSite([iconSection(icon('lu', 'house'))]))
+    expect(asked).toEqual(['https://uniweb.github.io/icons/lu/lu-house.svg'])
+  })
+
+  it('keys an icon as written, as `<Icon>` looks it up, and addresses it as the corpus spells it', async () => {
+    const { asked, cache } = await step(iconSite([iconSection(icon('lucide', 'building-2'))], { icons: { base: HOST } }))
+    expect(asked).toEqual([`${HOST}/lu/lu-building2.svg`])
+    expect([...cache.keys()]).toEqual(['lucide:building-2'])
+  })
+
+  it('finds a link’s icon, an icon in a child section, and one in a layout area', async () => {
+    const link = { type: 'text', text: 'Go', marks: [{ type: 'link', attrs: { href: '/x', icon: 'lu-play' } }] }
+    const parent = { ...iconSection(link), subsections: [iconSection(icon('lu', 'child'))] }
+    const layouts = { default: { header: { route: '/layout/header', sections: [iconSection(icon('lu', 'header'))] } } }
+    const { cache } = await step(iconSite([parent], { layouts }))
+    expect([...cache.keys()].sort()).toEqual(['lu:child', 'lu:header', 'lu:play'])
+  })
+
+  it('leaves alone a library with no address, and a link’s `icon` that names none', async () => {
+    const link = { type: 'text', text: 'Go', marks: [{ type: 'link', attrs: { href: '/x', icon: 'zz-nope' } }] }
+    const { asked } = await step(iconSite([iconSection(icon('zz', 'nope'), link)]))
+    expect(asked).toEqual([])
+  })
+
+  it('does not ask a warm graph again', async () => {
+    const content = iconSite([iconSection(icon('lu', 'house'))])
+    const { uniweb, fetch } = await step(content)
+    await loadPageData({ website: uniweb.activeWebsite, route: '/icons', fetch })
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('⛔ one that fails stays on the browser’s path: a refusal, a throw, a page that is not an icon', async () => {
+    const answers = {
+      '/lu/lu-refused.svg': async () => answer('', 404),
+      '/lu/lu-throws.svg': async () => { throw new Error('cannot place this address') },
+      '/lu/lu-html.svg': async () => answer('<!doctype html><html></html>'),
+      '/lu/lu-good.svg': async () => answer(SVG),
+    }
+    const fetch = vi.fn((url) => answers[new URL(url).pathname.replace('/icons', '')]())
+    const { entries, cache } = await step(
+      iconSite([iconSection(icon('lu', 'refused'), icon('lu', 'throws'), icon('lu', 'html'), icon('lu', 'good'))]),
+      fetch
+    )
+    expect([...cache.keys()]).toEqual(['lu:good'])
+    expect(entries).toEqual([])
+  })
+
+  it('⛔ a slow one does not hold the page past the wait, and is kept when it arrives', async () => {
+    vi.useFakeTimers()
+    try {
+      let arrive
+      const fetch = vi.fn((url) => (String(url).includes('slow')
+        ? new Promise((resolve) => { arrive = () => resolve(answer(SVG)) })
+        : Promise.resolve(answer(SVG))))
+      const uniweb = initPrerender(iconSite([iconSection(icon('lu', 'slow'), icon('lu', 'quick'))]), foundation, [])
+      let done = false
+      const stepped = loadPageData({ website: uniweb.activeWebsite, route: '/icons', fetch }).then(() => { done = true })
+      await vi.advanceTimersByTimeAsync(ICON_WAIT_MS - 1)
+      expect(done, 'still within the wait').toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      await stepped
+      expect(done).toBe(true)
+      expect([...uniweb.iconCache.keys()]).toEqual(['lu:quick'])
+      arrive()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(uniweb.iconCache.has('lu:slow')).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('asks for a bounded number, so a gallery cannot spend a host’s budget of requests', async () => {
+    const many = Array.from({ length: MAX_ICON_REQUESTS + 5 }, (_, i) => icon('lu', `n${i}`))
+    const { asked } = await step(iconSite([iconSection(...many)]))
+    expect(asked).toHaveLength(MAX_ICON_REQUESTS)
+  })
+
+  it('asks for none where the site says `cdn: false`, or where the caller has its own answer', async () => {
+    expect((await step(iconSite([iconSection(icon('lu', 'house'))], { icons: { cdn: false } }))).asked).toEqual([])
+    expect((await step(iconSite([iconSection(icon('lu', 'house'))]), undefined, { icons: false })).asked).toEqual([])
   })
 })

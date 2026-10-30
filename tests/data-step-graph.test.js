@@ -103,3 +103,18 @@ describe('the render data step', () => {
     expect([...bare.keys()].filter(isReact).length).toBeGreaterThan(0)
   })
 })
+
+describe('what a host’s render needs and a browser does not', () => {
+  // Every site carries the browser's bundle, so a page's icons cost it nothing: the page says what
+  // to draw, and `setup.js` already read that before any of this existed.
+  const browser = graphOf(join(SRC, 'index.jsx')).files
+
+  it('⭐ fetching and recording a page’s icons is not in the browser’s bundle', () => {
+    expect([...browser].filter((file) => /page-icons|load-page-data|page-renderer/.test(file))).toEqual([])
+  })
+
+  it('a control: the walk reached the browser’s graph, and the step does reach them', () => {
+    expect(browser.has(join(SRC, 'setup.js'))).toBe(true)
+    expect(graphOf(ENTRY).files.has(join(SRC, 'page-icons.js'))).toBe(true)
+  })
+})

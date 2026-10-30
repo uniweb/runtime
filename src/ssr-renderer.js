@@ -39,6 +39,7 @@ import { renderAppearanceBootScript } from './appearance.js'
 import { documentTitle } from './document-title.js'
 import { recordStartPage } from './start-page.js'
 import { escapeHtml } from '@uniweb/core/page-shell'
+import { jsonForScript } from '@uniweb/core/data-script'
 
 // Re-export L2 helpers so the public `@uniweb/runtime/ssr` surface
 // carries everything an SSR consumer needs from one entry point.
@@ -667,6 +668,13 @@ export function injectPageContent(html, renderedContent, page, options = {}) {
   if (options.sectionOverrideCSS) {
     const overrideStyle = `<style id="uniweb-page-overrides">\n${options.sectionOverrideCSS}\n</style>`
     result = result.replace('</head>', `${overrideStyle}\n</head>`)
+  }
+
+  // The icons this page drew, which the browser reads before its first render (`setup.js`), so it
+  // draws them too. A replacer function, since `$` in a replacement string is not literal.
+  if (options.icons?.size && !result.includes('id="__ICON_CACHE__"')) {
+    const iconScript = `<script id="__ICON_CACHE__" type="application/json">${jsonForScript(Object.fromEntries(options.icons))}</script>`
+    result = result.replace('</head>', () => `  ${iconScript}\n</head>`)
   }
 
   // Replace the empty root div with pre-rendered content

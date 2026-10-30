@@ -39,6 +39,7 @@ import { hydrateDataStore } from './wire-foundation.js'
 import { loadPageData } from './load-page-data.js'
 import { requireTransport } from './require-transport.js'
 import { restoreStartPage } from './start-page.js'
+import { whileReadingIcons } from './page-icons.js'
 
 /**
  * A renderer bound to one initialized Website and one shell.
@@ -158,9 +159,11 @@ export function createPageRenderer({ website, shell }) {
     // request's page.
     restoreStartPage(website)
     if (typeof target === 'string') website.setActivePage(target)
+    // ⭐ The page carries the icons it drew, so the browser's first render draws them too.
+    const icons = new Map()
     let result
     try {
-      result = renderPage(page, website)
+      result = whileReadingIcons(globalThis.uniweb, icons, () => renderPage(page, website))
     } catch (err) {
       // `renderPage` handles its own errors, but a foundation can throw from
       // module scope in ways it does not catch. Classify rather than propagate,
@@ -179,6 +182,7 @@ export function createPageRenderer({ website, shell }) {
     const html = injectPageContent(shell, result.renderedContent, page, {
       ...inject,
       sectionOverrideCSS: result.sectionOverrideCSS,
+      icons,
     })
     return { outcome: missing ? 'notFound' : 'rendered', html, page, error: null }
   }

@@ -19,7 +19,7 @@
 
 import React from 'react'
 import { createUniweb } from '@uniweb/core'
-import { DEFAULT_ICON_BASE, iconUrl } from '@uniweb/core/icon-corpus'
+import { DEFAULT_ICON_BASE, ICON_FAMILY_MAP, iconUrl } from '@uniweb/core/icon-corpus'
 import { createDefaultFetcher } from './default-fetcher.js'
 import {
   Link as RouterLink,
@@ -99,43 +99,6 @@ const DEFAULT_ROUTING_COMPONENTS = {
 }
 
 // ─── Icon resolution ────────────────────────────────────────────────────────
-
-const ICON_FAMILY_MAP = {
-  lucide: 'lu',
-  heroicons: 'hi',
-  heroicons2: 'hi2',
-  phosphor: 'pi',
-  tabler: 'tb',
-  feather: 'fi',
-  fa: 'fa',
-  fa6: 'fa6',
-  bootstrap: 'bs',
-  'material-design': 'md',
-  'ant-design': 'ai',
-  remix: 'ri',
-  'simple-icons': 'si',
-  ionicons: 'io5',
-  boxicons: 'bi',
-  vscode: 'vsc',
-  weather: 'wi',
-  game: 'gi',
-  lu: 'lu',
-  hi: 'hi',
-  hi2: 'hi2',
-  pi: 'pi',
-  tb: 'tb',
-  fi: 'fi',
-  bs: 'bs',
-  md: 'md',
-  ai: 'ai',
-  ri: 'ri',
-  io5: 'io5',
-  bi: 'bi',
-  si: 'si',
-  vsc: 'vsc',
-  wi: 'wi',
-  gi: 'gi',
-}
 
 /**
  * Create CDN-based icon resolver.

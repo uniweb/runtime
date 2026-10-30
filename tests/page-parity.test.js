@@ -336,6 +336,124 @@ describe('⭐ one Website reused across requests renders each against what its p
   })
 })
 
+describe('⭐ a page carries the icons it drew, and the browser draws them too', () => {
+  // On a hosted page nothing had fetched an icon by the time the page was written, so it held a
+  // blank box until the browser had booted. The step now fetches what the content names, the render
+  // draws it, and the page carries it. The browser renders over the page, so it has to draw the
+  // same: without the page's copy its first render would blank what the prerender drew.
+  const SHELL = '<html><head></head><body><div id="root"></div></body></html>'
+  const rootOf = (html) => html.match(/<div id="root">([\s\S]*)<\/div><\/body>/)[1]
+  const carriedBy = (html) => {
+    const element = html.match(/<script id="__ICON_CACHE__" type="application\/json">([\s\S]*?)<\/script>/)
+    return element ? JSON.parse(element[1]) : null
+  }
+  const SVG = '<svg viewBox="0 0 24 24"><path d="M0 0"></path></svg>'
+  const OTHER = '<svg viewBox="0 0 24 24"><path d="M1 1"></path></svg>'
+  // Reads an icon as kit's `<Icon>` does: the SVG when the cache holds it, else a placeholder.
+  const Glyph = ({ params }) => {
+    const svg = globalThis.uniweb.getIconSync('lu', params.icon)
+    return svg
+      ? h('span', { className: 'glyph', dangerouslySetInnerHTML: { __html: svg } })
+      : h('span', { className: 'glyph', 'aria-hidden': 'true' })
+  }
+  const withGlyph = { ...foundation, default: { ...foundation.default, meta: { ...foundation.default.meta, Glyph: {} } }, Glyph }
+  const named = (name) => ({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'image', attrs: { role: 'icon', library: 'lu', name } }] }] })
+  const iconSite = {
+    config: { name: 'T', defaultLanguage: 'en' },
+    theme: {},
+    pages: [
+      { route: '/', isIndex: true, title: 'Home', sections: [section('Glyph', { icon: 'house' }, { content: named('house') })] },
+      { route: '/other', title: 'Other', sections: [section('Glyph', { icon: 'star' }, { content: named('star') })] },
+      // Names its icon in its code, as a foundation's own header does, so the walk cannot find it.
+      { route: '/coded', title: 'Coded', sections: [section('Glyph', { icon: 'house' })] },
+      { route: '/plain', title: 'Plain', sections: [section('Hero')] },
+    ],
+  }
+  const transport = vi.fn(async (url) => ({
+    ok: true,
+    status: 200,
+    headers: { get: () => 'image/svg+xml' },
+    text: async () => (String(url).includes('star') ? OTHER : SVG),
+  }))
+  const graph = () => {
+    const website = initPrerender(structuredClone(iconSite), withGlyph, []).activeWebsite
+    return { website, renderer: createPageRenderer({ website, shell: SHELL }) }
+  }
+  /** The browser's first render of a page, booted with the HTML's own `__ICON_CACHE__` (`setup.js`). */
+  const browserFirst = (route, html) => {
+    const text = html.match(/<script id="__ICON_CACHE__"[^>]*>([\s\S]*?)<\/script>/)?.[1]
+    vi.stubGlobal('document', { getElementById: (id) => (id === '__ICON_CACHE__' && text ? { textContent: text } : null) })
+    try {
+      const website = initUniweb({ content: { ...structuredClone(iconSite), fetchedData: [] }, foundation: withGlyph }).activeWebsite
+      website.setActivePage(route)
+      return renderToString(h(Layout, { page: website.getPage(route), website }))
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  }
+
+  it('⭐ the page draws it and carries it, and the browser’s first render is the same page', async () => {
+    const { website, renderer } = graph()
+    expect(await loadPageData({ website, route: '/', fetch: transport })).toEqual([])
+    const { html } = renderer.render('/', { fetchedData: [] })
+    expect(rootOf(html)).toContain('<path d="M0 0">')
+    expect(carriedBy(html)).toEqual({ 'lu:house': SVG })
+    expect(browserFirst('/', html)).toBe(rootOf(html))
+  })
+
+  it('CONTROL — with no copy in the page, the browser’s first render blanks what the prerender drew', async () => {
+    const { website, renderer } = graph()
+    await loadPageData({ website, route: '/', fetch: transport })
+    const { html } = renderer.render('/', { fetchedData: [] })
+    const without = html.replace(/<script id="__ICON_CACHE__"[\s\S]*?<\/script>/, '')
+    expect(browserFirst('/', without)).not.toBe(rootOf(html))
+    expect(browserFirst('/', without)).toContain('aria-hidden')
+  })
+
+  it('⛔ it carries only what it drew, not everything the graph holds', async () => {
+    const { website, renderer } = graph()
+    await loadPageData({ website, route: '/', fetch: transport })
+    await loadPageData({ website, route: '/other', fetch: transport })
+    expect(carriedBy(renderer.render('/other', { fetchedData: [] }).html)).toEqual({ 'lu:star': OTHER })
+    expect(carriedBy(renderer.render('/plain', { fetchedData: [] }).html)).toBeNull()
+  })
+
+  it('⭐ an icon the walk cannot find, drawn because the graph holds it, is carried too', async () => {
+    const { website, renderer } = graph()
+    await loadPageData({ website, route: '/', fetch: transport })
+    const { html } = renderer.render('/coded', { fetchedData: [] })
+    expect(carriedBy(html)).toEqual({ 'lu:house': SVG })
+    expect(browserFirst('/coded', html)).toBe(rootOf(html))
+  })
+
+  it('an icon nothing fetched stays the placeholder, in both, with nothing carried', () => {
+    const { renderer } = graph()
+    const { html } = renderer.render('/', { fetchedData: [] })
+    expect(carriedBy(html)).toBeNull()
+    expect(rootOf(html)).toContain('aria-hidden')
+    expect(browserFirst('/', html)).toBe(rootOf(html))
+  })
+
+  it('the graph’s cache reads as ever after a render, a broken one included', async () => {
+    const { website, renderer } = graph()
+    await loadPageData({ website, route: '/', fetch: transport })
+    renderer.render('/', { fetchedData: [] })
+    const { iconCache } = globalThis.uniweb
+    expect(Object.hasOwn(iconCache, 'get')).toBe(false)
+    expect(iconCache.get('lu:house')).toBe(SVG)
+  })
+
+  it('⛔ an icon’s text cannot end the element or be read as a replacement pattern', async () => {
+    const hostile = '<svg><title>$& $1 </script><!-- </title></svg>'
+    const fetch = async () => ({ ok: true, status: 200, headers: { get: () => 'image/svg+xml' }, text: async () => hostile })
+    const { website, renderer } = graph()
+    await loadPageData({ website, route: '/', fetch })
+    const { html } = renderer.render('/', { fetchedData: [] })
+    expect(carriedBy(html)).toEqual({ 'lu:house': hostile })
+    expect(html.indexOf('</script>')).toBe(html.lastIndexOf('</script>', html.indexOf('<div id="root">')))
+  })
+})
+
 describe('⭐ several graphs in one process — each door reads its own', () => {
   // `globalThis.uniweb` names one Uniweb, and every graph built points it at itself. A host holds
   // several in one isolate (sites, publishes, locales), so the render and the step point it back.

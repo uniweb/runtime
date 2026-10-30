@@ -28,6 +28,7 @@ import { getComponentMeta } from './prepare-props.js'
 import { createDefaultFetcher } from './default-fetcher.js'
 import { requireTransport } from './require-transport.js'
 import { blocksOf } from './page-blocks.js'
+import { loadPageIcons } from './page-icons.js'
 
 /**
  * Fetch what one route's render will read.
@@ -53,12 +54,15 @@ import { blocksOf } from './page-blocks.js'
  *   fresh, and the default (a cache per call) is what does that. A shared cache changes nothing
  *   about what is ASKED or returned — every request is still recorded, hit or miss, and whether a
  *   record is held whole already is answered from this call's own requests, never the cache's.
+ * @param {boolean} [options.icons] - also ask for the icons the page's content names, and keep them on
+ *   the graph for the render (`page-icons.js`). They are not entries of the list this returns. A
+ *   caller that has its own answer for icons, as a static build does, says `false`.
  * @returns {Promise<Array<{ config: Object, outcome: 'fetched'|'failed'|'skipped', data: *, meta?: Object, error?: string }>>}
  *   one entry per request the render will make, keyed downstream by `deriveCacheKey(config)`.
  *   ⛔ The page's data and nothing else: a host counts this list to decide how long to keep the
  *   page, so one more entry shortens its life, and one that fails can end it.
  */
-export async function loadPageData({ website, route, fetch, dev = false, locale = null, prerender = 'always', cache = null }) {
+export async function loadPageData({ website, route, fetch, dev = false, locale = null, prerender = 'always', cache = null, icons = true }) {
   if (prerender !== 'author' && prerender !== 'always') {
     throw new Error(`loadPageData: prerender must be 'author' or 'always', got ${JSON.stringify(prerender)}`)
   }
@@ -78,6 +82,7 @@ export async function loadPageData({ website, route, fetch, dev = false, locale 
   // through the global, and a host holding several graphs in one isolate has it naming the newest
   // (`Website#makeCurrent`).
   website.makeCurrent()
+  const iconCache = globalThis.uniweb?.iconCache
   const named = typeof route === 'string' ? resolveRequestedPage(website, route) : route
   // ⭐ A route that names no page, or a page served from elsewhere (`resolveRequestedPage`), renders
   // the site's not-found page (`createPageRenderer`), so it is that page's data the render reads.
@@ -144,6 +149,7 @@ export async function loadPageData({ website, route, fetch, dev = false, locale 
   }
 
   const store = website.entityStore
+  const blocks = blocksOf(page)
   // ⭐ Every block's first request goes out in the same tick, which is what lets a question door
   // answer a page in one POST. A step that depends on an answer takes a later one, and only its
   // own key waits.
@@ -151,7 +157,8 @@ export async function loadPageData({ website, route, fetch, dev = false, locale 
     // The page's own record: asked whether or not a section declares the route key, because the
     // page names itself from it and a URL naming no record is a 404.
     store.fetchPageRecord(page, { dispatcher: recording }),
-    ...blocksOf(page).map((block) => store.fetch(block, getComponentMeta(block.type), { dispatcher: recording })),
+    ...blocks.map((block) => store.fetch(block, getComponentMeta(block.type), { dispatcher: recording })),
+    icons && iconCache && loadPageIcons({ blocks, website, fetch, cache: iconCache }),
   ])
 
   return [...entries.values()]

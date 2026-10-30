@@ -2,11 +2,19 @@
  * What the runtime puts on a layout-area wrapper.
  *
  * When a foundation enables view transitions (the default), the runtime gives
- * each layout region a `view-transition-name` so the browser animates them
- * independently — persistent chrome (header, sidebar, footer) morphs in place
- * while the body crossfades. Without per-region names the browser falls back to
- * a single full-page crossfade, which makes the whole layout (chrome included)
- * flicker on every navigation.
+ * each layout area a `view-transition-name` so the browser animates it on its
+ * own — persistent chrome (header, sidebar, footer) morphs in place while
+ * everything else, the body included, crossfades as the page. With no names the
+ * whole layout (chrome included) would flicker on every navigation.
+ *
+ * ⛔ **The body takes no name by default, which is what keeps a phone usable.** A
+ * named element is captured as one image. WebKit captures it whole, off-screen part
+ * included, at device resolution, painting every filter in it on the main thread; the
+ * page itself is captured at the size of the viewport. Measured 2026-10-30 on a live
+ * site, in WebKit on a 3× phone viewport with a desktop CPU: a named body was a
+ * 1179 × 22710 capture, 107 MB against 9 MB, and a tap stalled the main thread for up to
+ * 842 ms, against 271 ms with no name. Chromium did not stall at all. On an iPhone, that
+ * site froze for about 30 s on a tap. The body still crossfades, with the page.
  *
  * Naming is only half of it. A `view-transition-name` **makes its element a
  * stacking context**, so the moment the runtime adds these wrappers it has
@@ -41,13 +49,14 @@ const toIdent = (name) => NS + String(name).replace(/[^a-zA-Z0-9_-]/g, '-')
 /**
  * Build the effective view-transition-name map for a layout.
  *
- * Default: every rendered area plus the implicit `body` gets a stable,
- * namespaced name (`uw-<area>`, `uw-body`). Same-named areas across layouts
- * therefore share a name and morph between layouts automatically.
+ * Default: every rendered area gets a stable, namespaced name (`uw-<area>`), so
+ * same-named areas across layouts share a name and morph between layouts
+ * automatically. The body gets none and crossfades as the page (the header above).
  *
  * The layout's `meta.js` `transitions` value overrides this:
  *   - an object overrides per region (`{ left: 'sidebar' }` to group across
- *     layouts, or `{ left: null }` to opt one region out);
+ *     layouts, `{ left: null }` to opt one region out, or `{ body: 'main' }` for a
+ *     body that morphs between layouts, which WebKit captures whole);
  *   - `false` opts the whole layout out (back to the full-page crossfade).
  *
  * @param {string[]} areaNames - Names of the areas rendered for this page (excludes `body`).
@@ -58,7 +67,7 @@ const toIdent = (name) => NS + String(name).replace(/[^a-zA-Z0-9_-]/g, '-')
 export function resolveLayoutTransitions(areaNames, explicit) {
   if (explicit === false) return null
 
-  const transitions = { body: toIdent('body') }
+  const transitions = {}
   for (const name of areaNames) transitions[name] = toIdent(name)
 
   return explicit ? { ...transitions, ...explicit } : transitions
@@ -169,6 +178,7 @@ export function areaWrapperStyle(region, transitions, layers, sticky = null) {
 
   const name = transitions?.[region]
   if (name) style.viewTransitionName = name
+  else if (transitions && region === 'body') style.isolation = 'isolate'
 
   const layer = layers?.[region]
   if (sticky) {

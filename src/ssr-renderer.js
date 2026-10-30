@@ -247,7 +247,7 @@ export function renderLayout(page, website) {
     for (const block of blocks || []) block.initComponent()
   }
 
-  // Mirror Layout.jsx: wrap body + each area in a thin div carrying its
+  // Mirror Layout.jsx: wrap the body and each area in a thin div, an area's carrying its
   // view-transition-name, so the prerendered HTML matches the page the SPA renders
   // in its place and the browser can animate regions independently on client navigation.
   const areaNames = Object.keys(areas)

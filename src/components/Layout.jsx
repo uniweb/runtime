@@ -86,8 +86,8 @@ export default function Layout({ page, website }) {
   // Pre-render each area as React elements.
   // When the foundation enables view transitions, wrap areas in thin divs with
   // view-transition-name so the browser can animate them independently. Names
-  // default to one per area + body (see resolveLayoutTransitions); the layout's
-  // `transitions` meta overrides or opts out.
+  // default to one per area and none for the body (see resolveLayoutTransitions);
+  // the layout's `transitions` meta overrides or opts out.
   const areaNames = Object.keys(areas)
   const transitions = website.viewTransitions
     ? resolveLayoutTransitions(areaNames, layoutMeta?.transitions)

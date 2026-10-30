@@ -3,10 +3,10 @@ import { readFileSync } from 'node:fs'
 import { resolveLayoutTransitions, resolveLayoutLayers, areaWrapperStyle } from '../src/area-wrappers.js'
 
 describe('resolveLayoutTransitions', () => {
-  it('auto-names the body and every area by default (no explicit map)', () => {
+  it('auto-names every area and leaves the body to crossfade as the page (no explicit map)', () => {
+    // WebKit captures a named element whole, so a page-tall body would be a page-tall capture.
     const t = resolveLayoutTransitions(['header', 'left', 'right', 'footer'], undefined)
     expect(t).toEqual({
-      body: 'uw-body',
       header: 'uw-header',
       left: 'uw-left',
       right: 'uw-right',
@@ -25,7 +25,11 @@ describe('resolveLayoutTransitions', () => {
     const t = resolveLayoutTransitions(['header', 'left', 'footer'], { left: 'sidebar' })
     expect(t.left).toBe('sidebar') // override wins
     expect(t.header).toBe('uw-header') // others still auto
-    expect(t.body).toBe('uw-body')
+    expect(t.body).toBeUndefined()
+  })
+
+  it('lets a layout name its body, for a body that morphs between layouts', () => {
+    expect(resolveLayoutTransitions(['header'], { body: 'main' }).body).toBe('main')
   })
 
   it('opts a single region out when explicitly set to null', () => {
@@ -45,7 +49,7 @@ describe('resolveLayoutTransitions', () => {
   })
 
   it('handles a body-only layout (no areas)', () => {
-    expect(resolveLayoutTransitions([], undefined)).toEqual({ body: 'uw-body' })
+    expect(resolveLayoutTransitions([], undefined)).toEqual({})
   })
 })
 
@@ -99,10 +103,26 @@ describe('areaWrapperStyle', () => {
     })
   })
 
-  it('gives the body a name and no position', () => {
+  it('gives the body a stacking context, no name and no position', () => {
+    // No containing block for the page's absolutely-positioned elements, and no capture of the
+    // whole page. Without the context, a section's z-10 paints over a header on layer 1.
     const t = resolveLayoutTransitions(['header'], undefined)
     const l = resolveLayoutLayers(['header'], undefined)
-    expect(areaWrapperStyle('body', t, l)).toEqual({ viewTransitionName: 'uw-body' })
+    expect(areaWrapperStyle('body', t, l)).toEqual({ isolation: 'isolate' })
+  })
+
+  it('gives a body opted out by name the same stacking context', () => {
+    const t = resolveLayoutTransitions(['header'], { body: null })
+    expect(areaWrapperStyle('body', t, {})).toEqual({ isolation: 'isolate' })
+  })
+
+  it('needs no isolation on a body the layout names, whose name is its stacking context', () => {
+    const t = resolveLayoutTransitions(['header'], { body: 'main' })
+    expect(areaWrapperStyle('body', t, {})).toEqual({ viewTransitionName: 'main' })
+  })
+
+  it('leaves the body unwrapped when the layout has no view transitions', () => {
+    expect(areaWrapperStyle('body', null, { header: 1 })).toBeNull()
   })
 
   it('sets position alongside any layer, since z-index does nothing without it', () => {

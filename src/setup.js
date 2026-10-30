@@ -144,7 +144,7 @@ const ICON_FAMILY_MAP = {
  * build's icon MANIFEST, which sits at `content.icons`. A payload carries both
  * under that name and they are unrelated shapes:
  *
- *   content.config.icons  { cdnUrl, cdn }             ← this
+ *   content.config.icons  { base, cdn }               ← this
  *   content.icons         { used, families, count }   ← the manifest
  *
  * Exported for tests only; `index.jsx` names its imports, so this is not part
@@ -154,7 +154,7 @@ const ICON_FAMILY_MAP = {
  * @returns {Function} Resolver: (library, name) => Promise<string|null>
  */
 export function createIconResolver(iconConfig = {}) {
-  const CDN_BASE = iconConfig.cdnUrl || DEFAULT_ICON_BASE
+  const CDN_BASE = iconConfig.base || DEFAULT_ICON_BASE
   const useCdn = iconConfig.cdn !== false
   const cache = new Map()
 
@@ -282,8 +282,8 @@ export function initUniweb({ content, foundation, extensions = [], routingCompon
   uniweb.routingComponents = routingComponents
   uniweb.localeSwitch = localeSwitch
   // `config.icons`, NOT `content.icons` — the latter is the build's manifest
-  // (`{used, families, …}`), which carries no `cdnUrl`, so passing it here
-  // pinned every browser fetch to the built-in default and made `icons.cdnUrl`
+  // (`{used, families, …}`), which carries no `base`, so passing it here
+  // pinned every browser fetch to the built-in default and made `icons.base`
   // / `icons.cdn: false` inert. ssr-renderer.js reads both keys correctly
   // (manifest for prefetch, config for the base), so the two lanes disagreed:
   // honored at prerender, ignored in the browser.

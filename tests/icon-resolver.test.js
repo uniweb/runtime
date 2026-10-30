@@ -5,9 +5,9 @@
  * runtime has one reader for each:
  *
  *   content.icons         { used, families, count }             the build's MANIFEST
- *   content.config.icons  { cdnUrl, cdn }                       the site's CONFIG
+ *   content.config.icons  { base, cdn }                         the site's CONFIG
  *
- * `setup.js` passed the first where the second was wanted, so `cdnUrl` read as
+ * `setup.js` passed the first where the second was wanted, so `base` read as
  * `undefined` and every browser icon fetch went to the built-in default — while
  * `ssr-renderer.js`, reading both keys correctly, honored the configured base.
  * The two lanes disagreed silently: the same site prerendered against one CDN
@@ -20,6 +20,10 @@
  *
  * So the property under test is agreement: ONE payload, and both readers reach
  * the same base from it.
+ *
+ * The key is `base`, the name a host states it under. The runtime read `cdnUrl`,
+ * which no host sent, so until 2026-10-30 a hosted site's stated base did nothing
+ * and every one of its icons came from the default.
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
@@ -33,9 +37,9 @@ const HOST_CDN = 'https://icons.example.test'
  * A payload shaped the way @uniweb/build's content-collector emits one:
  * the manifest at the top level, site.yml spread into `config`.
  */
-function makePayload({ cdnUrl, cdn } = {}) {
+function makePayload({ base, cdn } = {}) {
   const icons = {}
-  if (cdnUrl !== undefined) icons.cdnUrl = cdnUrl
+  if (base !== undefined) icons.base = base
   if (cdn !== undefined) icons.cdn = cdn
 
   return {
@@ -69,12 +73,23 @@ afterEach(() => {
 describe('icon CDN base', () => {
   it('the browser resolver reads the configured base, not the default', async () => {
     const urls = stubFetch()
-    const payload = makePayload({ cdnUrl: HOST_CDN })
+    const payload = makePayload({ base: HOST_CDN })
 
     const resolve = createIconResolver(payload.config.icons)
     await resolve('lu', 'house')
 
     expect(urls).toEqual([`${HOST_CDN}/lu/lu-house.svg`])
+  })
+
+  it('the retired `cdnUrl` is not read by either lane', async () => {
+    const urls = stubFetch()
+    const payload = makePayload()
+    payload.config.icons = { cdnUrl: HOST_CDN }
+
+    await prefetchIcons(payload, { iconCache: new Map() })
+    await createIconResolver(payload.config.icons)('lu', 'house')
+
+    expect(new Set(urls)).toEqual(new Set([`${DEFAULT_CDN}/lu/lu-house.svg`]))
   })
 
   it('falls back to the framework default when the site configures none', async () => {
@@ -100,12 +115,12 @@ describe('icon CDN base', () => {
 
   /**
    * The regression. Before the fix this passed the manifest, which has no
-   * `cdnUrl`, so it silently produced the default — indistinguishable from a
+   * `base`, so it silently produced the default — indistinguishable from a
    * site that configured nothing.
    */
   it('the MANIFEST is not the config — passing it loses the configured base', async () => {
     const urls = stubFetch()
-    const payload = makePayload({ cdnUrl: HOST_CDN })
+    const payload = makePayload({ base: HOST_CDN })
 
     const resolve = createIconResolver(payload.icons)
     await resolve('lu', 'house')
@@ -116,7 +131,7 @@ describe('icon CDN base', () => {
 
   it('both lanes reach the same base from one payload', async () => {
     const urls = stubFetch()
-    const payload = makePayload({ cdnUrl: HOST_CDN })
+    const payload = makePayload({ base: HOST_CDN })
 
     // Prerender lane: list from the manifest, base from the config.
     await prefetchIcons(payload, { iconCache: new Map() })

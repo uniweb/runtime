@@ -442,7 +442,7 @@ export async function prefetchIcons(siteContent, uniweb, onProgress = () => {}) 
   const icons = siteContent.icons?.used || []
   if (icons.length === 0) return
 
-  const cdnBase = siteContent.config?.icons?.cdnUrl || DEFAULT_ICON_BASE
+  const cdnBase = siteContent.config?.icons?.base || DEFAULT_ICON_BASE
 
   onProgress(`Fetching ${icons.length} icons for SSR...`)
 

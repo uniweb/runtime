@@ -12,6 +12,7 @@ import { initUniweb, decodeData } from './setup.js'
 import { wireTracker } from './wire-foundation.js'
 import { loadFoundation, loadExtensions } from './foundation-loader.js'
 import { initAppearance } from './appearance.js'
+import { carryAnimations } from './carry-animations.js'
 import RuntimeProvider from './RuntimeProvider.jsx'
 
 /**
@@ -146,6 +147,8 @@ async function initRuntime(foundationSource, options = {}) {
 
     const app = <RuntimeProvider basename={routerBasename} development={development} />
 
+    // Armed before the render it watches for: the one that replaces a prerendered page.
+    carryAnimations(container)
     createRoot(container).render(app)
 
     // Log success

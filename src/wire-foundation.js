@@ -17,26 +17,31 @@
  * the DOM, the per-page render loop — stay in the per-environment
  * entries; these helpers cover only the environment-agnostic L2 work.
  *
- * Keeping this file React-free matters for the SPA bundle: `setup.js`
- * pulls `wire-foundation.js` directly, but it must NOT transitively
+ * What this file keeps out of the SPA bundle is `react-dom/server`, not
+ * React: `FallbackRef` below is `React.createElement` alone. `setup.js`
+ * pulls `wire-foundation.js` directly, so this file must NOT transitively
  * pull `ssr-renderer.js` (which imports `react-dom/server`). The L2
  * helpers therefore live here, while the L3-composing
  * `initPrerenderForLocale` lives in `ssr-renderer.js`.
  *
  * Adding a new framework-level capability:
- *   1. Read the foundation declaration via `foundation.default.capabilities.<name>`.
- *   2. Apply it to the uniweb singleton (set a slot, call a build hook,
+ *   1. Name it in `extractFoundationRuntime`'s lists (`@uniweb/build`'s
+ *      `src/runtime-schema.js`): the built entry carries only what they
+ *      name, so anything else never reaches this file.
+ *   2. Read the foundation declaration via `foundation.default.capabilities.<name>`.
+ *   3. Apply it to the uniweb singleton (set a slot, call a build hook,
  *      register something on `activeWebsite`).
- *   3. Provide a runtime fallback if the capability is one foundations
+ *   4. Provide a runtime fallback if the capability is one foundations
  *      may legitimately not declare (see `FallbackRef`).
  *
  * Foundation export shape contract: the runtime always loads the
  * **built** foundation artifact (`dist/entry.js`) via
  * `loadFoundation()` in `foundation-loader.js`, which does `import(url)`
  * and returns a module namespace. The build pipeline
- * (`@uniweb/build`'s `src/generate-entry.js`) wraps the foundation's
- * source default export under `default.capabilities.*`, so the runtime
- * sees a single canonical shape with no need for fallback chains. This
+ * (`@uniweb/build`'s `src/generate-entry.js`) writes what the runtime
+ * reads of the foundation's source default export into
+ * `default.capabilities.*`, so the runtime sees a single canonical shape
+ * with no need for fallback chains. This
  * differs from `@uniweb/press` / `@uniweb/unipress`,
  * which DO need to handle a second shape because they're sometimes
  * called from inside a foundation bundle (where the foundation imports

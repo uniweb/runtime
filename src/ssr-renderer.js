@@ -438,10 +438,11 @@ export function initPrerender(content, foundation, extensionsOrOptions, maybeOpt
  * @param {Object} siteContent - Site content JSON (mutated: _iconCache added)
  * @param {Object} uniweb - Configured uniweb instance
  * @param {function} [onProgress] - Progress callback
+ * @returns {Promise<string[]>} the references that could not be fetched
  */
 export async function prefetchIcons(siteContent, uniweb, onProgress = () => {}) {
   const icons = siteContent.icons?.used || []
-  if (icons.length === 0) return
+  if (icons.length === 0) return []
 
   const cdnBase = siteContent.config?.icons?.base || DEFAULT_ICON_BASE
 
@@ -479,6 +480,7 @@ export async function prefetchIcons(siteContent, uniweb, onProgress = () => {}) 
   if (uniweb.iconCache.size > 0) {
     siteContent._iconCache = Object.fromEntries(uniweb.iconCache)
   }
+  return failedRefs
 }
 
 // ============================================================================

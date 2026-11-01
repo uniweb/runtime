@@ -137,6 +137,22 @@ export function localeSwitchOf(routeHref, website) {
 }
 
 /**
+ * The id a link's fragment names. An address percent-encodes what isn't ASCII, and an id holds it as
+ * written. ⛔ Until 2026-11-01 a link to a heading in another alphabet, from another page, found
+ * nothing to scroll to.
+ *
+ * @param {string} fragment - A fragment, without its `#`
+ * @returns {string}
+ */
+export function fragmentId(fragment) {
+  try {
+    return decodeURIComponent(fragment)
+  } catch {
+    return fragment
+  }
+}
+
+/**
  * Scroll to element by ID with retry logic
  * Retries a few times to handle elements that render asynchronously
  *
@@ -176,7 +192,7 @@ export function useLinkInterceptor(options = {}) {
     if (!location.hash) return
 
     // Remove the # prefix
-    const elementId = location.hash.slice(1)
+    const elementId = fragmentId(location.hash.slice(1))
     if (elementId) {
       // Use requestAnimationFrame to wait for render, then scroll
       requestAnimationFrame(() => {
@@ -217,7 +233,7 @@ export function useLinkInterceptor(options = {}) {
 
       // Handle hash-only links (same page scroll)
       if (href.startsWith('#')) {
-        const elementId = href.slice(1)
+        const elementId = fragmentId(href.slice(1))
         if (elementId) {
           scrollToElement(elementId)
           // Update URL hash without navigation

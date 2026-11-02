@@ -203,8 +203,9 @@ describe('the dev warning measures the settled page (warnUnmovableSticky)', () =
     await frames()
     expect(warn).not.toHaveBeenCalled()
     answer()
-    await frames()
-    expect(warn.mock.calls.map(([m]) => m)).toEqual([expect.stringMatching(/cannot move.*a box the component draws/)])
+    // A wait for the warning, not a fixed 20ms: a loaded machine is later than that, and the
+    // tests above only need the time to pass.
+    await vi.waitFor(() => expect(warn.mock.calls.map(([m]) => m)).toEqual([expect.stringMatching(/cannot move.*a box the component draws/)]))
   })
 })
 

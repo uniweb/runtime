@@ -105,6 +105,16 @@ export function outboundHostname(href, here) {
 }
 
 /**
+ * A right click, which fires `auxclick` as a middle click does, and opens a menu rather
+ * than the link: "copy link address" is not a visit. Measured 2026-11-01, Chromium and
+ * WebKit. ⛔ Until then `outbound_click` and `section_click` counted it.
+ *
+ * @param {{ button?: number }} event
+ * @returns {boolean}
+ */
+const opensMenu = (event) => event.button > 1
+
+/**
  * Listen for clicks that leave the site and report the destination host.
  *
  * @param {{track: (event: string, data?: object) => void}} tracking
@@ -114,6 +124,7 @@ export function observeOutboundClicks(tracking) {
   if (typeof document === 'undefined' || !tracking?.track) return null
 
   const onClick = (event) => {
+    if (opensMenu(event)) return
     // `closest` rather than the target itself: the click almost always lands on
     // a child of the anchor — an icon, a span, the text node's element.
     const anchor = event.target?.closest?.('a[href]')
@@ -132,7 +143,8 @@ export function observeOutboundClicks(tracking) {
   document.addEventListener('click', onClick, true)
   // A middle click fires `auxclick`, not `click`. Opening a link in a new tab
   // is a real outbound visit, and omitting it would undercount silently and
-  // unevenly — power users do it far more than average visitors.
+  // unevenly — power users do it far more than average visitors. A right click
+  // fires it too, which `opensMenu` leaves out.
   document.addEventListener('auxclick', onClick, true)
 
   return () => {
@@ -216,6 +228,7 @@ export function observeSectionClicks(getPage) {
   let cachedMap = null
 
   const onClick = (event) => {
+    if (opensMenu(event)) return
     const page = getPage()
     if (!page) return
     if (page !== cachedPage) {
@@ -336,8 +349,7 @@ export function observeConversions(tracking, getWebsite) {
   }
 
   const onClick = (event) => {
-    // A right click fires `auxclick` too, and it opens a menu rather than the link.
-    if (event.button > 1) return
+    if (opensMenu(event)) return
     const href = event.target?.closest?.('a[href]')?.getAttribute('href')
     if (!href) return
     let url

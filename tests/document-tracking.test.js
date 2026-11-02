@@ -100,6 +100,17 @@ describe('observeOutboundClicks', () => {
     expect(tracking.track).toHaveBeenCalledWith('outbound_click', { hostname: 'stripe.com' })
   })
 
+  it('counts a middle click and not a right click, which both fire auxclick', () => {
+    stop = observeOutboundClicks(tracking)
+    const auxclick = (button) => {
+      for (const l of doc.listeners) if (l.type === 'auxclick') l.fn({ button, target: targetIn('https://stripe.com/') })
+    }
+    auxclick(2)
+    expect(tracking.track).not.toHaveBeenCalled()
+    auxclick(1)
+    expect(tracking.track).toHaveBeenCalledTimes(1)
+  })
+
   it('says nothing about internal navigation', () => {
     stop = observeOutboundClicks(tracking)
     doc.dispatch('click', targetIn('/pricing'))
@@ -242,6 +253,19 @@ describe('observeSectionClicks', () => {
 
     doc.dispatch('click', elementIn(sectionDomId(hero)))
     expect(hero.track).toHaveBeenCalledWith('section_click')
+  })
+
+  it('counts a middle click and not a right click, which both fire auxclick', () => {
+    const hero = fakeBlock('hero')
+    present.add(sectionDomId(hero))
+    stop = observeSectionClicks(() => fakePage([hero]))
+    const auxclick = (button) => {
+      for (const l of doc.listeners) if (l.type === 'auxclick') l.fn({ button, target: elementIn(sectionDomId(hero)) })
+    }
+    auxclick(2)
+    expect(hero.track).not.toHaveBeenCalled()
+    auxclick(1)
+    expect(hero.track).toHaveBeenCalledTimes(1)
   })
 
   // ⭐ The regression that motivated the whole lookup design. `SplitContent` in

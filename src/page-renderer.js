@@ -33,7 +33,7 @@
  *   - **Anything build-only.** `injectBuildData` stays in the build lane; it is the
  *     other half of the head seam and has its own parity guard.
  */
-import { renderPage, classifyRenderError, injectPageContent } from './ssr-renderer.js'
+import { renderPage, classifyRenderError, failingSectionOf, injectPageContent } from './ssr-renderer.js'
 import { resolveRequestedPage } from './resolve-page.js'
 import { hydrateDataStore } from './wire-foundation.js'
 import { loadPageData } from './load-page-data.js'
@@ -50,7 +50,9 @@ import { whileReadingIcons } from './page-icons.js'
  * @param {Object} opts
  * @param {Object} opts.website - `uniweb.activeWebsite`, already initialized
  * @param {string} opts.shell - the HTML shell to inject into, taken as given
- * @returns {{ website: Object, render: Function }}
+ * @returns {{ website: Object, render: Function, failingSection: Function }} `failingSection` asks
+ *   which section stopped a page `render` reported as `failed` (`failingSectionOf`). A render per
+ *   block: for a build's report, not for a host answering a request.
  */
 export function createPageRenderer({ website, shell }) {
   if (!website) throw new Error('createPageRenderer: `website` is required')
@@ -187,7 +189,7 @@ export function createPageRenderer({ website, shell }) {
     return { outcome: missing ? 'notFound' : 'rendered', html, page, error: null }
   }
 
-  return { website, render }
+  return { website, render, failingSection: (page, message) => failingSectionOf(page, message) }
 }
 
 /**

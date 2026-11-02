@@ -579,6 +579,36 @@ export function renderPage(page, website) {
   return { renderedContent, sectionOverrideCSS }
 }
 
+/**
+ * Which section stopped a page from rendering, for a report to whoever can fix it: each block the
+ * page renders, alone, and the deepest that fails the same way. Null when none does, so the layout
+ * around them did. `renderPage` can say only what went wrong: `renderToString` names no component,
+ * and a built foundation's stack names minified ones.
+ *
+ * One render per block, so it's for a page that has already failed and a caller with time to spend.
+ * The same message, since a block alone misses what its layout gives it, and may fail for that.
+ *
+ * @param {Page} page - The page that failed
+ * @param {string} message - What `renderPage` reported
+ * @returns {string|null} the section's type
+ */
+export function failingSectionOf(page, message) {
+  const fails = (block) => {
+    try {
+      renderToString(renderBlock(block))
+      return false
+    } catch (err) {
+      return err.message === message
+    }
+  }
+  const deepest = (block) => {
+    const child = (block.childBlocks || []).find(fails)
+    return child ? deepest(child) : block
+  }
+  const block = page.getAllBlocks().find(fails)
+  return block ? deepest(block).type : null
+}
+
 // ============================================================================
 // HTML injection
 // ============================================================================

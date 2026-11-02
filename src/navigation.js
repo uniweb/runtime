@@ -74,6 +74,29 @@ function pageAt(to) {
   return website.getPage(route.split(/[?#]/)[0]) || null
 }
 
+/**
+ * Folds an area with no height back into the page's crossfade, as a `null` in a layout's `transitions`
+ * would.
+ *
+ * ⛔ A named element is captured at its own size, so a box with no height is captured as nothing,
+ * whatever overflows it. A bar that overlays the page is that box: `fixed`, or `absolute` in a sticky
+ * box it doesn't fill. Its name took it out of the page's capture and its own capture drew nothing,
+ * so the bar was gone for the length of every transition and came back at the end. Measured
+ * 2026-11-02 in Chromium and WebKit.
+ *
+ * An area with nothing in it keeps its name, since a sidebar that fills on the next page should still
+ * move on its own. A folded name stays folded: React wrote it and has no reason to write it again,
+ * except on a new element, so this runs again once a page has committed, for a layout change.
+ */
+function foldEmptyAreas() {
+  for (const area of document.querySelectorAll('[style*="view-transition-name"]')) {
+    const box = area.getClientRects()[0]
+    if (box && !box.height && [...area.querySelectorAll('*')].some((el) => el.getBoundingClientRect().height)) {
+      area.style.viewTransitionName = 'none'
+    }
+  }
+}
+
 /** Whether `page`'s content can be shown now: `PageRenderer`'s own test. */
 function isReady(page) {
   return !page || !page.hasContent() || page.isContentLoaded()
@@ -206,11 +229,12 @@ export function navigateInApp(navigate, to, options) {
       navigate(to, options)
       return
     }
+    foldEmptyAreas()
     const transition = document.startViewTransition(() => {
       // Asked before navigating: a router that commits synchronously settles it from inside `navigate`.
       const committed = nextPageCommit()
       navigate(to, options)
-      return committed
+      return committed.then(foldEmptyAreas)
     })
     // A transition the browser skips, for a duplicate `view-transition-name` or a newer
     // transition, still runs its callback, so the page is swapped all the same. The browser

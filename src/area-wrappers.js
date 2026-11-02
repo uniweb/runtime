@@ -5,7 +5,9 @@
  * each layout area a `view-transition-name` so the browser animates it on its
  * own — persistent chrome (header, sidebar, footer) morphs in place while
  * everything else, the body included, crossfades as the page. With no names the
- * whole layout (chrome included) would flicker on every navigation.
+ * whole layout (chrome included) would flicker on every navigation. An area with
+ * no height has nothing to capture, so a navigation folds it back into the page
+ * (`foldEmptyAreas`, `navigation.js`).
  *
  * ⛔ **The body takes no name by default, which is what keeps a phone usable.** A
  * named element is captured as one image. WebKit captures it whole, off-screen part

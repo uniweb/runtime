@@ -5,7 +5,8 @@
  * each layout area a `view-transition-name` so the browser animates it on its
  * own — persistent chrome (header, sidebar, footer) morphs in place while
  * everything else, the body included, crossfades as the page. With no names the
- * whole layout (chrome included) would flicker on every navigation. An area with
+ * whole layout crossfades, and chrome that stays in place stays steady, since the
+ * two captures agree there (measured 2026-11-02 in Chromium and WebKit). An area with
  * no height has nothing to capture, so a navigation folds it back into the page
  * (`foldEmptyAreas`, `navigation.js`).
  *

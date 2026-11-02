@@ -65,6 +65,7 @@ import { fileURLToPath } from 'node:url'
 
 const pkgDir = join(dirname(fileURLToPath(import.meta.url)), '..')
 const BRANCH = 'gh-pages'
+const CHANNEL_INDEX = 'https://uniweb.github.io/runtime/index.json'
 const dryRun = process.argv.includes('--dry-run')
 
 /**
@@ -160,7 +161,7 @@ function mustRun(cmd, args, opts, hint) {
 console.log(`\n── ${name}@${version} → ${BRANCH}${dryRun ? ' (dry run)' : ''}`)
 
 /** Everything that can fail. Returns; never exits — see ChannelError. */
-function publish(work) {
+async function publish(work) {
   mustRun('git', ['fetch', 'origin', BRANCH], { net: true }, `is there a ${BRANCH} branch on origin?`)
   // FETCH_HEAD, not origin/gh-pages — see the header.
   mustRun('git', ['worktree', 'add', '--detach', work, 'FETCH_HEAD'])
@@ -206,11 +207,37 @@ function publish(work) {
   )
 
   console.log(`\nchannel: published ${version}`)
+  await saysItsLive(version)
+}
+
+/**
+ * Whether the channel serves what was just pushed. A push isn't a deploy: on 2026-11-02 GitHub's
+ * Pages answered 500 to 1.3.12's, and nothing said so. A foundation built on a release names that
+ * runtime as its floor, so until a retry every site published with one answered HTTP 500, on a
+ * manifest the mirror didn't have. This says so at once, where the release is being watched, and
+ * doesn't fail it: npm has already taken the packages, and a retry is all it needs.
+ */
+async function saysItsLive(version, { tries = 18, waitMs = 10_000 } = {}) {
+  for (let i = 0; i < tries; i++) {
+    try {
+      const res = await fetch(`${CHANNEL_INDEX}?v=${Date.now()}`)
+      if (res.ok && (await res.json()).versions?.[version]) {
+        console.log(`channel: ${version} is live`)
+        return
+      }
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, waitMs))
+  }
+  console.error(`\nchannel: ⚠️  ${version} was pushed, and ${CHANNEL_INDEX} still doesn't list it.`)
+  console.error('channel: Sites published with a foundation built on this release will fail until it does.')
+  console.error('channel: Look for a failed deploy, and retry it:')
+  console.error('channel:   gh run list -R uniweb/runtime --limit 3')
+  console.error('channel:   gh run rerun <id> -R uniweb/runtime --failed')
 }
 
 const work = mkdtempSync(join(tmpdir(), 'uniweb-runtime-channel-'))
 try {
-  publish(work)
+  await publish(work)
 } catch (err) {
   if (!(err instanceof ChannelError)) throw err
   console.error(`\nchannel: ${err.message}`)

@@ -11,8 +11,7 @@ import ThemeProvider from './ThemeProvider.jsx'
 import { useRememberScroll } from '../hooks/useRememberScroll.js'
 import { useLinkInterceptor } from '../hooks/useLinkInterceptor.js'
 import { usePageView } from '../hooks/usePageView.js'
-import { useOutboundClicks } from '../hooks/useOutboundClicks.js'
-import { useSectionClicks } from '../hooks/useSectionClicks.js'
+import { useDocumentEvents } from '../hooks/useDocumentEvents.js'
 
 /**
  * WebsiteRenderer component
@@ -37,15 +36,12 @@ export default function WebsiteRenderer() {
   // is disabled and this does nothing at all.
   usePageView()
 
-  // Report where visitors go when they leave. Same unconditional-call contract
-  // as usePageView, and armed once for the document rather than per route — the
-  // listener is delegated on `document` and outlives SPA navigation.
-  useOutboundClicks()
-
-  // Which sections visitors interact with. Same contract and the same arming
-  // condition, so it shares the chunk — but a separate `arms()` call, because a
-  // host may consume one of the two and not the other.
-  useSectionClicks()
+  // Report what a visitor does that the document's own listeners can see: where
+  // they go when they leave, which sections they interact with, what counts as a
+  // conversion. Same unconditional-call contract as usePageView, and armed once for
+  // the document rather than per route — the listeners are delegated on `document`
+  // and outlive SPA navigation.
+  useDocumentEvents()
 
   if (!website) {
     return (

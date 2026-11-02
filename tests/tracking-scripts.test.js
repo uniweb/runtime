@@ -166,6 +166,14 @@ describe('scripts arrive from either tier', () => {
     expect(loadScripts.mock.calls[0][0]).toEqual([SCRIPT])
   })
 
+  it('loads a host\'s list with no address of its own, and reports nothing of ours', async () => {
+    // What a host in the middle states for a vendor's tag on a site that has none of
+    // its analytics: the script, and no collector.
+    const { uniweb, loadScripts } = await wire({ services: { tracking: { scripts: ['/_tag.js'] } } })
+    expect(loadScripts.mock.calls[0][0]).toEqual(['/_tag.js'])
+    expect(uniweb.tracking.isEnabled()).toBe(false)
+  })
+
   it('a site that declares only scripts keeps the host collector AND its gate', async () => {
     // The primary workflow: an operator turns on a third-party script while the
     // host supplies the collector. Their script must not silently switch off the

@@ -345,3 +345,191 @@ describe('observeSectionClicks', () => {
     expect(observeSectionClicks(() => fakePage([]))).toBeNull()
   })
 })
+
+import { observeConversions, observeDocument } from '../src/document-tracking.js'
+
+/**
+ * `conversion` — the privacy claim is the same one as `outbound_click`'s: the name
+ * is reported and nothing else, whatever the link holds.
+ */
+describe('observeConversions', () => {
+  let doc, stop
+
+  /** `selected` answers `arms('conversion')`; a list arms itself through the override. */
+  const trackingWith = ({ selected = true, hostTakesIt = true } = {}) => ({
+    track: vi.fn(),
+    currentPath: null,
+    onPage: null,
+    arms: (event, override) => {
+      if (event !== 'conversion' || !hostTakesIt) return false
+      return override != null ? !!override : selected
+    }
+  })
+
+  /** A website with the core rule that matters here: the locale comes off a route. */
+  const websiteWith = (conversions) => ({
+    config: { tracking: { conversions } },
+    normalizeRoute: (route) => route.replace(/^\/+|\/+$/g, '').replace(/^es\//, '')
+  })
+
+  const names = (tracking) => tracking.track.mock.calls.map(([event, data]) => `${event}:${data.name}`)
+
+  beforeEach(() => {
+    doc = fakeDocument()
+    globalThis.document = doc
+  })
+
+  afterEach(() => {
+    if (stop) stop()
+    stop = null
+    delete globalThis.document
+  })
+
+  it('reports a phone tap and an email tap with no list', () => {
+    const tracking = trackingWith()
+    stop = observeConversions(tracking, () => websiteWith())
+    doc.dispatch('click', targetIn('tel:+15551234'))
+    doc.dispatch('click', targetIn('mailto:hi@example.com'))
+    expect(names(tracking)).toEqual(['conversion:phone', 'conversion:email'])
+  })
+
+  it('NEVER sends the number, the address or the link', () => {
+    const tracking = trackingWith()
+    stop = observeConversions(tracking, () => websiteWith())
+    doc.dispatch('click', targetIn('tel:+15551234'))
+    doc.dispatch('click', targetIn('mailto:hi@example.com?subject=private'))
+    const sent = JSON.stringify(tracking.track.mock.calls)
+    for (const secret of ['5551234', 'hi@example.com', 'private']) expect(sent).not.toContain(secret)
+  })
+
+  it('reports each name once per document load', () => {
+    const tracking = trackingWith()
+    stop = observeConversions(tracking, () => websiteWith())
+    doc.dispatch('click', targetIn('tel:+15551234'))
+    doc.dispatch('click', targetIn('tel:+15551234'))
+    expect(names(tracking)).toEqual(['conversion:phone'])
+  })
+
+  it('reports a listed link by its address, whatever query or fragment it carries', () => {
+    const tracking = trackingWith()
+    const list = [{ name: 'signup', link: 'https://app.test/signup' }]
+    stop = observeConversions(tracking, () => websiteWith(list))
+    doc.dispatch('click', targetIn('https://app.test/login'))
+    expect(tracking.track).not.toHaveBeenCalled() // control: another page on that host
+    doc.dispatch('click', targetIn('https://app.test/signup/?plan=pro#top'))
+    expect(names(tracking)).toEqual(['conversion:signup'])
+  })
+
+  it('lets a listed name win over the automatic one', () => {
+    const tracking = trackingWith()
+    const list = [{ name: 'call_office', link: 'tel:+15551234' }]
+    stop = observeConversions(tracking, () => websiteWith(list))
+    doc.dispatch('click', targetIn('tel:+15551234'))
+    doc.dispatch('click', targetIn('tel:+15559999'))
+    expect(names(tracking)).toEqual(['conversion:call_office', 'conversion:phone'])
+  })
+
+  it('reports a listed page when the visitor reaches it, in any language', () => {
+    const tracking = trackingWith()
+    stop = observeConversions(tracking, () => websiteWith([{ name: 'booked', page: '/thanks' }]))
+    tracking.onPage('/about')
+    expect(tracking.track).not.toHaveBeenCalled() // control: another page
+    tracking.onPage('/es/thanks/')
+    tracking.onPage('/thanks')
+    expect(names(tracking)).toEqual(['conversion:booked'])
+  })
+
+  it('counts the page the visitor landed on, which arrives before this chunk does', () => {
+    const tracking = trackingWith()
+    tracking.currentPath = '/thanks'
+    stop = observeConversions(tracking, () => websiteWith([{ name: 'booked', page: '/thanks' }]))
+    expect(names(tracking)).toEqual(['conversion:booked'])
+  })
+
+  it('ignores a right click, which opens a menu rather than the link', () => {
+    const tracking = trackingWith()
+    stop = observeConversions(tracking, () => websiteWith())
+    for (const l of doc.listeners) if (l.type === 'auxclick') l.fn({ button: 2, target: targetIn('tel:+1') })
+    expect(tracking.track).not.toHaveBeenCalled()
+    for (const l of doc.listeners) if (l.type === 'auxclick') l.fn({ button: 1, target: targetIn('tel:+1') })
+    expect(names(tracking)).toEqual(['conversion:phone'])
+  })
+
+  it('arms nothing on a host that does not take the event, list or no list', () => {
+    const tracking = trackingWith({ hostTakesIt: false })
+    const list = [{ name: 'booked', page: '/thanks' }]
+    stop = observeConversions(tracking, () => websiteWith(list))
+    expect(stop).toBeNull()
+    expect(doc.listeners).toHaveLength(0)
+    expect(tracking.onPage).toBeNull()
+  })
+
+  it('a site not selecting the event gets only what it listed', () => {
+    const tracking = trackingWith({ selected: false })
+    const list = [{ name: 'signup', link: 'https://app.test/signup' }]
+    stop = observeConversions(tracking, () => websiteWith(list))
+    doc.dispatch('click', targetIn('tel:+15551234'))
+    expect(tracking.track).not.toHaveBeenCalled()
+    doc.dispatch('click', targetIn('https://app.test/signup'))
+    expect(names(tracking)).toEqual(['conversion:signup'])
+  })
+
+  it('a site not selecting the event, with no list, arms nothing', () => {
+    const tracking = trackingWith({ selected: false })
+    stop = observeConversions(tracking, () => websiteWith())
+    expect(stop).toBeNull()
+    expect(doc.listeners).toHaveLength(0)
+  })
+
+  it('takes down its listeners and the page slot', () => {
+    const tracking = trackingWith()
+    const teardown = observeConversions(tracking, () => websiteWith([{ name: 'booked', page: '/thanks' }]))
+    expect(tracking.onPage).toBeTypeOf('function')
+    teardown()
+    expect(doc.listeners).toHaveLength(0)
+    expect(tracking.onPage).toBeNull()
+  })
+
+  it('survives an unparseable href or list entry instead of throwing into a click', () => {
+    const tracking = trackingWith()
+    stop = observeConversions(tracking, () => websiteWith([{ name: 'x', link: 'not a url' }]))
+    expect(() => doc.dispatch('click', targetIn('http://[bad'))).not.toThrow()
+    expect(tracking.track).not.toHaveBeenCalled()
+  })
+})
+
+describe('observeDocument', () => {
+  let doc
+
+  beforeEach(() => {
+    doc = fakeDocument()
+    globalThis.document = doc
+    globalThis.uniweb = { activeWebsite: { config: {} } }
+  })
+
+  afterEach(() => {
+    delete globalThis.document
+    delete globalThis.uniweb
+  })
+
+  const armed = (...events) => ({
+    track: vi.fn(),
+    arms: (event) => events.includes(event)
+  })
+
+  it('arms each event by its own question', () => {
+    const tracking = armed('outbound_click')
+    const stop = observeDocument(tracking)
+    doc.dispatch('click', targetIn('https://stripe.com/'))
+    doc.dispatch('click', targetIn('tel:+15551234'))
+    expect(tracking.track.mock.calls).toEqual([['outbound_click', { hostname: 'stripe.com' }]])
+    stop()
+    expect(doc.listeners).toHaveLength(0)
+  })
+
+  it('arms nothing when nothing is selected, and tears down cleanly', () => {
+    const stop = observeDocument(armed())
+    expect(doc.listeners).toHaveLength(0)
+    expect(() => stop()).not.toThrow()
+  })
+})

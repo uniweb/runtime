@@ -4,13 +4,13 @@
  * ⭐ **The grouping rule, which is what this file is really for.** Everything
  * here needs exactly `tracking.arms(<event>)` with no further condition: a
  * destination exists, this is a live document, and neither the host nor the site
- * narrowed the event away. Today that is `outbound_click` and `section_click`;
- * an emitter meeting the same condition belongs in this chunk, and one meeting a
- * different condition does not.
+ * narrowed the event away. Today that is `outbound_click`, `section_click` and
+ * `conversion`; an emitter meeting the same condition belongs in this chunk, and
+ * one meeting a different condition does not.
  *
- * ⛔ **Two events, two independent arming calls, two listeners — deliberately.**
- * A host may name one and not the other, so they cannot share a registration:
- * folding them into one listener would arm both whenever either was selected.
+ * ⛔ **Three events, three independent arming calls, three listeners — deliberately.**
+ * A host may name one and not the others, so they cannot share a registration:
+ * folding them into one listener would arm all of them whenever one was selected.
  * The grouping is about WHEN THE CHUNK LOADS, never about sharing a callback.
  *
  * ⛔ **`section-views.js` stays separate** — its condition is narrower (a page
@@ -70,8 +70,7 @@
  *
  * ⛔ `mailto:` and `tel:` are deliberately absent. They are contact intents, not
  * navigations, and folding them in would put `mail` beside real destinations in
- * a chart about where traffic goes. They are worth their own event if anyone
- * asks for one; they are not worth corrupting this one.
+ * a chart about where traffic goes. They are `conversion` events instead, below.
  */
 const REPORTED_PROTOCOLS = new Set(['http:', 'https:'])
 
@@ -251,5 +250,142 @@ export function observeSectionClicks(getPage) {
   return () => {
     document.removeEventListener('click', onClick, true)
     document.removeEventListener('auxclick', onClick, true)
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * conversion — what the site counts, with no foundation code.
+ *
+ * Only the name crosses the wire. A phone number, an email address, a link and a
+ * page all stay here, so *"the path and query string never leave the page"* holds
+ * for this event as it does for `outbound_click`.
+ *
+ * ⭐ **Two sources, and the second needs someone to say what counts.** A `tel:` or
+ * `mailto:` tap is one by itself. A link or a page counts only when the site lists
+ * it (`services.tracking.conversions`), because nothing here can tell that this
+ * link is the sign-up and that one is the sign-in.
+ *
+ * ⚖️ **A listed conversion arms itself, and it still cannot escape the host.** A
+ * site with its own endpoint on `emit: standard` gets no automatic conversions, as
+ * that preset promises, and writing a list is that site asking for those. `arms`'
+ * override replaces the site's answer and never the host's.
+ *
+ * ⛔ **Once per name per document load.** A double tap is one contact, and so is a
+ * visitor coming back to a thank-you page within a visit. A reload is a new document
+ * and counts again, as it does for every event here.
+ *
+ * ⚖️ **`section_click` double-counts with this too, deliberately,** for the reason
+ * it does with `outbound_click`: a phone link in a section is both.
+ * ------------------------------------------------------------------ */
+
+/** The name a tap on these reports. */
+const CONTACT_NAMES = { 'tel:': 'phone', 'mailto:': 'email' }
+
+const withoutTrailingSlash = (path) => path.replace(/\/+$/, '')
+
+/** The same address, whatever query or fragment either carries. */
+function sameLink(a, b) {
+  return a.origin === b.origin && withoutTrailingSlash(a.pathname) === withoutTrailingSlash(b.pathname)
+}
+
+/**
+ * Listen for what the site counts as a conversion, and report its name.
+ *
+ * @param {{ arms: Function, track: Function, currentPath?: string|null, onPage?: Function|null }} tracking
+ * @param {() => object} getWebsite - reads the active Website: its list, and the rule
+ *        that makes a page's route the same in every language
+ * @returns {(() => void) | null} teardown, or null when there is nothing to report
+ */
+export function observeConversions(tracking, getWebsite) {
+  if (typeof document === 'undefined') return null
+
+  const declared = getWebsite()?.config?.tracking?.conversions
+  const list = Array.isArray(declared) ? declared : []
+  const automatic = tracking.arms('conversion')
+  const listed = list.length > 0 && tracking.arms('conversion', true)
+  if (!automatic && !listed) return null
+
+  const seen = new Set()
+  const once = (name) => {
+    if (seen.has(name)) return
+    seen.add(name)
+    tracking.track('conversion', { name })
+  }
+
+  const links = []
+  const pages = []
+  if (listed) {
+    for (const { name, link, page } of list) {
+      if (page) pages.push({ name, page })
+      else if (link) {
+        try {
+          links.push({ name, url: new URL(link) })
+        } catch {
+          // The build refuses one of these; a host's copy may still hold it.
+        }
+      }
+    }
+  }
+
+  // `normalizeRoute` takes the locale off and translates a localized route back, so
+  // `/thanks` is also `/es/gracias`. A fresh read each time: the language can change.
+  const routeOf = (path) => getWebsite()?.normalizeRoute?.(path) ?? path
+  const atPage = (path) => {
+    if (!path) return
+    for (const { name, page } of pages) if (routeOf(page) === routeOf(path)) once(name)
+  }
+
+  const onClick = (event) => {
+    // A right click fires `auxclick` too, and it opens a menu rather than the link.
+    if (event.button > 1) return
+    const href = event.target?.closest?.('a[href]')?.getAttribute('href')
+    if (!href) return
+    let url
+    try {
+      url = new URL(href, document.location.href)
+    } catch {
+      return
+    }
+    // The site's own name first, so it can tell one phone number from another.
+    for (const { name, url: listedUrl } of links) if (sameLink(listedUrl, url)) return once(name)
+    if (automatic && CONTACT_NAMES[url.protocol]) once(CONTACT_NAMES[url.protocol])
+  }
+
+  // ⛔ CAPTURE, and `auxclick` alongside `click` — same two reasons as `outbound_click`.
+  document.addEventListener('click', onClick, true)
+  document.addEventListener('auxclick', onClick, true)
+
+  if (pages.length) {
+    // This chunk arrives after the first page view, which may be the page that counts.
+    atPage(tracking.currentPath)
+    tracking.onPage = atPage
+  }
+
+  return () => {
+    document.removeEventListener('click', onClick, true)
+    document.removeEventListener('auxclick', onClick, true)
+    if (tracking.onPage === atPage) tracking.onPage = null
+  }
+}
+
+/**
+ * Arm each event this chunk holds, by its own `arms()` question.
+ *
+ * ⭐ Everything reads the website at the moment it needs it, through the current
+ * singleton: one listener spans every navigation, and capturing a page here would
+ * attribute every later click to the page the visitor first landed on.
+ *
+ * @param {object} tracking - the document's Tracker
+ * @returns {() => void} teardown
+ */
+export function observeDocument(tracking) {
+  const website = () => globalThis.uniweb?.activeWebsite
+  const stops = [
+    tracking.arms('outbound_click') && observeOutboundClicks(tracking),
+    tracking.arms('section_click') && observeSectionClicks(() => website()?.activePage),
+    observeConversions(tracking, website)
+  ]
+  return () => {
+    for (const stop of stops) if (stop) stop()
   }
 }

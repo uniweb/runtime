@@ -302,11 +302,11 @@ export function ensureThemeCss(uniweb, foundation) {
  * site republishing. A literal list would freeze `all` at the moment the site
  * was built and quietly stop meaning "all".
  *
- * ⚖️ **`standard` and `all` select the same events today, and that is not a
- * reason to drop one.** They diverge the moment a new automatic event ships:
- * `standard` is a curated set that a release cannot grow behind an operator's
- * back, `all` is the standing yes. The volume surprise is the thing being
- * avoided — a site that never changed should not start sending more.
+ * ⚖️ **`standard` and `all` differ, and a new automatic event only ever widens
+ * the gap.** `standard` is a curated set that a release cannot grow behind an
+ * operator's back, `all` is the standing yes: `section_click`, `time_on_page` and
+ * `conversion` are `all`'s and not `standard`'s. The volume surprise is the thing
+ * being avoided — a site that never changed should not start sending more.
  *
  * ⛔ **The curated set is the answer for a site that CONFIGURED ITS OWN
  * DESTINATION. It is NOT the answer for a site whose host supplies one** — see

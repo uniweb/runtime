@@ -174,6 +174,22 @@ describe('scripts arrive from either tier', () => {
     expect(uniweb.tracking.isEnabled()).toBe(false)
   })
 
+  it("a site's own consent gate holds a host's list, with no address of either", async () => {
+    // What a site writes to hold a vendor's tag its host loads: the gate, and no collector.
+    const { uniweb, loadScripts } = await wire({
+      tracking: { consent: 'required' },
+      services: { tracking: { scripts: ['/_tag.js'] } }
+    })
+
+    expect(uniweb.tracking.isEnabled()).toBe(false)
+    expect(uniweb.tracking.consentStatus()).toBe('pending')
+    expect(loadScripts).not.toHaveBeenCalled()
+
+    uniweb.tracking.setConsent(true)
+    expect(loadScripts).toHaveBeenCalledTimes(1)
+    expect(loadScripts.mock.calls[0][0]).toEqual(['/_tag.js'])
+  })
+
   it('a site that declares only scripts keeps the host collector AND its gate', async () => {
     // The primary workflow: an operator turns on a third-party script while the
     // host supplies the collector. Their script must not silently switch off the

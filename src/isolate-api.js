@@ -179,7 +179,7 @@ export const ISOLATE_API = Object.freeze({
  *      the publish that creates the version, never in anticipation — the whole
  *      reason `UNRELEASED` exists a few lines up.
  *   2. **A raise is a CROSS-LANE event.** Backend reads this from the channel index
- *      and refuses to serve a site below it, so the number moves for them when the
+ *      and publishes no site below it, so the number moves for them when the
  *      CHANNEL republishes — not when this constant changes.
  *
  * ⭐ **Revisited at 1.0 [Diego, 2026-10-11].** This note read: *"Revisit at 1.0: once
@@ -190,7 +190,13 @@ export const ISOLATE_API = Object.freeze({
  * using 1.0.1+"*. The two mechanical rules above stand.
  */
 /*
- * ⭐ **1.0.1, raised 2026-10-13 [Diego]** — the first 1.x runtime, a BASELINE raise like the two
+ * ⭐ **1.2.3, raised 2026-11-02** — an incompatibility, and a host's request: its render now relies on
+ * `render(target, { fetchedData })` and `Website#makeCurrent`, which first shipped in 1.2.3 with core
+ * 1.4.7. A runtime below it ignores the option without a word, so a page would render against whatever
+ * the graph kept from the last request. Neither is an export, so the map below cannot say it. 1.2.3 is
+ * on npm and in the channel, and, like every raise, this reaches backend at the next runtime publish.
+ *
+ * ⛔ **Previously 1.0.1, raised 2026-10-13 [Diego]** — the first 1.x runtime, a BASELINE raise like the two
  * below: *"We would also set `minUsable` to tell backend to start using 1.0.1+"* (2026-10-11).
  * 1.0.1 is the release that took every package from 0.x to 1.x; the runtime's line since 0.29.7
  * carries `carryQuery`. Raised once npm served 1.0.1 and the channel's `latest` was 1.0.1, and,
@@ -229,7 +235,7 @@ export const ISOLATE_API = Object.freeze({
  * which the service refuses with a whole-request `400` since it took `narrow`. It also carries
  * declared-key delivery and `$route`. That break is still real and still below this number.
  */
-export const WIRE_FLOOR = '1.0.1'
+export const WIRE_FLOOR = '1.2.3'
 
 /**
  * ⭐ **THE MINIMUM RUNTIME VERSION A SITE MAY BE PUBLISHED AT.** At or above it,

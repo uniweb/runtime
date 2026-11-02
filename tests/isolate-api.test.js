@@ -85,25 +85,31 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
   // the implementation against itself and pass for any value; literals are what
   // make raising the floor a deliberate edit a reviewer sees. It is also the
   // number a publisher ratchets, so a silent move is the thing to prevent.
-  it('the floor is 1.1.16 — the first runtime that writes a page’s shell', () => {
-    expect(MIN_USABLE_RUNTIME).toBe('1.1.16')
+  it('the floor is 1.2.3 — the first runtime whose render takes the page’s own data', () => {
+    expect(MIN_USABLE_RUNTIME).toBe('1.2.3')
     expect(MIN_USABLE_RUNTIME).toMatch(/^\d+\.\d+\.\d+$/)
 
-    // ⭐ 2026-10-24 — raised by an EXPORT, and the export map leads again: `pageShell`,
+    // ⭐ 2026-11-02 — raised on the WIRE, and it leads again: an incompatibility, at a host's request.
+    // Its render relies on `render(target, { fetchedData })` and `Website#makeCurrent`, first in 1.2.3
+    // (checked in the 1.2.2 and 1.2.3 tarballs). Below it the option is ignored without a word, so a
+    // page would render against whatever the graph kept. Neither is an export, so the map can't say it.
+    expect(WIRE_FLOOR).toBe('1.2.3')
+    expect(compareVersions(MIN_USABLE_RUNTIME, WIRE_FLOOR)).toBe(0)
+
+    // ⭐ 2026-10-24 — raised by an EXPORT, and the export map led until the raise above: `pageShell`,
     // `foundationCssUrl`, `dataScript` and `jsonForScript` first shipped in 1.1.16. They are in the
     // published tarball's `dist/ssr.js` export list, and 1.1.16 is the channel's `latest`. Their
     // UNRELEASED stamps were replaced after that publish [Diego, 2026-10-23: "We can raise
     // minUsable"; 2026-10-24: "I published"]. A host at or above the floor renders into `pageShell`
     // without feature-detecting it.
     expect(ISOLATE_API.pageShell).toBe('1.1.16')
-    expect(compareVersions(MIN_USABLE_RUNTIME, WIRE_FLOOR)).toBeGreaterThan(0)
+    expect(compareVersions(WIRE_FLOOR, ISOLATE_API.pageShell)).toBeGreaterThan(0)
 
     // ⭐ 2026-10-13 — a BASELINE raise to the first 1.x runtime [Diego, 2026-10-11: "We would also
     // set `minUsable` to tell backend to start using 1.0.1+"], made once npm served 1.0.1 and the
     // channel's `latest` was 1.0.1. The export map reached the same number then: `carryQuery` first
     // shipped in 1.0.1, and its UNRELEASED stamp was replaced after that publish [Diego: "I
     // published with the flag"].
-    expect(WIRE_FLOOR).toBe('1.0.1')
     expect(ISOLATE_API.carryQuery).toBe('1.0.1')
 
     // ⭐ 2026-09-30 — raised by an EXPORT, the second time the map has led: `resolveRoute`,
@@ -153,10 +159,9 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
     // the render's data step — it led the floor for one day (0.26.6) and now sits under the wire
     expect(ISOLATE_API.loadPageData).toBe('0.26.6')
     expect(compareVersions(WIRE_FLOOR, ISOLATE_API.loadPageData)).toBeGreaterThan(0)
-    // ⛔ and the wire's own floor names a PUBLISHED version: 1.0.1 was on npm and the channel's
-    // `latest` (2026-10-13), as 0.28.1 was when it was the wire's (2026-09-28). Since 2026-10-24 it
-    // sits under the export map, which leads.
-    expect(compareVersions(WIRE_FLOOR, MIN_USABLE_RUNTIME)).toBeLessThan(0)
+    // ⛔ and the wire's own floor names a PUBLISHED version: 1.2.3 is on npm and in the channel's
+    // index (read 2026-11-02), as 1.0.1 was when it was the wire's (2026-10-13).
+    expect(compareVersions(WIRE_FLOOR, MIN_USABLE_RUNTIME)).toBe(0)
 
     // the composed render entry, which was the floor until 0.17.0
     expect(ISOLATE_API.prefetchAndHydrate).toBe('0.14.2')

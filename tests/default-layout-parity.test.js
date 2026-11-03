@@ -79,10 +79,23 @@ describe('the built-in layout renders the same page both ways', () => {
     expect(prerender).not.toContain('Notes')
   })
 
-  it('the same with view transitions off, when no area is wrapped', () => {
+  it('⭐ no area takes a view-transition name unless its layout asks', () => {
+    // A name moves its box from where it was on screen to where it lands, so a bar `fixed` in a box
+    // that scrolls with the page dropped through the page on a switch from a scrolled page. The
+    // page's crossfade leaves chrome that stays in place alone.
+    const { browser, prerender } = bothWays('/')
+    expect(prerender).toBe(browser)
+    expect(prerender).not.toContain('view-transition-name')
+    // The areas keep their layer, and the body its stacking context.
+    expect(prerender).toContain('<header><div style="position:relative;z-index:1">')
+    expect(prerender).toContain('<main style="flex:1"><div style="isolation:isolate">')
+  })
+
+  it('the same with view transitions off, when the body has no wrapper', () => {
     const { browser, prerender } = bothWays('/', { viewTransitions: false })
     expect(prerender).toBe(browser)
     expect(prerender).not.toContain('view-transition-name')
+    expect(prerender).not.toContain('isolation')
   })
 
   it('the same when the page hides an area', () => {

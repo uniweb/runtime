@@ -49,11 +49,10 @@ function site(pages, { viewTransitions = true } = {}) {
  * The View Transitions API. The browser calls a transition's update callback a task after it
  * starts, once it has captured the old state; `result` is what the callback returned.
  */
-function viewTransitions({ supported = true, areas = () => [] } = {}) {
+function viewTransitions({ supported = true } = {}) {
   const started = []
   globalThis.document = supported
     ? {
-        querySelectorAll: () => areas(),
         startViewTransition: (update) => {
           const transition = { result: null }
           const called = new Promise((resolve) => setTimeout(resolve, 0)).then(() => {
@@ -358,48 +357,3 @@ describe('the animated swap ends at the committed page', () => {
   })
 })
 
-describe('an area with no height', () => {
-  /** A layout area's wrapper: `height` is its own box, `inside` its descendants' heights, and `null` is `display: none`. */
-  const area = (height, inside = []) => ({
-    style: { viewTransitionName: 'uw-header' },
-    getClientRects: () => (height === null ? [] : [{ height }]),
-    querySelectorAll: () => inside.map((h) => ({ getBoundingClientRect: () => ({ height: h }) })),
-  })
-
-  it('folds into the page before the old state is captured, when something overflows it', async () => {
-    const { navigateInApp } = await load()
-    site({ '/b': loadedPage() })
-    const bar = area(0, [0, 88])
-    viewTransitions({ areas: () => [bar] })
-
-    navigateInApp(vi.fn(), '/b')
-    expect(bar.style.viewTransitionName).toBe('none')
-  })
-
-  it.each([
-    ['with a height of its own', () => area(64, [64])],
-    ['with nothing in it', () => area(0, [0])],
-    ['not rendered at all', () => area(null, [120])],
-  ])('keeps its name %s', async (_, make) => {
-    const { navigateInApp } = await load()
-    site({ '/b': loadedPage() })
-    const kept = make()
-    viewTransitions({ areas: () => [kept] })
-
-    navigateInApp(vi.fn(), '/b')
-    expect(kept.style.viewTransitionName).toBe('uw-header')
-  })
-
-  it('folds a wrapper the new page mounts, before the new state is captured', async () => {
-    const { navigateInApp, pageCommitted } = await load()
-    site({ '/b': loadedPage() })
-    const mounted = area(0, [88])
-    let committed = false
-    const started = viewTransitions({ areas: () => (committed ? [mounted] : []) })
-
-    navigateInApp(() => { committed = true; pageCommitted() }, '/b')
-    await vi.waitFor(() => expect(started[0]?.result).toBeTruthy())
-    await started[0].result
-    expect(mounted.style.viewTransitionName).toBe('none')
-  })
-})

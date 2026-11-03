@@ -1,37 +1,45 @@
 /**
- * What the runtime puts on a layout-area wrapper.
+ * What the runtime puts on a layout-area wrapper: its stacking layer, and the
+ * `view-transition-name` its layout asks for, if any.
  *
- * When a foundation enables view transitions (the default), the runtime gives
- * each layout area a `view-transition-name` so the browser animates it on its
- * own — persistent chrome (header, sidebar, footer) morphs in place while
- * everything else, the body included, crossfades as the page. With no names the
- * whole layout crossfades, and chrome that stays in place stays steady, since the
- * two captures agree there (measured 2026-11-02 in Chromium and WebKit). An area with
- * no height has nothing to capture, so a navigation folds it back into the page
- * (`foldEmptyAreas`, `navigation.js`).
+ * ⭐ **An area takes no name unless its layout asks.** A navigation crossfades the
+ * page, and chrome that stays in place stays steady, since the old page and the new
+ * one agree there (measured 2026-11-02 in Chromium and WebKit). A name takes a box out
+ * of that crossfade and animates it from where it was on screen to where it lands.
+ * That is worth having for a morph a layout means, and does harm to a box nobody
+ * thought about. Until 2026-11-02 the runtime named every area, with these results:
  *
- * ⛔ **The body takes no name by default, which is what keeps a phone usable.** A
- * named element is captured as one image. WebKit captures it whole, off-screen part
- * included, at device resolution, painting every filter in it on the main thread; the
- * page itself is captured at the size of the viewport. Measured 2026-10-30 on a live
- * site, in WebKit on a 3× phone viewport with a desktop CPU: a named body was a
- * 1179 × 22710 capture, 107 MB against 9 MB, and a tap stalled the main thread for up to
- * 842 ms, against 271 ms with no name. Chromium did not stall at all. On an iPhone, that
- * site froze for about 30 s on a tap. The body still crossfades, with the page.
+ *   - a bar `fixed` in a box that scrolls with the page moved by the whole scroll on a
+ *     switch from a scrolled page: the old bar dropped through the page as it faded,
+ *     and the new one came down from above;
+ *   - a visible footer moved the same way, off the bottom of the screen;
+ *   - a box with no height is captured as nothing, so a bar overlaying the page was
+ *     gone for the length of every switch;
+ *   - in WebKit a bar kept in place, `fixed` or stuck, faded out over a switch and came
+ *     back at the end;
+ *   - a name makes a Backdrop Root, so a bar's `backdrop-blur` saw nothing past its
+ *     wrapper, at rest too.
  *
- * Naming is only half of it. A `view-transition-name` **makes its element a
- * stacking context**, so the moment the runtime adds these wrappers it has
- * decided how the areas paint relative to one another — and with no `z-index`
- * on them they all sit at `auto` and paint in DOM order, which puts the body
- * over the header on any layout that renders the header first.
+ * ⛔ **A name is also a capture.** A named element is captured as one image. WebKit
+ * captures it whole, off-screen part included, at device resolution, painting every
+ * filter in it on the main thread; the page itself is captured at the size of the
+ * viewport. Measured 2026-10-30 on a live site, in WebKit on a 3× phone viewport with a
+ * desktop CPU: a named body was a 1179 × 22710 capture, 107 MB against 9 MB, and a tap
+ * stalled the main thread for up to 842 ms, against 271 ms with no name. Chromium did
+ * not stall at all. On an iPhone, that site froze for about 30 s on a tap.
  *
- * That is not theoretical. It is the same mechanism `@uniweb/kit`'s `Overlay`
- * exists for (a modal opened from the header, trapped inside `uw-header`), and
- * it made a real docs page's fixed header unclickable while the identical
- * header on the marketing layout was fine — because that layout's markup
- * happened to wrap its header area in `relative z-40`. A framework that
- * creates stacking contexts owes its users an order; leaving it to DOM order
- * means "does my header work" is answered by an accident of someone's JSX.
+ * The wrapper's standing job is the order areas paint in. A layer makes its wrapper
+ * **a stacking context**, as a section's own `z-index` and background routinely make
+ * theirs, and with no order they paint by position in the DOM, which put the body over
+ * the header on any layout that renders the header first.
+ *
+ * That is not theoretical. It is the same mechanism `@uniweb/kit`'s `Overlay` exists
+ * for (a modal opened from the header, trapped inside the header's wrapper), and it
+ * made a real docs page's fixed header unclickable while the identical header on the
+ * marketing layout was fine — because that layout's markup happened to wrap its header
+ * area in `relative z-40`. A framework that creates stacking contexts owes its users an
+ * order; leaving it to DOM order means "does my header work" is answered by an accident
+ * of someone's JSX.
  *
  * So this module resolves BOTH halves of the wrapper — the transition name and
  * the stacking layer — and hands back the finished style. It is pure (no
@@ -42,38 +50,22 @@
 
 import { stickyStyle } from './sticky.js'
 
-// Namespace so generated names can't collide with `view-transition-name`s a
-// foundation sets inside its own component CSS. The prefix also guarantees a
-// valid CSS <custom-ident> (starts with a letter).
-const NS = 'uw-'
-
-const toIdent = (name) => NS + String(name).replace(/[^a-zA-Z0-9_-]/g, '-')
-
 /**
- * Build the effective view-transition-name map for a layout.
+ * A layout's view-transition names: what its `meta.js` `transitions` asks for.
  *
- * Default: every rendered area gets a stable, namespaced name (`uw-<area>`), so
- * same-named areas across layouts share a name and morph between layouts
- * automatically. The body gets none and crossfades as the page (the header above).
+ *   - nothing: no area takes a name, and the page crossfades as one (the header above);
+ *   - an object names regions (`{ left: 'sidebar' }`), and two layouts that give a
+ *     region the same name morph it between them. A body may be named (`{ body: 'main' }`),
+ *     and WebKit captures it whole;
+ *   - `false` opts the layout out, which leaves its body with no wrapper
+ *     (`areaWrapperStyle`).
  *
- * The layout's `meta.js` `transitions` value overrides this:
- *   - an object overrides per region (`{ left: 'sidebar' }` to group across
- *     layouts, `{ left: null }` to opt one region out, or `{ body: 'main' }` for a
- *     body that morphs between layouts, which WebKit captures whole);
- *   - `false` opts the whole layout out (back to the full-page crossfade).
- *
- * @param {string[]} areaNames - Names of the areas rendered for this page (excludes `body`).
  * @param {Object|false|null|undefined} explicit - `layoutMeta.transitions`.
  * @returns {Object|null} region → view-transition-name; `null` when opted out.
- *   A region whose value is null/empty in the returned map gets no name.
+ *   A region whose value is absent or empty gets no name.
  */
-export function resolveLayoutTransitions(areaNames, explicit) {
-  if (explicit === false) return null
-
-  const transitions = {}
-  for (const name of areaNames) transitions[name] = toIdent(name)
-
-  return explicit ? { ...transitions, ...explicit } : transitions
+export function resolveLayoutTransitions(explicit) {
+  return explicit === false ? null : explicit || {}
 }
 
 /**

@@ -248,12 +248,12 @@ export function renderLayout(page, website) {
     for (const block of blocks || []) block.initComponent()
   }
 
-  // Mirror Layout.jsx: wrap the body and each area in a thin div, an area's carrying its
-  // view-transition-name, so the prerendered HTML matches the page the SPA renders
-  // in its place and the browser can animate regions independently on client navigation.
+  // Mirror Layout.jsx: wrap the body and each area in a thin div, with its stacking layer and
+  // any view-transition-name the layout asks for, so the prerendered HTML matches the page the
+  // SPA renders in its place.
   const areaNames = Object.keys(areas)
   const transitions = website.viewTransitions
-    ? resolveLayoutTransitions(areaNames, layoutMeta?.transitions)
+    ? resolveLayoutTransitions(layoutMeta?.transitions)
     : null
 
   // Mirror Layout.jsx: an area stays in view when any of its sections is sticky — in a

@@ -83,14 +83,12 @@ export default function Layout({ page, website }) {
   const allBlockGroups = [bodyBlocks, ...Object.values(areas)]
   initializeAllBlocks(...allBlockGroups)
 
-  // Pre-render each area as React elements.
-  // When the foundation enables view transitions, wrap areas in thin divs with
-  // view-transition-name so the browser can animate them independently. Names
-  // default to one per area and none for the body (see resolveLayoutTransitions);
-  // the layout's `transitions` meta overrides or opts out.
+  // Pre-render each area as React elements, each in a thin div with its stacking layer.
+  // A region takes a view-transition-name only where the layout's `transitions` meta asks
+  // for one (see resolveLayoutTransitions); everything else crossfades as the page.
   const areaNames = Object.keys(areas)
   const transitions = website.viewTransitions
-    ? resolveLayoutTransitions(areaNames, layoutMeta?.transitions)
+    ? resolveLayoutTransitions(layoutMeta?.transitions)
     : null
   // An area stays in view when any of its sections is sticky (`../sticky.js`): in a foundation's
   // layout its wrapper sticks; in the built-in one, the zone around the wrapper does. Either way

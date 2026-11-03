@@ -39,14 +39,14 @@ describe('the boxes, decided once (sticky.js)', () => {
     expect(sectionStickyStyle({ sticky: false })).toBeNull()
   })
 
-  it('an area wrapper that sticks keeps its transition name and its layer, in place of `relative`', () => {
-    const transitions = { header: 'uw-header' }
+  it('an area wrapper that sticks keeps a transition name its layout gave it and its layer, in place of `relative`', () => {
+    const transitions = { header: 'site-header' }
     expect(areaWrapperStyle('header', transitions, { header: 1 }, { top: '0px' })).toEqual({
-      viewTransitionName: 'uw-header', position: 'sticky', top: '0px', zIndex: 1,
+      viewTransitionName: 'site-header', position: 'sticky', top: '0px', zIndex: 1,
     })
     // CONTROL — not sticky: as before
     expect(areaWrapperStyle('header', transitions, { header: 1 })).toEqual({
-      viewTransitionName: 'uw-header', position: 'relative', zIndex: 1,
+      viewTransitionName: 'site-header', position: 'relative', zIndex: 1,
     })
   })
 
@@ -221,13 +221,13 @@ function Placed({ page, header, body, footer }) {
   return React.createElement('div', { 'data-layout': 'placed', 'data-sticky': String(page.isSticky('header')) }, header, React.createElement('main', null, body), footer)
 }
 
-function foundation({ meta = {}, layout = false } = {}) {
+function foundation({ meta = {}, layout = false, transitions } = {}) {
   const types = { Nav: {}, Hero: {}, SubNav: {}, Credits: {}, ...meta }
   return {
     default: {
       meta: types,
       capabilities: layout ? { layouts: { Placed }, defaultLayout: 'Placed' } : {},
-      ...(layout ? { layoutMeta: { Placed: {} } } : {}),
+      ...(layout ? { layoutMeta: { Placed: transitions === undefined ? {} : { transitions } } } : {}),
     },
     Nav, Hero, SubNav, Credits, Placed,
   }
@@ -266,9 +266,9 @@ describe('the built-in layout: a sticky header’s zone is the box that sticks',
     expect(prerender).toBe(browser)
     expect(prerender).toContain(STICKY_ZONE)
     // The area wrapper inside it carries the same layer; the section's own wrapper does not stick.
-    expect(prerender).toMatch(/<header style="position:sticky;top:0px;z-index:2" data-uw-sticky="area"><div style="view-transition-name:uw-header;position:relative;z-index:2"><section id="section-[^"]*" class="">/)
+    expect(prerender).toMatch(/<header style="position:sticky;top:0px;z-index:2" data-uw-sticky="area"><div style="position:relative;z-index:2"><section id="section-[^"]*" class="">/)
     // ⭐ The footer stays on the layer below it, so it scrolls under the stuck header.
-    expect(prerender).toContain('<footer><div style="view-transition-name:uw-footer;position:relative;z-index:1">')
+    expect(prerender).toContain('<footer><div style="position:relative;z-index:1">')
   })
 
   it('its type’s default, and the author’s `false` over it', () => {
@@ -290,7 +290,7 @@ describe('the built-in layout: a sticky header’s zone is the box that sticks',
   it('CONTROL — no setting, no sticky box', () => {
     const { browser, prerender } = bothWays(site())
     expect(prerender).toBe(browser)
-    expect(prerender).toContain('<header><div style="view-transition-name:uw-header;position:relative;z-index:1">')
+    expect(prerender).toContain('<header><div style="position:relative;z-index:1">')
     expect(prerender).not.toContain('position:sticky')
   })
 })
@@ -305,13 +305,36 @@ describe('in the body: the section’s own wrapper sticks', () => {
   })
 })
 
+describe('a foundation’s layout: a view-transition name is what it asks for', () => {
+  it('none when it asks for none, and its layers all the same', () => {
+    const { browser, prerender } = bothWays(site(), { layout: true })
+    expect(prerender).toBe(browser)
+    expect(prerender).not.toContain('view-transition-name')
+    expect(prerender).toContain('<div style="position:relative;z-index:1">')
+  })
+
+  it('the one it names, on that area alone, the same both ways', () => {
+    const { browser, prerender } = bothWays(site(), { layout: true, transitions: { header: 'site-header' } })
+    expect(prerender).toBe(browser)
+    expect(prerender).toContain('<div style="view-transition-name:site-header;position:relative;z-index:1">')
+    expect(prerender.match(/view-transition-name/g)).toHaveLength(1)
+  })
+
+  it('`false` leaves its body with no wrapper, and its areas their layers', () => {
+    const { browser, prerender } = bothWays(site(), { layout: true, transitions: false })
+    expect(prerender).toBe(browser)
+    expect(prerender).not.toContain('isolation')
+    expect(prerender).toContain('<div style="position:relative;z-index:1">')
+  })
+})
+
 describe('a foundation’s layout: the area wrapper sticks, and the layout can ask', () => {
   it('⭐ an area placed in the layout’s column — its wrapper is sticky, in place of `relative`', () => {
     const { browser, prerender } = bothWays(site({ header: { sticky: true } }), { layout: true })
     expect(prerender).toBe(browser)
     expect(prerender).toContain('data-sticky="true"')
-    expect(prerender).toContain('<div style="view-transition-name:uw-header;position:sticky;top:0px;z-index:2" data-uw-sticky="area">')
-    expect(prerender).toContain('<div style="view-transition-name:uw-footer;position:relative;z-index:1">')
+    expect(prerender).toContain('<div style="position:sticky;top:0px;z-index:2" data-uw-sticky="area">')
+    expect(prerender).toContain('<div style="position:relative;z-index:1">')
   })
 
   it('CONTROL — not sticky, the layout is told so', () => {

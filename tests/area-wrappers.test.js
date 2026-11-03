@@ -3,53 +3,23 @@ import { readFileSync } from 'node:fs'
 import { resolveLayoutTransitions, resolveLayoutLayers, areaWrapperStyle } from '../src/area-wrappers.js'
 
 describe('resolveLayoutTransitions', () => {
-  it('auto-names every area and leaves the body to crossfade as the page (no explicit map)', () => {
-    // WebKit captures a named element whole, so a page-tall body would be a page-tall capture.
-    const t = resolveLayoutTransitions(['header', 'left', 'right', 'footer'], undefined)
-    expect(t).toEqual({
-      header: 'uw-header',
-      left: 'uw-left',
-      right: 'uw-right',
-      footer: 'uw-footer',
-    })
+  it('names nothing unless the layout asks', () => {
+    // A name moves its box from where it was on screen to where it lands, and captures it whole.
+    // Chrome that stays in place stays steady in the page's crossfade, so a name buys nothing there.
+    expect(resolveLayoutTransitions(undefined)).toEqual({})
+    expect(resolveLayoutTransitions(null)).toEqual({})
   })
 
-  it('gives same-named areas the same name across layouts (auto cross-layout morph)', () => {
-    const a = resolveLayoutTransitions(['header', 'left'], undefined)
-    const b = resolveLayoutTransitions(['header', 'right'], undefined)
-    expect(a.header).toBe(b.header) // shared chrome morphs between layouts
-    expect(a.left).not.toBe(b.right)
-  })
-
-  it('lets an explicit map override per region (e.g. group left↔sidebar)', () => {
-    const t = resolveLayoutTransitions(['header', 'left', 'footer'], { left: 'sidebar' })
-    expect(t.left).toBe('sidebar') // override wins
-    expect(t.header).toBe('uw-header') // others still auto
-    expect(t.body).toBeUndefined()
+  it('names what the layout asks for, and only that', () => {
+    expect(resolveLayoutTransitions({ left: 'sidebar' })).toEqual({ left: 'sidebar' })
   })
 
   it('lets a layout name its body, for a body that morphs between layouts', () => {
-    expect(resolveLayoutTransitions(['header'], { body: 'main' }).body).toBe('main')
-  })
-
-  it('opts a single region out when explicitly set to null', () => {
-    const t = resolveLayoutTransitions(['header', 'footer'], { header: null })
-    expect(t.header).toBeNull() // no name → renderer leaves it unwrapped
-    expect(t.footer).toBe('uw-footer')
+    expect(resolveLayoutTransitions({ body: 'main' }).body).toBe('main')
   })
 
   it('opts the whole layout out when transitions is false', () => {
-    expect(resolveLayoutTransitions(['header', 'left'], false)).toBeNull()
-  })
-
-  it('namespaces and sanitizes names into valid CSS idents', () => {
-    const t = resolveLayoutTransitions(['side panel', 'a/b'], undefined)
-    expect(t['side panel']).toBe('uw-side-panel')
-    expect(t['a/b']).toBe('uw-a-b')
-  })
-
-  it('handles a body-only layout (no areas)', () => {
-    expect(resolveLayoutTransitions([], undefined)).toEqual({})
+    expect(resolveLayoutTransitions(false)).toBeNull()
   })
 })
 
@@ -93,11 +63,20 @@ describe('resolveLayoutLayers', () => {
 })
 
 describe('areaWrapperStyle', () => {
-  it('carries the name and the layer together', () => {
-    const t = resolveLayoutTransitions(['header'], undefined)
+  it('gives an area its layer and no name, when its layout asks for none', () => {
+    const t = resolveLayoutTransitions(undefined)
     const l = resolveLayoutLayers(['header'], undefined)
     expect(areaWrapperStyle('header', t, l)).toEqual({
-      viewTransitionName: 'uw-header',
+      position: 'relative',
+      zIndex: 1,
+    })
+  })
+
+  it('carries a name the layout asks for, with the layer', () => {
+    const t = resolveLayoutTransitions({ header: 'site-header' })
+    const l = resolveLayoutLayers(['header'], undefined)
+    expect(areaWrapperStyle('header', t, l)).toEqual({
+      viewTransitionName: 'site-header',
       position: 'relative',
       zIndex: 1,
     })
@@ -106,18 +85,18 @@ describe('areaWrapperStyle', () => {
   it('gives the body a stacking context, no name and no position', () => {
     // No containing block for the page's absolutely-positioned elements, and no capture of the
     // whole page. Without the context, a section's z-10 paints over a header on layer 1.
-    const t = resolveLayoutTransitions(['header'], undefined)
+    const t = resolveLayoutTransitions(undefined)
     const l = resolveLayoutLayers(['header'], undefined)
     expect(areaWrapperStyle('body', t, l)).toEqual({ isolation: 'isolate' })
   })
 
   it('gives a body opted out by name the same stacking context', () => {
-    const t = resolveLayoutTransitions(['header'], { body: null })
+    const t = resolveLayoutTransitions({ body: null })
     expect(areaWrapperStyle('body', t, {})).toEqual({ isolation: 'isolate' })
   })
 
   it('needs no isolation on a body the layout names, whose name is its stacking context', () => {
-    const t = resolveLayoutTransitions(['header'], { body: 'main' })
+    const t = resolveLayoutTransitions({ body: 'main' })
     expect(areaWrapperStyle('body', t, {})).toEqual({ viewTransitionName: 'main' })
   })
 

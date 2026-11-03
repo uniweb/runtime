@@ -441,6 +441,10 @@ export function wireTracker(uniweb, { basePath = '', loadScripts = null } = {}) 
     // green. The value now has to reach `setInterval`, and a test asserts the
     // delay rather than the field.
     flushIntervalMs: options.flushIntervalMs,
+    // The landing address's query keys a conversion carries. Off the merged view for the same
+    // reason: whoever collects names what its collector reads, and a site's own list replaces its
+    // host's. The keys are never ours — see `captureLanding` in core.
+    landing: options.landing,
     // Opt-in, not the default. Declaring a destination is itself the operator's
     // decision to track; requiring a second affirmative step would be the
     // framework presuming a jurisdiction on their behalf, which is exactly what

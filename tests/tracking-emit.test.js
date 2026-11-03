@@ -367,3 +367,39 @@ describe('absent emit — deferring to the host, and the standalone floor', () =
     expect(t.arms('section_view', true)).toBe(false)
   })
 })
+
+/**
+ * `landing` — the query keys of the landing address a conversion carries. Whoever collects names them,
+ * so it is read off the merged view, as `flushIntervalMs` is: the host's list, replaced by a site's own.
+ * Asserts what the tracker captured from the address, which is what every conversion then carries.
+ */
+describe('landing — whoever collects names the keys a conversion carries', () => {
+  const arrivedWith = (search, config) => {
+    const before = globalThis.window.location.search
+    globalThis.window.location.search = search
+    try {
+      return wire(config)
+    } finally {
+      globalThis.window.location.search = before
+    }
+  }
+  const AD = '?utm_term=a1&twclid=abc&q=private'
+
+  it("captures the keys the host names, and only those", () => {
+    const t = arrivedWith(AD, { services: { tracking: { endpoint: '/_a/e', landing: ['utm_term', 'twclid'] } } })
+    expect(t.landing).toEqual({ utm_term: 'a1', twclid: 'abc' })
+  })
+
+  it("lets a site's own list replace its host's", () => {
+    const t = arrivedWith(AD, {
+      services: { tracking: { endpoint: '/_a/e', landing: ['utm_term', 'twclid'] } },
+      tracking: { landing: ['utm_term'] }
+    })
+    expect(t.landing).toEqual({ utm_term: 'a1' })
+  })
+
+  it('captures nothing when neither names any', () => {
+    const t = arrivedWith(AD, { services: { tracking: { endpoint: '/_a/e' } } })
+    expect(t.landing).toBeNull()
+  })
+})

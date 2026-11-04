@@ -28,7 +28,7 @@ import { getComponentMeta } from './prepare-props.js'
 import { createDefaultFetcher } from './default-fetcher.js'
 import { requireTransport } from './require-transport.js'
 import { blocksOf } from './page-blocks.js'
-import { loadPageIcons } from './page-icons.js'
+import { pageIcons, dataIcons, iconRequests } from './page-icons.js'
 
 /**
  * Fetch what one route's render will read.
@@ -54,9 +54,10 @@ import { loadPageIcons } from './page-icons.js'
  *   fresh, and the default (a cache per call) is what does that. A shared cache changes nothing
  *   about what is ASKED or returned — every request is still recorded, hit or miss, and whether a
  *   record is held whole already is answered from this call's own requests, never the cache's.
- * @param {boolean} [options.icons] - also ask for the icons the page's content names, and keep them on
- *   the graph for the render (`page-icons.js`). They are not entries of the list this returns. A
- *   caller that has its own answer for icons, as a static build does, says `false`.
+ * @param {boolean} [options.icons] - also ask for the icons the site names for the page, in its
+ *   sections and in the records it fetched, and keep them on the graph for the render
+ *   (`page-icons.js`). They are not entries of the list this returns. A caller that has its own
+ *   answer for icons, as a static build does, says `false`.
  * @returns {Promise<Array<{ config: Object, outcome: 'fetched'|'failed'|'skipped', data: *, meta?: Object, error?: string }>>}
  *   one entry per request the render will make, keyed downstream by `deriveCacheKey(config)`.
  *   ⛔ The page's data and nothing else: a host counts this list to decide how long to keep the
@@ -150,6 +151,7 @@ export async function loadPageData({ website, route, fetch, dev = false, locale 
 
   const store = website.entityStore
   const blocks = blocksOf(page)
+  const askIcons = icons && iconCache ? iconRequests({ website, fetch, cache: iconCache }) : null
   // ⭐ Every block's first request goes out in the same tick, which is what lets a question door
   // answer a page in one POST. A step that depends on an answer takes a later one, and only its
   // own key waits.
@@ -158,8 +160,12 @@ export async function loadPageData({ website, route, fetch, dev = false, locale 
     // page names itself from it and a URL naming no record is a 404.
     store.fetchPageRecord(page, { dispatcher: recording }),
     ...blocks.map((block) => store.fetch(block, getComponentMeta(block.type), { dispatcher: recording })),
-    icons && iconCache && loadPageIcons({ blocks, website, fetch, cache: iconCache }),
+    askIcons?.(pageIcons(blocks)),
   ])
+  // ⭐ A record names icons too (a service's `icon`), and only its answer says which: a second
+  // round, after the data, for what the first did not ask. A page whose records name none, or
+  // only icons the graph holds, waits for nothing more.
+  if (askIcons) await askIcons(dataIcons([...entries.values()].map((entry) => entry.data)))
 
   return [...entries.values()]
 }

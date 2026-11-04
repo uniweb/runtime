@@ -43,6 +43,7 @@ const foundation = {
       Nav: { data: { menu: null } },
       Toc: { data: { toc: null } },
       Plain: {}, // declares nothing, so nothing reaches it
+      Badge: { defaults: { badge: 'lu-award' } }, // a type whose default param names an icon
     },
     capabilities: { transports: { mine: siteTransport } },
   },
@@ -614,5 +615,92 @@ describe('a page’s icons', () => {
   it('asks for none where the site says `cdn: false`, or where the caller has its own answer', async () => {
     expect((await step(iconSite([iconSection(icon('lu', 'house'))], { icons: { cdn: false } }))).asked).toEqual([])
     expect((await step(iconSite([iconSection(icon('lu', 'house'))]), undefined, { icons: false })).asked).toEqual([])
+  })
+
+  // ⭐ WHAT A SITE NAMES OUTSIDE ITS CONTENT: a section's params, its type's defaults, a tagged data
+  // block, the records a page fetched. Known by value, a string that is exactly a reference.
+  const records = (list) => ({ ...answer(JSON.stringify(list)), headers: { get: () => 'application/json' } })
+  const recordSite = (sections = [section('PostList')]) => ({
+    ...site({ pages: [{ route: '/icons', title: 'Icons', fetch: { query: 'posts', as: 'posts' }, sections }] }),
+    layouts: {},
+  })
+  const serving = (list, svg = async () => answer(SVG)) =>
+    vi.fn((url) => (String(url).endsWith('.svg') ? svg(url) : Promise.resolve(records(list))))
+  const icons = (asked) => asked.filter((url) => url.endsWith('.svg')).sort()
+
+  it('⭐ finds an icon a section’s params name, and one its type’s defaults name', async () => {
+    const { cache, entries } = await step(iconSite([section('Badge', { params: { icon: 'lu-star' } })]))
+    expect([...cache.keys()].sort()).toEqual(['lu:award', 'lu:star'])
+    expect(entries).toEqual([])
+  })
+
+  it('finds an icon in the data a section holds: a tagged data block', async () => {
+    const block = { type: 'dataBlock', attrs: { tag: 'features', language: 'yaml', data: [{ title: 'Fast', icon: 'lu-zap' }] } }
+    const { cache } = await step(iconSite([section('Plain', { content: { type: 'doc', content: [block] } })]))
+    expect([...cache.keys()]).toEqual(['lu:zap'])
+  })
+
+  it('⭐ asks, after the data, for the icons the fetched records name, and reports only the data', async () => {
+    const fetch = serving([
+      { $name: 'a', title: 'A', icon: 'lu-baby' },
+      { $name: 'b', title: 'B', icon: 'hi2-star', body: doc(icon('lu', 'heart')) },
+      { $name: 'c', title: 'C', icon: 'lu-baby' },
+    ])
+    const { entries, cache, asked } = await step(recordSite(), fetch)
+    expect(entries.map((entry) => [entry.config.as, entry.outcome])).toEqual([['posts', 'fetched']])
+    expect(icons(asked)).toEqual([
+      'https://uniweb.github.io/icons/hi2/hi2-star.svg',
+      'https://uniweb.github.io/icons/lu/lu-baby.svg',
+      'https://uniweb.github.io/icons/lu/lu-heart.svg',
+    ])
+    expect([...cache.keys()].sort()).toEqual(['hi2:star', 'lu:baby', 'lu:heart'])
+  })
+
+  it('⛔ asks for a value only when it is exactly a reference', async () => {
+    const fetch = serving([{
+      $name: 'a',
+      title: 'Call lu-phone now',
+      url: 'https://example.test/lu-house',
+      time: '9:30',
+      tag: 'zz-nope',
+      shout: 'LU-BABY',
+      count: 3,
+      open: true,
+    }])
+    const { asked } = await step(recordSite(), fetch)
+    expect(icons(asked)).toEqual([])
+  })
+
+  it('asks once for an icon both rounds name, and no more than the bound over both', async () => {
+    const named = Array.from({ length: MAX_ICON_REQUESTS - 1 }, (_, i) => icon('lu', `n${i}`))
+    const fetch = serving([{ $name: 'a', title: 'A', icon: 'lu-n0' }, { $name: 'b', title: 'B', icon: 'lu-more' }, { $name: 'c', title: 'C', icon: 'lu-most' }])
+    const { asked } = await step(recordSite([section('PostList', { content: doc(...named) })]), fetch)
+    expect(icons(asked)).toHaveLength(MAX_ICON_REQUESTS)
+    expect(icons(asked)).toContain('https://uniweb.github.io/icons/lu/lu-more.svg')
+    expect(icons(asked)).not.toContain('https://uniweb.github.io/icons/lu/lu-most.svg')
+  })
+
+  it('⛔ a record’s slow icon does not hold the page past the wait', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetch = serving([{ $name: 'a', title: 'A', icon: 'lu-slow' }], () => new Promise(() => {}))
+      const uniweb = initPrerender(recordSite(), foundation, [])
+      let done = false
+      const stepped = loadPageData({ website: uniweb.activeWebsite, route: '/icons', fetch }).then(() => { done = true })
+      await vi.advanceTimersByTimeAsync(ICON_WAIT_MS - 1)
+      expect(done, 'still within the wait').toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      await stepped
+      expect(done).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('asks for no record’s icons where the site says `cdn: false`, or where the caller has its own answer', async () => {
+    const list = [{ $name: 'a', title: 'A', icon: 'lu-baby' }]
+    const off = { ...recordSite(), config: { ...recordSite().config, icons: { cdn: false } } }
+    expect(icons((await step(off, serving(list))).asked)).toEqual([])
+    expect(icons((await step(recordSite(), serving(list), { icons: false })).asked)).toEqual([])
   })
 })

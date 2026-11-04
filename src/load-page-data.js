@@ -56,8 +56,8 @@ import { pageIcons, dataIcons, iconRequests } from './page-icons.js'
  *   record is held whole already is answered from this call's own requests, never the cache's.
  * @param {boolean} [options.icons] - also ask for the icons the site names for the page, in its
  *   sections and in the records it fetched, and keep them on the graph for the render
- *   (`page-icons.js`). They are not entries of the list this returns. A caller that has its own
- *   answer for icons, as a static build does, says `false`.
+ *   (`page-icons.js`). They are not entries of the list this returns. A caller with its own
+ *   answer for icons says `false`; a static build says `true`, beside the site-wide prefetch.
  * @returns {Promise<Array<{ config: Object, outcome: 'fetched'|'failed'|'skipped', data: *, meta?: Object, error?: string }>>}
  *   one entry per request the render will make, keyed downstream by `deriveCacheKey(config)`.
  *   ⛔ The page's data and nothing else: a host counts this list to decide how long to keep the

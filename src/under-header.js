@@ -17,7 +17,9 @@
  * The opening section keeps its content clear of the header by `--uw-header-height`, which the
  * runtime gives its wrapper: the header type's `height` on the first paint, which no prerender can
  * measure, then what the browser measures. The header reads `getNextBlockInfo().underHeader` to
- * paint itself see-through, and its box says `data-uw-header="over"` for a stylesheet.
+ * paint itself see-through, and its box says `data-uw-header="over"` for a stylesheet. Its type
+ * says `background: 'self'` and paints its own bar: otherwise the theme paints the header's section
+ * with its surface, a solid band over the opening section (measured 2026-11-06).
  */
 
 /** The header's height, on the opening section's wrapper: what its content is padded by. */

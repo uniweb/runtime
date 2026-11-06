@@ -38,7 +38,6 @@ import { resolveRequestedPage } from './resolve-page.js'
 import { hydrateDataStore } from './wire-foundation.js'
 import { loadPageData } from './load-page-data.js'
 import { requireTransport } from './require-transport.js'
-import { restoreStartPage } from './start-page.js'
 import { whileReadingIcons } from './page-icons.js'
 
 /**
@@ -152,15 +151,11 @@ export function createPageRenderer({ website, shell }) {
     // host that answered by the outcome sent 200 for a URL naming no record.
     const missing = !named || page?.notFound === true
 
-    // ⭐ EVERY RENDER STARTS FROM THE ACTIVE PAGE THE WEBSITE STARTED WITH (`start-page.js`),
-    // then makes active the page the route names, as the browser's boot does (`index.jsx`).
-    // `renderPage` then makes the page it renders active by its route, and the not-found page
-    // has none: it renders with the page a route served from elsewhere names, as in the browser,
-    // or with the start page. ⛔ Until 2026-10-26 it rendered with whatever page this Website
-    // rendered last, so on a Website reused across requests its header could show the previous
-    // request's page.
-    restoreStartPage(website)
-    if (typeof target === 'string') website.setActivePage(target)
+    // ⭐ `renderPage` makes the page it renders active, by the Page, the not-found page included,
+    // so no render sees the page an earlier request rendered. ⛔ Until 2026-10-26 the not-found
+    // page rendered with whatever page this Website rendered last, so on a Website reused across
+    // requests its header could show the previous request's page; until 2026-11-06 it rendered with
+    // the page the Website started with (or a page served from elsewhere that the route named).
     // ⭐ The page carries the icons it drew, so the browser's first render draws them too.
     const icons = new Map()
     let result

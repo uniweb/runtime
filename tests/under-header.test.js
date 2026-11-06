@@ -14,6 +14,7 @@ import { initPrerender, renderLayout } from '../src/ssr-renderer.js'
 import Layout from '../src/components/Layout.jsx'
 import { headerOverlay, overlayBoxProps, underHeaderProps } from '../src/under-header.js'
 import { measureStickyTop, measureHeaderOverlay } from '../src/sticky-top.js'
+import { createPageRenderer } from '../src/page-renderer.js'
 
 const Nav = () => React.createElement('nav', null, 'Menu')
 const Hero = () => React.createElement('h1', null, 'Hello')
@@ -162,5 +163,35 @@ describe('the measurement: a header over the opening section reaches what it hol
     const { doc, body } = page({ overHeader: false })
     expect(measureStickyTop(doc, body)).toBe(65)
     expect(measureHeaderOverlay(doc)).toBeNull()
+  })
+})
+
+describe('the header and the runtime read the same page', () => {
+  // A header that says what it reads on its next block, the page's opening section.
+  const Reader = ({ block }) => React.createElement('nav', null, `under:${Boolean(block.getNextBlockInfo()?.underHeader)}`)
+  const SHELL = '<html><head></head><body><div id="root"></div></body></html>'
+
+  function reader() {
+    const f = foundation({ meta: { Reader: { sticky: true, height: '4rem' } } })
+    f.Reader = Reader
+    const content = site()
+    content.layouts.default.header.sections = [section('Reader')]
+    content.pages.push({ route: '/404', title: 'Not found', sections: [section('Text')] })
+    const website = initPrerender(structuredClone(content), f, []).activeWebsite
+    return { website, renderer: createPageRenderer({ website, shell: SHELL }) }
+  }
+
+  it('⭐ on the not-found page, after a page that opens under the header, the header reads the not-found page', () => {
+    // Home opens with a Hero under the header; a missing page opens with a Text. ⛔ Until 2026-11-06
+    // the not-found page rendered with another page active, so the header read that page's Hero and
+    // painted itself see-through while the runtime kept it in the flow.
+    const { renderer } = reader()
+    const home = renderer.render('/', { fetchedData: [] }).html
+    expect(home).toContain('under:true')
+    expect(home).toContain('data-uw-header="over"')
+    const missing = renderer.render('/no-such-page', { fetchedData: [] })
+    expect(missing.outcome).toBe('notFound')
+    expect(missing.html).toContain('under:false')
+    expect(missing.html).not.toContain('data-uw-header')
   })
 })

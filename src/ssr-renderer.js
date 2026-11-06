@@ -38,7 +38,6 @@ import { headerOverlay, overlayBoxProps, openingUnderHeader, underHeaderProps } 
 import { DefaultLayout } from './default-layout.js'
 import { renderAppearanceBootScript } from './appearance.js'
 import { documentTitle } from './document-title.js'
-import { recordStartPage } from './start-page.js'
 import { escapeHtml } from '@uniweb/core/page-shell'
 import { jsonForScript } from '@uniweb/core/data-script'
 
@@ -376,8 +375,6 @@ export function initPrerender(content, foundation, extensionsOrOptions, maybeOpt
   // Uniweb constructor wires foundation, capabilities, layoutMeta, handlers,
   // and extensions at construction time — see `@uniweb/core`'s src/uniweb.js.
   const uniweb = createUniweb(content, foundation, extensions)
-  // Before anything renders: the active page every render starts from (`start-page.js`).
-  recordStartPage(uniweb.activeWebsite)
 
   // Set base path from site config for subdirectory deployments
   if (content.config?.base && uniweb.activeWebsite?.setBasePath) {
@@ -415,12 +412,8 @@ export function initPrerender(content, foundation, extensionsOrOptions, maybeOpt
   ensureThemeCss(uniweb, foundation)
 
   // Register SSR-safe routing so useRouting()/useActiveRoute() work during prerender.
-  // renderPage() calls website.setActivePage() before rendering each page,
-  // so activePage.route reflects the page being rendered — except the site's
-  // not-found page, which no route names. Through `createPageRenderer` it renders
-  // with the page a route served from elsewhere names, else the page the Website
-  // starts with (`start-page.js`); through `generate404Html`, with the page
-  // rendered last.
+  // renderPage() makes the page it renders active before rendering it, so
+  // activePage.route is the page being rendered, the not-found page included.
   const website = uniweb.activeWebsite
   uniweb.routingComponents = {
     useLocation: () => {
@@ -548,11 +541,13 @@ export function classifyRenderError(err) {
  * @returns {{ renderedContent: string, sectionOverrideCSS: string } | { error: { type: string, message: string } }}
  */
 export function renderPage(page, website) {
-  // ⛔ The site's not-found page is never made active by its route. No route names it, and on a
-  // site whose parametric page matches `/404` (a root `/:slug`) that route names THAT page, which
-  // then rendered as the active one. It renders with the active page it finds: the Website's
-  // first, through `createPageRenderer` (`start-page.js`), as in the browser.
-  if (page !== website.getNotFoundPage()) website.setActivePage(page.route)
+  // ⭐ The page it renders is the active one, by the Page itself, as in the browser
+  // (`PageRenderer.jsx`): whatever adapts to the page — a header reading its next block, the
+  // language switcher, page state, a contents rail — reads the page on screen. ⛔ Until 2026-11-06
+  // it was made active by its route. The site's not-found page has none (on a site whose
+  // parametric page matches `/404`, that route names THAT page), so it rendered with another page
+  // active, and a parametric page whose records were not held yet was made anew by the lookup.
+  website.setActivePage(page)
 
   // A page that claims content but yields no blocks has not been loaded — it is
   // not an empty page. `Page#bodyBlocks` returns [] when its sections are absent

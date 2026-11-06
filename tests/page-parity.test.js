@@ -163,12 +163,15 @@ function browserFirst(route, fetchedData) {
 /**
  * The browser's first render at a `path` that names no page, or names a page served from elsewhere
  * that the host did not proxy: the boot makes the page the path names active, so none for the
- * first (`index.jsx`), and `PageRenderer` draws the site's not-found page through the same `Layout`.
+ * first (`index.jsx`), and `PageRenderer` makes the site's not-found page active and draws it
+ * through the same `Layout`.
  */
 function browserNotFound(path, content = site) {
   const browserSite = initUniweb({ content: { ...structuredClone(content), fetchedData: [] }, foundation }).activeWebsite
   browserSite.setActivePage(path)
-  return renderToString(h(Layout, { page: browserSite.getNotFoundPage(), website: browserSite }))
+  const page = browserSite.getNotFoundPage()
+  browserSite.setActivePage(page)
+  return renderToString(h(Layout, { page, website: browserSite }))
 }
 
 describe('a whole page renders the same in the browser as in the prerender', () => {
@@ -281,15 +284,16 @@ describe('⭐ one Website reused across requests renders each against what its p
     expect(second).not.toBe(browserFirst('/posts/a', edited(posts)))
   })
 
-  it('⭐ a URL naming no page is the site’s not-found page, with the active page the browser starts with', async () => {
-    // A request after another one: the not-found page has no route to be made active by, so it
-    // renders with the page the Website started with, as the browser's first render does there.
-    const { renderer } = await reused()
+  it('⭐ a URL naming no page is the site’s not-found page, itself the active page, as in the browser', async () => {
+    // A request after another one: what adapts to the page — a header, the language switcher —
+    // reads the page on screen, never the page an earlier request rendered (2026-11-06).
+    const { website, renderer } = await reused()
     renderer.render('/who', { fetchedData: [] })
     const r = renderer.render('/no-such-page', { fetchedData: [] })
     expect(r.outcome).toBe('notFound')
     expect(rootOf(r.html)).toBe(browserNotFound('/no-such-page'))
-    expect(rootOf(r.html)).toContain('<p class="active">/</p>')
+    expect(rootOf(r.html)).toContain('<p class="active">/404</p>')
+    expect(website.activePage).toBe(website.getNotFoundPage())
   })
 
   it('…and so is the not-found page handed in as a Page, after another request', async () => {
@@ -297,49 +301,51 @@ describe('⭐ one Website reused across requests renders each against what its p
     renderer.render('/who', { fetchedData: [] })
     const html = rootOf(renderer.render(website.getNotFoundPage(), { fetchedData: [] }).html)
     expect(html).toBe(browserNotFound('/no-such-page'))
-    expect(html).toContain('<p class="active">/</p>')
+    expect(html).toContain('<p class="active">/404</p>')
   })
 
-  it('…and on a site whose root parametric page matches `/404`, that page is not made active', () => {
+  it('…and on a site whose root parametric page matches `/404`, it is still the not-found page that is active', () => {
     // The not-found page's own route, `/404`, names a page here: `/:slug` with slug `404`. A path
-    // of two segments names nothing, so it is the not-found page that renders.
+    // of two segments names nothing, so it is the not-found page that renders, and is active.
     const slugSite = { ...site, pages: [...site.pages, { route: '/:slug', isDynamic: true, paramName: 'slug', title: 'Slug', sections: [section('Hero')] }] }
     const website = initPrerender(structuredClone(slugSite), foundation, []).activeWebsite
     const r = createPageRenderer({ website, shell: SHELL }).render('/no/such-page', { fetchedData: [] })
     expect(r.outcome).toBe('notFound')
     expect(rootOf(r.html)).toBe(browserNotFound('/no/such-page', slugSite))
-    expect(rootOf(r.html)).toContain('<p class="active">/</p>')
+    expect(website.activePage).toBe(website.getNotFoundPage())
+    expect(rootOf(r.html)).not.toContain('<h1>')
   })
 
   // A page served from elsewhere, which the host did not proxy: a request for it reached the renderer.
   const shopSite = { ...site, pages: [...site.pages, { route: '/shop', title: 'Shop', rewrite: 'https://shop.example.com/', sections: [section('Hero', { title: 'Shop' })] }] }
 
-  it('⭐ a URL naming a page served from elsewhere is the not-found page, with that page active, as in the browser', async () => {
-    // The browser's first load of it draws the not-found page, and its boot has made the page the URL
-    // names active (`index.jsx`, `PageRenderer.jsx`). After another request, as a host renders.
+  it('⭐ a URL naming a page served from elsewhere is the not-found page, itself active, as in the browser', async () => {
+    // The browser's first load of it draws the not-found page (`PageRenderer.jsx`). After another
+    // request, as a host renders.
     const website = initPrerender(structuredClone(shopSite), foundation, []).activeWebsite
     const renderer = createPageRenderer({ website, shell: SHELL })
     renderer.render('/who', { fetchedData: [] })
     const r = renderer.render('/shop', { fetchedData: [] })
     expect(r.outcome).toBe('notFound')
     expect(rootOf(r.html)).toBe(browserNotFound('/shop', shopSite))
-    expect(rootOf(r.html)).toContain('<p class="active">/shop</p>')
+    expect(rootOf(r.html)).toContain('<p class="active">/404</p>')
     expect(rootOf(r.html)).not.toContain('<h1>Shop</h1>')
   })
 
-  it('CONTROL — the not-found page handed in as a Page has the start page active, as the browser does not there', () => {
-    // A Page carries no URL, so nothing names the page the browser has active at `/shop`.
+  it('the not-found page handed in as a Page renders as the browser draws it at `/shop`', () => {
+    // ⛔ Until 2026-11-06 a Page carried no URL, so it rendered with the start page active while the
+    // browser had the page `/shop` names: the two differed.
     const website = initPrerender(structuredClone(shopSite), foundation, []).activeWebsite
     const html = rootOf(createPageRenderer({ website, shell: SHELL }).render(website.getNotFoundPage(), { fetchedData: [] }).html)
-    expect(html).toContain('<p class="active">/</p>')
-    expect(html).not.toBe(browserNotFound('/shop', shopSite))
+    expect(html).toBe(browserNotFound('/shop', shopSite))
   })
 
-  it('CONTROL — rendered past the door after another page, the not-found page keeps that page active', async () => {
-    // What `generate404Html` does: `renderPage` alone, which cannot make the not-found page active.
+  it('rendered past the door after another page, the not-found page is active itself', async () => {
+    // What `generate404Html` does: `renderPage` alone. ⛔ Until 2026-11-06 it kept the page
+    // rendered last active, here `/who`.
     const { website, renderer } = await reused()
     renderer.render('/who', { fetchedData: [] })
-    expect(renderPage(website.getNotFoundPage(), website).renderedContent).toContain('<p class="active">/who</p>')
+    expect(renderPage(website.getNotFoundPage(), website).renderedContent).toContain('<p class="active">/404</p>')
   })
 })
 

@@ -126,13 +126,12 @@ export default function PageRenderer() {
 
   // ⭐ WHAT THE URL NAMES — `Website#resolveRoute`, the one rule every lane calls
   // (`@uniweb/core/resolve-route`): a page, a redirect, a page served from elsewhere, or
-  // nothing. Resolved synchronously (not in an effect) so child components like Header see the
-  // correct activePage during the same render cycle.
+  // nothing. Resolved synchronously (not in an effect), and the page drawn made active below,
+  // so child components like Header see it during the same render cycle.
   const navigate = useNavigate()
 
   const resolution = website?.resolveRoute?.(location.pathname) ?? null
   let page = resolution && resolution.kind !== 'notFound' ? resolution.page : null
-  if (page && website) website.setActivePage(location.pathname)
 
   // ─── Content loading (split page content) ───
   // On first load, the current page's sections are pre-embedded → contentReady = true.
@@ -181,6 +180,13 @@ export default function PageRenderer() {
   if (isNotFound) {
     page = website?.getNotFoundPage?.() || null
   }
+
+  // ⭐ THE PAGE DRAWN IS THE ACTIVE ONE, by the Page itself, as the prerender makes it
+  // (`renderPage`): a header reading its next block, the language switcher, page state and a
+  // contents rail all read the page on screen, the not-found page included. ⛔ Until 2026-11-06 it
+  // was made active by the URL, so the not-found page drew with another page active, and a
+  // parametric page whose records were not held yet was looked up anew, another Page than this one.
+  if (page && website) website.setActivePage(page)
 
   // Head metadata — compute for all cases (redirect pages get a fallback)
   const headMeta = page?.getHeadMeta?.() || {

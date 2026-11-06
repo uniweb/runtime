@@ -25,6 +25,13 @@
  * Table parts are left out: a sticky table header cell sticks within its table, though its row is
  * no taller than it is. So is a child section the runtime made sticky (`data-uw-sticky="child"`):
  * with no room — stacked at one column, or the tallest in its row — it does not stick, by design.
+ * And so is an element whose box is sticky itself: the box moves, and the element with it — the
+ * runtime's area wrapper inside a layout's own element that `page.isSticky(area)` made sticky, as
+ * the docs say to. ⛔ Until 2026-11-06 that layout was told to do what it had done.
+ *
+ * ⭐ A header over the page's opening section is checked too (`under-header.js`): when what it
+ * holds takes no room, a bar made `fixed` or `absolute`, the runtime measures 0px, so the section
+ * is not cleared and a link to a section lands under the bar — and nothing else says why.
  *
  * And an element that sits in a box that CLIPS — `overflow: hidden`, or `overflow-x: hidden`
  * alone, which makes the box scroll vertically too — sticks to that box in place of the page,
@@ -32,6 +39,8 @@
  * warning names `overflow: clip`, which clips and keeps it sticking. A box that really scrolls
  * (a layout's own scrolling `<main>`) is the element's scroller, and is left alone.
  */
+
+import { measureHeaderOverlay } from './sticky-top.js'
 
 const warned = new WeakSet()
 
@@ -125,10 +134,37 @@ export function unmovableAdvice(el) {
   )
 }
 
+/**
+ * The box of a header over the opening section, when what it holds takes no room though some of
+ * it is drawn: a bar out of the flow — or null.
+ *
+ * @param {Document} doc
+ * @returns {Element|null}
+ */
+export function headerOutOfFlow(doc) {
+  const box = doc.querySelector?.('[data-uw-header="over"]')
+  if (!box || measureHeaderOverlay(doc) !== 0) return null
+  const drawn = [...box.querySelectorAll('*')].some((el) => el.getBoundingClientRect().height > 0)
+  return drawn ? box : null
+}
+
 /** Warn, once per element, about each sticky element on the page that cannot move. */
 function checkPage(doc) {
+  const header = headerOutOfFlow(doc)
+  if (header && !warned.has(header)) {
+    warned.add(header)
+    console.warn(
+      '[uniweb] The header lies over the page\'s opening section, but what it holds takes no room: a bar ' +
+        'made `fixed` or `absolute` leaves the runtime nothing to measure, so the section is cleared by ' +
+        '0px and a link to a section lands under the bar. Keep the bar in the flow; the runtime lays ' +
+        'the header over the section and keeps it stuck.',
+      header,
+    )
+  }
   for (const el of doc.body.querySelectorAll('*')) {
     if (warned.has(el) || getComputedStyle(el).position !== 'sticky') continue
+    const parent = boxParent(el)
+    if (parent && getComputedStyle(parent).position === 'sticky') continue
     const clip = clippingAncestor(el)
     if (clip) {
       warned.add(el)

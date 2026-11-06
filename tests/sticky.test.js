@@ -196,6 +196,23 @@ describe('the dev warning measures the settled page (warnUnmovableSticky)', () =
     expect(warn).not.toHaveBeenCalled()
   })
 
+  it('⭐ a box inside a box that sticks itself is left alone: the runtime\'s area wrapper in a layout\'s sticky element', async () => {
+    // The layout made its own element sticky by `page.isSticky('header')`, as the docs say; the
+    // runtime's area wrapper inside it is as tall as it is, and moves with it.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const visible = { display: 'block', overflowX: 'visible', overflowY: 'visible' }
+    const stuckStyle = { ...visible, position: 'sticky', top: '0px', bottom: 'auto', left: 'auto', right: 'auto' }
+    const page = { _style: visible, parentElement: null, getAttribute: () => null, getBoundingClientRect: () => ({ height: 3000, width: 1000 }) }
+    const layoutHeader = { _style: stuckStyle, parentElement: page, getAttribute: () => null, getBoundingClientRect: () => ({ height: 75, width: 1000 }) }
+    const area = { _style: stuckStyle, parentElement: layoutHeader, getAttribute: (n) => (n === 'data-uw-sticky' ? 'area' : null), getBoundingClientRect: () => ({ height: 75, width: 1000 }) }
+    const doc = { body: { querySelectorAll: () => [layoutHeader, area] } }
+    layoutHeader.ownerDocument = area.ownerDocument = doc
+    warnUnmovableSticky(doc, { settled: () => Promise.resolve() })
+    await frames()
+    await frames()
+    expect(warn).not.toHaveBeenCalled()
+  })
+
   it('CONTROL — still no room once the data is in, and it says so then', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { doc, records, answer } = catalogPage()

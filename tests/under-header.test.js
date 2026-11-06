@@ -15,6 +15,7 @@ import Layout from '../src/components/Layout.jsx'
 import { headerOverlay, overlayBoxProps, underHeaderProps } from '../src/under-header.js'
 import { measureStickyTop, measureHeaderOverlay } from '../src/sticky-top.js'
 import { createPageRenderer } from '../src/page-renderer.js'
+import { headerOutOfFlow } from '../src/sticky-check.js'
 
 const Nav = () => React.createElement('nav', null, 'Menu')
 const Hero = () => React.createElement('h1', null, 'Hello')
@@ -163,6 +164,34 @@ describe('the measurement: a header over the opening section reaches what it hol
     const { doc, body } = page({ overHeader: false })
     expect(measureStickyTop(doc, body)).toBe(65)
     expect(measureHeaderOverlay(doc)).toBeNull()
+  })
+})
+
+describe('uniweb dev names a header over the opening section whose bar is out of the flow', () => {
+  const rect = (top, height) => ({ top, height, bottom: top + height, left: 0, width: 1000, right: 1000 })
+  function doc({ barInFlow }) {
+    // The bar the header draws, and the section's wrapper around it, the box's child.
+    const bar = { getBoundingClientRect: () => rect(0, 65) }
+    const wrapper = { getBoundingClientRect: () => rect(0, barInFlow ? 65 : 0) }
+    const box = {
+      children: [wrapper],
+      querySelectorAll: () => [wrapper, bar],
+      getAttribute: (name) => (name === 'data-uw-header' ? 'over' : null),
+      getBoundingClientRect: () => rect(0, 0),
+    }
+    return { querySelector: (selector) => (selector.includes('over') ? box : null) }
+  }
+
+  it('⭐ a bar made fixed or absolute: what the header holds measures 0px, though it is drawn', () => {
+    expect(headerOutOfFlow(doc({ barInFlow: false }))).toBeTruthy()
+  })
+
+  it('CONTROL — a bar in the flow is measured, and named nowhere', () => {
+    expect(headerOutOfFlow(doc({ barInFlow: true }))).toBeNull()
+  })
+
+  it('CONTROL — a page with no header over its opening section', () => {
+    expect(headerOutOfFlow({ querySelector: () => null })).toBeNull()
   })
 })
 

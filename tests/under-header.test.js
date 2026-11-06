@@ -72,9 +72,11 @@ describe('the built-in layout: the header’s zone over the opening section', ()
     expect(prerender).toContain('<header style="position:sticky;top:0px;z-index:2;height:0;min-height:0" data-uw-sticky="area" data-uw-header="over">')
   })
 
-  it('⭐ the opening section clears it by --uw-header-height: the declared height until measured', () => {
+  it('⭐ the opening section carries the declared height and the mark the stylesheet pads it by', () => {
+    // `--uw-header-height` itself is the page stylesheet's (`@uniweb/theming`): measured, else declared,
+    // where a header box lies over the page, and 0px where the layout drew none.
     const { prerender } = bothWays(site())
-    expect(prerender).toContain('<section id="section-0" style="scroll-margin-top:var(--uw-sticky-top, 0px);--uw-header-height:var(--uw-header-measured, 4rem)" class="" data-uw-under-header=""><h1>Hello</h1>')
+    expect(prerender).toContain('<section id="section-0" style="scroll-margin-top:var(--uw-sticky-top, 0px);--uw-header-declared:4rem" class="" data-uw-under-header=""><h1>Hello</h1>')
     // only the opening section
     expect(prerender.match(/data-uw-under-header/g)).toHaveLength(1)
   })
@@ -83,7 +85,7 @@ describe('the built-in layout: the header’s zone over the opening section', ()
     const { browser, prerender } = bothWays(site([section('Hero', { underHeader: false }), section('Text')]))
     expect(prerender).toBe(browser)
     expect(prerender).not.toContain('data-uw-header')
-    expect(prerender).not.toContain('--uw-header-height')
+    expect(prerender).not.toContain('--uw-header-declared')
   })
 
   it('CONTROL — a page that opens with a section not under the header, and one under it further down', () => {
@@ -92,9 +94,9 @@ describe('the built-in layout: the header’s zone over the opening section', ()
     expect(prerender).not.toContain('data-uw-under-header')
   })
 
-  it('a header type with no `height` is cleared from 0px until the browser measures it', () => {
+  it('a header type with no `height` declares 0px, until the browser measures it', () => {
     const { prerender } = bothWays(site(), { meta: { Nav: { sticky: true } } })
-    expect(prerender).toContain('--uw-header-height:var(--uw-header-measured, 0px)')
+    expect(prerender).toContain('--uw-header-declared:0px')
   })
 
   it('a header that does not stick lies over the section too', () => {
@@ -162,21 +164,21 @@ describe('a foundation layout’s header area has the same elements on every pag
 describe('headerOverlay — the page’s decision', () => {
   it('sums the heights of a header with several sections', () => {
     const page = {
-      getBodyBlocks: () => [{ underHeader: true }],
+      getBodyBlocks: () => [{ liesUnderHeader: () => true }],
       getLayoutAreas: () => ({ header: [{ height: '2rem' }, { height: '4rem' }, {}] }),
     }
     expect(headerOverlay(page)).toEqual({ height: 'calc(2rem + 4rem)' })
   })
 
-  it('CONTROL — no header area, no overlay', () => {
-    expect(headerOverlay({ getBodyBlocks: () => [{ underHeader: true }], getLayoutAreas: () => ({}) })).toBeNull()
+  it('CONTROL — a section the header does not lie over (core’s `liesUnderHeader`), no overlay', () => {
+    expect(headerOverlay({ getBodyBlocks: () => [{ liesUnderHeader: () => false }], getLayoutAreas: () => ({ header: [{}] }) })).toBeNull()
   })
 
   it('keeps what a box already has', () => {
     expect(overlayBoxProps({ style: { zIndex: 2 }, 'data-uw-sticky': 'area' })).toEqual({
       style: { zIndex: 2, height: 0, minHeight: 0 }, 'data-uw-sticky': 'area', 'data-uw-header': 'over',
     })
-    expect(underHeaderProps({ height: '4rem' }).style).toEqual({ '--uw-header-height': 'var(--uw-header-measured, 4rem)' })
+    expect(underHeaderProps({ height: '4rem' }).style).toEqual({ '--uw-header-declared': '4rem' })
   })
 })
 
@@ -206,11 +208,6 @@ describe('the measurement: a header over the opening section reaches what it hol
     const { doc, body } = page({ overHeader: true })
     expect(measureStickyTop(doc, body)).toBe(65)
     expect(measureHeaderOverlay(doc)).toBe(65)
-  })
-
-  it('⭐ a page under the header whose layout drew no header is cleared by 0px, not the declared height', () => {
-    const doc = { querySelector: (selector) => (selector.includes('under-header') ? {} : null) }
-    expect(measureHeaderOverlay(doc)).toBe(0)
   })
 
   it('CONTROL — a header in the flow is measured by its own box, and no overlay is measured', () => {
@@ -274,6 +271,32 @@ describe('the header and the runtime read the same page', () => {
     const missing = renderer.render('/no-such-page', { fetchedData: [] })
     expect(missing.outcome).toBe('notFound')
     expect(missing.html).toContain('under:false')
-    expect(missing.html).not.toContain('data-uw-header')
+    // an element marked, not the page stylesheet's rule that keys on the mark
+    expect(missing.html).not.toMatch(/<[^>]+ data-uw-header="over"/)
+  })
+})
+
+describe('a header in an area named otherwise reads the truth', () => {
+  // A layout's top area called `topbar`: the runtime lays nothing over the opening section, so a header
+  // there must not read that it lies over it, or it paints itself see-through in the flow.
+  it('⭐ getNextBlockInfo().underHeader is false there, and the runtime lays nothing over', () => {
+    const Reader = ({ block }) => React.createElement('nav', null, `under:${Boolean(block.getNextBlockInfo()?.underHeader)}`)
+    const Top = ({ topbar, body }) => React.createElement('div', { 'data-layout': 'top' }, topbar, React.createElement('main', null, body))
+    const f = {
+      default: {
+        meta: { Reader: { height: '4rem' }, Hero: { underHeader: true }, Text: {} },
+        capabilities: { layouts: { Top }, defaultLayout: 'Top' },
+        layoutMeta: { Top: { areas: ['topbar'] } },
+      },
+      Reader, Hero, Text, Top,
+    }
+    const content = site()
+    content.layouts.default = { topbar: { route: '/layout/topbar', sections: [section('Reader')] } }
+    const website = initPrerender(structuredClone(content), f, []).activeWebsite
+    const page = website.getPage('/')
+    const html = renderToStaticMarkup(renderLayout(page, website))
+    expect(html).toContain('under:false')
+    expect(html).not.toContain('data-uw-header')
+    expect(html).not.toContain('data-uw-under-header')
   })
 })

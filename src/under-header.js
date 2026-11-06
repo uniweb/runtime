@@ -28,6 +28,9 @@ export const HEADER_HEIGHT = '--uw-header-height'
 /** What the browser measured, on the root, which the opening section's value defers to. */
 export const MEASURED_HEADER_HEIGHT = '--uw-header-measured'
 
+/** The header types' declared height, on the opening section's wrapper: the value before measuring. */
+export const DECLARED_HEADER_HEIGHT = '--uw-header-declared'
+
 /**
  * Whether the page's header lies over its opening section, and how tall the header is before the
  * browser measures it: the `height` its sections' types declare, else `0px` until measured.
@@ -37,9 +40,8 @@ export const MEASURED_HEADER_HEIGHT = '--uw-header-measured'
  */
 export function headerOverlay(page) {
   const first = page?.getBodyBlocks?.()?.[0]
-  if (!first?.underHeader) return null
-  const header = page.getLayoutAreas?.()?.header
-  if (!Array.isArray(header) || header.length === 0) return null
+  if (!first?.liesUnderHeader?.()) return null
+  const header = page.getLayoutAreas().header
   const heights = header.map((block) => block?.height).filter(Boolean)
   const height = heights.length === 0 ? '0px' : heights.length === 1 ? heights[0] : `calc(${heights.join(' + ')})`
   return { height }
@@ -88,15 +90,22 @@ export function headerAreaProps(wrapper, overlay) {
 }
 
 /**
- * What the opening section's wrapper adds when the header lies over it: the header's height, the
- * declared one until the browser has measured it.
+ * What the opening section's wrapper adds when the header lies over it: the header type's declared
+ * height, and the mark the page's stylesheet keys on.
+ *
+ * ⭐ THE STYLESHEET GIVES THE SECTION ITS `--uw-header-height` (`@uniweb/theming`): what the browser
+ * measured, else the declared height, on a page where a header box lies over it
+ * (`[data-uw-header="over"]`), and `0px` on one where none does — a layout that draws no header on
+ * the page. A rule rather than this style, since only the rendered page holds that answer, and so
+ * the first paint, the prerender's included, pads by what is there. ⛔ Until 2026-11-06 the section
+ * was padded by the declared height whatever the layout drew, until the browser measured.
  *
  * @param {{ height: string }} overlay - `headerOverlay(page)`
  * @returns {{ style: Object, 'data-uw-under-header': string }}
  */
 export function underHeaderProps(overlay) {
   return {
-    style: { [HEADER_HEIGHT]: `var(${MEASURED_HEADER_HEIGHT}, ${overlay.height})` },
+    style: { [DECLARED_HEADER_HEIGHT]: overlay.height },
     'data-uw-under-header': '',
   }
 }

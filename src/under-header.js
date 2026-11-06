@@ -48,13 +48,19 @@ export function headerOverlay(page) {
 /**
  * The props of the header's box — the built-in layout's zone, or a foundation layout's area
  * wrapper — when it lies over the opening section: it takes no room in the flow, and what it holds
- * keeps its height. Whatever else the box has (its layer, its stickiness) stays.
+ * keeps its height. Its layer and its stickiness stay.
+ *
+ * ⭐ ITS VIEW-TRANSITION NAME DOES NOT. A layout may ask for one (`transitions: { header }`), and a
+ * named box is captured at its own size: one with no height is captured as nothing, so the header
+ * would be gone for the length of a page switch (`docs/development/view-transitions.md`). The box
+ * is left unnamed on such a page, which then crossfades as an unnamed page does.
  *
  * @param {Object|null} props - the box's props without the overlay
  * @returns {Object}
  */
 export function overlayBoxProps(props) {
-  return { ...(props || {}), style: { ...(props?.style || {}), height: 0, minHeight: 0 }, 'data-uw-header': 'over' }
+  const { viewTransitionName, ...style } = props?.style || {}
+  return { ...(props || {}), style: { ...style, height: 0, minHeight: 0 }, 'data-uw-header': 'over' }
 }
 
 /**

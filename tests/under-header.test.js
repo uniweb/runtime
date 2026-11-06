@@ -27,12 +27,12 @@ function Placed({ header, body, footer }) {
   return React.createElement('div', { 'data-layout': 'placed' }, header, React.createElement('main', null, body), footer)
 }
 
-function foundation({ meta = {}, layout = false } = {}) {
+function foundation({ meta = {}, layout = false, transitions } = {}) {
   return {
     default: {
       meta: { Nav: { sticky: true, height: '4rem' }, Hero: { underHeader: true }, Text: {}, Credits: {}, ...meta },
       capabilities: layout ? { layouts: { Placed }, defaultLayout: 'Placed' } : {},
-      ...(layout ? { layoutMeta: { Placed: {} } } : {}),
+      ...(layout ? { layoutMeta: { Placed: transitions ? { transitions } : {} } } : {}),
     },
     Nav, Hero, Text, Credits, Placed,
   }
@@ -108,6 +108,22 @@ describe("a foundation's layout: the header's area wrapper over the opening sect
     expect(prerender).toBe(browser)
     expect(prerender).toContain('data-uw-sticky="area" data-uw-header="over"')
     expect(prerender).toMatch(/<div style="position:sticky;top:0px;z-index:2;height:0;min-height:0"/)
+  })
+})
+
+describe('a header the layout asks to name, over the opening section', () => {
+  it('⭐ is left unnamed there: a box with no height is captured as nothing — the same in both renderers', () => {
+    const { browser, prerender } = bothWays(site(), { layout: true, transitions: { header: 'site-header' } })
+    expect(prerender).toBe(browser)
+    expect(prerender).toContain('data-uw-header="over"')
+    expect(prerender).not.toContain('view-transition-name')
+  })
+
+  it('CONTROL — on a page with nothing under it, the header has the name the layout asked for', () => {
+    const { browser, prerender } = bothWays(site([section('Text')]), { layout: true, transitions: { header: 'site-header' } })
+    expect(prerender).toBe(browser)
+    expect(prerender).toContain('view-transition-name:site-header')
+    expect(prerender).not.toContain('data-uw-header')
   })
 })
 

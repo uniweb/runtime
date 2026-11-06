@@ -16,7 +16,14 @@
  * reaches its `top` plus its height; the variable is the furthest any of them reaches. A rule of
  * position, so it reads no meaning into an area's name (`area-wrappers.js` refuses to for the
  * same reason).
+ *
+ * ⭐ A HEADER OVER THE OPENING SECTION (`under-header.js`) takes no room in the flow, so its box is
+ * as tall as nothing: what it reaches is what it holds, the runtime's own wrappers inside it. Its
+ * height is published too, as `--uw-header-measured`, which the opening section's
+ * `--uw-header-height` reads in place of the height the header type declared for the first paint.
  */
+
+import { MEASURED_HEADER_HEIGHT } from './under-header.js'
 
 const VARIABLE = '--uw-sticky-top'
 const FOLLOWING = 4 // Node.DOCUMENT_POSITION_FOLLOWING
@@ -41,6 +48,34 @@ export function bodySectionOf(block) {
 }
 
 /**
+ * How tall a box is drawn: its own height — or, for the header's box over the page's opening
+ * section (`data-uw-header="over"`, `under-header.js`), which takes no room in the flow, how far what
+ * it holds reaches below its top. What it holds is the runtime's own elements (the area's wrapper,
+ * the sections' wrappers), never a guess at a foundation's markup.
+ *
+ * @param {Element} box
+ * @returns {number}
+ */
+function drawnHeight(box) {
+  const own = box.getBoundingClientRect()
+  if (box.getAttribute('data-uw-header') !== 'over') return own.height
+  let bottom = own.top
+  for (const child of box.children) bottom = Math.max(bottom, child.getBoundingClientRect().bottom)
+  return bottom - own.top
+}
+
+/**
+ * How tall the header lying over the page's opening section is, in px — null on a page with none.
+ *
+ * @param {Document} doc
+ * @returns {number|null}
+ */
+export function measureHeaderOverlay(doc) {
+  const box = doc.querySelector('[data-uw-header="over"]')
+  return box ? Math.round(drawnHeight(box) * 100) / 100 : null
+}
+
+/**
  * How far down the viewport the stuck chrome over the body reaches, in px — 0 when none does.
  *
  * @param {Document} doc
@@ -57,7 +92,7 @@ export function measureStickyTop(doc, body) {
     const own = box.getBoundingClientRect()
     if (own.right <= over.left || own.left >= over.right) continue // beside the body: a rail
     const top = parseFloat(doc.defaultView.getComputedStyle(box).top) || 0
-    reach = Math.max(reach, top + own.height)
+    reach = Math.max(reach, top + drawnHeight(box))
   }
   return Math.round(reach * 100) / 100
 }
@@ -78,13 +113,19 @@ export function watchStickyTop(doc, body) {
     const reach = measureStickyTop(doc, body)
     if (reach > 0) root.style.setProperty(VARIABLE, `${reach}px`)
     else root.style.removeProperty(VARIABLE)
+    // The header over the opening section: what the section's `--uw-header-height` reads once known.
+    const header = measureHeaderOverlay(doc)
+    if (header != null) root.style.setProperty(MEASURED_HEADER_HEIGHT, `${header}px`)
+    else root.style.removeProperty(MEASURED_HEADER_HEIGHT)
+  }
+  const forget = () => {
+    root.style.removeProperty(VARIABLE)
+    root.style.removeProperty(MEASURED_HEADER_HEIGHT)
   }
   apply()
 
   const View = doc.defaultView
-  if (!body || typeof View?.ResizeObserver !== 'function') {
-    return () => root.style.removeProperty(VARIABLE)
-  }
+  if (!body || typeof View?.ResizeObserver !== 'function') return forget
   let frame = 0
   const observer = new View.ResizeObserver(() => {
     View.cancelAnimationFrame(frame)
@@ -92,9 +133,11 @@ export function watchStickyTop(doc, body) {
   })
   observer.observe(body)
   for (const box of doc.querySelectorAll('[data-uw-sticky="area"]')) observer.observe(box)
+  // A box over the opening section keeps no height of its own to change: what it holds does.
+  for (const box of doc.querySelectorAll('[data-uw-header="over"]')) for (const child of box.children) observer.observe(child)
   return () => {
     View.cancelAnimationFrame(frame)
     observer.disconnect()
-    root.style.removeProperty(VARIABLE)
+    forget()
   }
 }

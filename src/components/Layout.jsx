@@ -35,6 +35,7 @@ import { useEffect } from 'react'
 import Blocks from './Blocks.jsx'
 import { resolveLayoutTransitions, resolveLayoutLayers, areaWrapperProps } from '../area-wrappers.js'
 import { layoutStickiness, zoneProps } from '../sticky.js'
+import { headerOverlay, overlayBoxProps } from '../under-header.js'
 import { warnUnmovableSticky } from '../sticky-check.js'
 import { watchStickyTop, bodySectionOf } from '../sticky-top.js'
 // The built-in layout — one copy, which the prerender renders too (`../default-layout.js`).
@@ -95,9 +96,14 @@ export default function Layout({ page, website }) {
   // it is lifted above the areas that scroll under it.
   const sticky = layoutStickiness(areas)
   const layers = resolveLayoutLayers(areaNames, layoutMeta?.layers, sticky)
+  // A page that opens with a section under the header has the header lie over it: the header's box
+  // takes no room in the flow (`../under-header.js`). In a foundation's layout that box is the area
+  // wrapper; in the built-in one, the zone around it.
+  const overlay = headerOverlay(page)
 
   const wrap = (region, children) => {
-    const props = areaWrapperProps(region, transitions, layers, RemoteLayout ? sticky[region] : null)
+    let props = areaWrapperProps(region, transitions, layers, RemoteLayout ? sticky[region] : null)
+    if (overlay && RemoteLayout && region === 'header') props = overlayBoxProps(props)
     return props ? <div {...props}>{children}</div> : children
   }
 
@@ -143,7 +149,7 @@ export default function Layout({ page, website }) {
     <DefaultLayout
       body={bodyElement}
       {...areaElements}
-      zones={{ header: zone('header'), footer: zone('footer') }}
+      zones={{ header: overlay ? overlayBoxProps(zone('header')) : zone('header'), footer: zone('footer') }}
     />
   )
 }

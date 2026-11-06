@@ -13,6 +13,7 @@ import Background from './Background.jsx'
 import { sectionStickyProps, sectionScrollMargin } from '../sticky.js'
 import { noteBodySection } from '../sticky-top.js'
 import { noteSectionWrapper } from '../sticky-check.js'
+import { openingUnderHeader, underHeaderProps } from '../under-header.js'
 
 /**
  * Valid color contexts
@@ -173,6 +174,14 @@ export default function BlockRenderer({ block, as = 'section', stickySelf = fals
   // On a page whose layout has a sticky area, a link to this section lands below it.
   const margin = sectionScrollMargin(block, stickySelf)
   if (margin) wrapperProps.style = { ...wrapperProps.style, ...margin }
+  // The page's opening section, when the header lies over it: the header's height to clear, the
+  // declared one until the browser measures it (`../under-header.js`). Mirrored in `ssr-renderer.js`.
+  const overlay = stickySelf === 'section' || stickySelf === true ? openingUnderHeader(block) : null
+  if (overlay) {
+    const under = underHeaderProps(overlay)
+    wrapperProps.style = { ...wrapperProps.style, ...under.style }
+    wrapperProps['data-uw-under-header'] = under['data-uw-under-header']
+  }
   // A body section's element, for the measurement of what is stuck over the body (`../sticky-top.js`);
   // in dev, every section's, so `uniweb dev`'s sticky check knows a component's outermost element.
   const bodySection = stickySelf === 'section' || stickySelf === true

@@ -388,6 +388,7 @@ describe('--uw-sticky-top: how far down the stuck chrome over the body reaches',
       name,
       top: spec.top,
       getBoundingClientRect: () => spec.rect,
+      getAttribute: () => null,
       contains: () => false,
       compareDocumentPosition: (other) => (order.indexOf(other.name) > order.indexOf(name) ? 4 : 2),
     }

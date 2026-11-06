@@ -34,6 +34,7 @@ import {
 } from './wire-foundation.js'
 import { resolveLayoutTransitions, resolveLayoutLayers, areaWrapperProps } from './area-wrappers.js'
 import { layoutStickiness, sectionStickyProps, sectionScrollMargin, zoneProps } from './sticky.js'
+import { headerOverlay, overlayBoxProps, openingUnderHeader, underHeaderProps } from './under-header.js'
 import { DefaultLayout } from './default-layout.js'
 import { renderAppearanceBootScript } from './appearance.js'
 import { documentTitle } from './document-title.js'
@@ -185,6 +186,14 @@ export function renderBlock(block, { as = 'section', stickySelf = false } = {}) 
   // On a page whose layout has a sticky area, a link to this section lands below it.
   const margin = sectionScrollMargin(block, stickySelf)
   if (margin) wrapperProps.style = { ...wrapperProps.style, ...margin }
+  // The page's opening section, when the header lies over it: the header's height to clear
+  // (`under-header.js`). Mirrors `BlockRenderer.jsx`.
+  const overlay = stickySelf === 'section' || stickySelf === true ? openingUnderHeader(block) : null
+  if (overlay) {
+    const under = underHeaderProps(overlay)
+    wrapperProps.style = { ...wrapperProps.style, ...under.style }
+    wrapperProps['data-uw-under-header'] = under['data-uw-under-header']
+  }
 
   // Merge Component.className (static classes declared on the component function)
   const componentClassName = Component.className
@@ -263,8 +272,11 @@ export function renderLayout(page, website) {
   // above the areas that scroll under it.
   const sticky = layoutStickiness(areas)
   const layers = resolveLayoutLayers(areaNames, layoutMeta?.layers, sticky)
+  // Mirror Layout.jsx: the header lies over a page's opening section under it (`under-header.js`).
+  const overlay = headerOverlay(page)
   const wrapArea = (name, element) => {
-    const props = areaWrapperProps(name, transitions, layers, RemoteLayout ? sticky[name] : null)
+    let props = areaWrapperProps(name, transitions, layers, RemoteLayout ? sticky[name] : null)
+    if (overlay && RemoteLayout && name === 'header') props = overlayBoxProps(props)
     return props ? React.createElement('div', props, element) : element
   }
 
@@ -290,7 +302,7 @@ export function renderLayout(page, website) {
   return React.createElement(DefaultLayout, {
     body: bodyElement,
     ...areaElements,
-    zones: { header: zone('header'), footer: zone('footer') },
+    zones: { header: overlay ? overlayBoxProps(zone('header')) : zone('header'), footer: zone('footer') },
   })
 }
 

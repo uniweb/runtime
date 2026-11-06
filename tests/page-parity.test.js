@@ -195,6 +195,13 @@ describe('a whole page renders the same in the browser as in the prerender', () 
     expect(prerender).toContain('class="background background--image painted"')
   })
 
+  it("⭐ a `background: 'self'` section's wrapper says so, for the theme to leave it unpainted, in both (2026-11-06)", () => {
+    const { prerender, browser } = bothWays('/')
+    // One section on the page paints itself, and only its wrapper carries the mark.
+    expect(prerender.match(/data-uw-background="self"/g)).toHaveLength(1)
+    expect(browser.match(/data-uw-background="self"/g)).toHaveLength(1)
+  })
+
   it('⭐ a section whose data the browser fetches renders its LOADING state in both', () => {
     const { browser, prerender } = bothWays('/posts')
     expect(prerender).toBe(browser)

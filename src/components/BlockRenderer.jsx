@@ -202,6 +202,11 @@ export default function BlockRenderer({ block, as = 'section', stickySelf = fals
   // and let the engine background show through.
   block.hasBackground = hasBackground
 
+  // `background: 'self'` is everything behind the content: the theme leaves this wrapper
+  // unpainted too, and the component paints its context's surface where it wants it
+  // (`@uniweb/theming`'s section rule). Mirrored in `ssr-renderer.js`.
+  if (meta?.background === 'self') wrapperProps['data-uw-background'] = 'self'
+
   // Determine wrapper element:
   // - Explicit as prop (not 'section') → use as prop directly
   // - Component.as → use component's declared tag (e.g., Header.as = 'header')

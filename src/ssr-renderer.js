@@ -197,6 +197,8 @@ export function renderBlock(block, { as = 'section', stickySelf = false } = {}) 
   // Check if component handles its own background
   const hasBackground = background?.mode && meta?.background !== 'self'
   block.hasBackground = hasBackground
+  // `background: 'self'` leaves the wrapper unpainted by the theme too (`BlockRenderer.jsx`).
+  if (meta?.background === 'self') wrapperProps['data-uw-background'] = 'self'
 
   // Determine wrapper element:
   // - Explicit as (not 'section') → use as prop directly

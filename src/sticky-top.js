@@ -65,14 +65,19 @@ function drawnHeight(box) {
 }
 
 /**
- * How tall the header lying over the page's opening section is, in px — null on a page with none.
+ * How tall the header lying over the page's opening section is, in px — 0 when the layout drew no
+ * header on such a page, null on a page with no section under the header.
  *
  * @param {Document} doc
  * @returns {number|null}
  */
 export function measureHeaderOverlay(doc) {
   const box = doc.querySelector('[data-uw-header="over"]')
-  return box ? Math.round(drawnHeight(box) * 100) / 100 : null
+  if (box) return Math.round(drawnHeight(box) * 100) / 100
+  // A page whose opening section lies under the header, in a layout that drew no header on it:
+  // there is nothing to clear, so the section is padded by nothing once the browser has looked.
+  // ⛔ Until 2026-11-06 it kept the declared height, padding the section for a header not there.
+  return doc.querySelector('[data-uw-under-header]') ? 0 : null
 }
 
 /**

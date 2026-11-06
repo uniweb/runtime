@@ -34,7 +34,7 @@ import {
 } from './wire-foundation.js'
 import { resolveLayoutTransitions, resolveLayoutLayers, areaWrapperProps } from './area-wrappers.js'
 import { layoutStickiness, sectionStickyProps, sectionScrollMargin, zoneProps } from './sticky.js'
-import { headerOverlay, overlayBoxProps, openingUnderHeader, underHeaderProps } from './under-header.js'
+import { headerOverlay, overlayBoxProps, openingUnderHeader, underHeaderProps, headerAreaProps } from './under-header.js'
 import { DefaultLayout } from './default-layout.js'
 import { renderAppearanceBootScript } from './appearance.js'
 import { documentTitle } from './document-title.js'
@@ -274,8 +274,12 @@ export function renderLayout(page, website) {
   // Mirror Layout.jsx: the header lies over a page's opening section under it (`under-header.js`).
   const overlay = headerOverlay(page)
   const wrapArea = (name, element) => {
-    let props = areaWrapperProps(name, transitions, layers, RemoteLayout ? sticky[name] : null)
-    if (overlay && RemoteLayout && name === 'header') props = overlayBoxProps(props)
+    const props = areaWrapperProps(name, transitions, layers, RemoteLayout ? sticky[name] : null)
+    if (RemoteLayout && name === 'header') {
+      // Mirror Layout.jsx: the same boxes on every page, the name on one that keeps the header's height.
+      const { outer, inner } = headerAreaProps(props, overlay)
+      return React.createElement('div', outer, inner ? React.createElement('div', inner, element) : element)
+    }
     return props ? React.createElement('div', props, element) : element
   }
 

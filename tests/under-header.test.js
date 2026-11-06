@@ -27,12 +27,13 @@ function Placed({ header, body, footer }) {
   return React.createElement('div', { 'data-layout': 'placed' }, header, React.createElement('main', null, body), footer)
 }
 
-function foundation({ meta = {}, layout = false, transitions } = {}) {
+function foundation({ meta = {}, layout = false, transitions, layers } = {}) {
+  const layoutMeta = { ...(transitions ? { transitions } : {}), ...(layers !== undefined ? { layers } : {}) }
   return {
     default: {
       meta: { Nav: { sticky: true, height: '4rem' }, Hero: { underHeader: true }, Text: {}, Credits: {}, ...meta },
       capabilities: layout ? { layouts: { Placed }, defaultLayout: 'Placed' } : {},
-      ...(layout ? { layoutMeta: { Placed: transitions ? { transitions } : {} } } : {}),
+      ...(layout ? { layoutMeta: { Placed: layoutMeta } } : {}),
     },
     Nav, Hero, Text, Credits, Placed,
   }
@@ -111,19 +112,50 @@ describe("a foundation's layout: the header's area wrapper over the opening sect
   })
 })
 
-describe('a header the layout asks to name, over the opening section', () => {
-  it('⭐ is left unnamed there: a box with no height is captured as nothing — the same in both renderers', () => {
+describe('a header the layout asks to name', () => {
+  const NAMED = '<div style="view-transition-name:site-header"><section id="section-0"'
+
+  it('⭐ carries the name on an element inside its box, which keeps the header’s height over the opening section — the same in both renderers', () => {
+    // A named box is captured at its own size, and the collapsed box has none: named, the header
+    // would be gone for the length of a page switch.
     const { browser, prerender } = bothWays(site(), { layout: true, transitions: { header: 'site-header' } })
     expect(prerender).toBe(browser)
-    expect(prerender).toContain('data-uw-header="over"')
-    expect(prerender).not.toContain('view-transition-name')
+    expect(prerender).toContain('data-uw-sticky="area" data-uw-header="over">' + NAMED)
+    expect(prerender.match(/view-transition-name/g)).toHaveLength(1)
   })
 
-  it('CONTROL — on a page with nothing under it, the header has the name the layout asked for', () => {
+  it('…and on a page with nothing under it, the same element carries it, so the two pages’ headers pair', () => {
     const { browser, prerender } = bothWays(site([section('Text')]), { layout: true, transitions: { header: 'site-header' } })
     expect(prerender).toBe(browser)
-    expect(prerender).toContain('view-transition-name:site-header')
+    expect(prerender).toContain('data-uw-sticky="area">' + NAMED)
     expect(prerender).not.toContain('data-uw-header')
+  })
+})
+
+describe('a foundation layout’s header area has the same elements on every page', () => {
+  // Only styles may change between a page under the header and one without: a different element
+  // makes React rebuild the header, and its state goes with it.
+  const shape = (html) => html.replace(/ style="[^"]*"/g, '').replace(/ data-uw-header="over"/g, '')
+  const plain = { meta: { Nav: {} }, layout: true, layers: false }
+
+  it('⭐ a header that neither sticks nor is named, in a layout that ranks its own stacking', () => {
+    const over = bothWays(site(), plain)
+    const flat = bothWays(site([section('Text'), section('Hero')]), plain)
+    expect(over.prerender).toBe(over.browser)
+    expect(flat.prerender).toBe(flat.browser)
+    const header = (html) => html.slice(0, html.indexOf('<main>'))
+    expect(shape(header(over.prerender))).toBe(shape(header(flat.prerender)))
+    // where it has nothing to carry, its box draws nothing at all
+    expect(header(flat.prerender)).toContain('<div style="display:contents"><section id="section-0"')
+    expect(header(over.prerender)).toContain('<div style="height:0;min-height:0" data-uw-header="over"><section id="section-0"')
+  })
+
+  it('…and a named one, whatever its layers', () => {
+    const named = { ...plain, transitions: { header: 'site-header' } }
+    const over = bothWays(site(), named)
+    const flat = bothWays(site([section('Text'), section('Hero')]), named)
+    const header = (html) => html.slice(0, html.indexOf('<main>'))
+    expect(shape(header(over.prerender))).toBe(shape(header(flat.prerender)))
   })
 })
 
@@ -174,6 +206,11 @@ describe('the measurement: a header over the opening section reaches what it hol
     const { doc, body } = page({ overHeader: true })
     expect(measureStickyTop(doc, body)).toBe(65)
     expect(measureHeaderOverlay(doc)).toBe(65)
+  })
+
+  it('⭐ a page under the header whose layout drew no header is cleared by 0px, not the declared height', () => {
+    const doc = { querySelector: (selector) => (selector.includes('under-header') ? {} : null) }
+    expect(measureHeaderOverlay(doc)).toBe(0)
   })
 
   it('CONTROL — a header in the flow is measured by its own box, and no overlay is measured', () => {

@@ -331,9 +331,16 @@ describe('a foundation’s layout: a view-transition name is what it asks for', 
   })
 
   it('the one it names, on that area alone, the same both ways', () => {
+    const { browser, prerender } = bothWays(site(), { layout: true, transitions: { footer: 'site-footer' } })
+    expect(prerender).toBe(browser)
+    expect(prerender).toContain('<div style="view-transition-name:site-footer;position:relative;z-index:1">')
+    expect(prerender.match(/view-transition-name/g)).toHaveLength(1)
+  })
+
+  it('the header’s on an element just inside its wrapper, which keeps the header’s height when it lies over a page’s opening section (`under-header.js`)', () => {
     const { browser, prerender } = bothWays(site(), { layout: true, transitions: { header: 'site-header' } })
     expect(prerender).toBe(browser)
-    expect(prerender).toContain('<div style="view-transition-name:site-header;position:relative;z-index:1">')
+    expect(prerender).toContain('<div style="position:relative;z-index:1"><div style="view-transition-name:site-header"><section')
     expect(prerender.match(/view-transition-name/g)).toHaveLength(1)
   })
 

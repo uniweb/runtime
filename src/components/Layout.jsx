@@ -35,7 +35,7 @@ import { useEffect } from 'react'
 import Blocks from './Blocks.jsx'
 import { resolveLayoutTransitions, resolveLayoutLayers, areaWrapperProps } from '../area-wrappers.js'
 import { layoutStickiness, zoneProps } from '../sticky.js'
-import { headerOverlay, overlayBoxProps } from '../under-header.js'
+import { headerOverlay, overlayBoxProps, headerAreaProps } from '../under-header.js'
 import { warnUnmovableSticky } from '../sticky-check.js'
 import { watchStickyTop, bodySectionOf } from '../sticky-top.js'
 // The built-in layout — one copy, which the prerender renders too (`../default-layout.js`).
@@ -102,8 +102,12 @@ export default function Layout({ page, website }) {
   const overlay = headerOverlay(page)
 
   const wrap = (region, children) => {
-    let props = areaWrapperProps(region, transitions, layers, RemoteLayout ? sticky[region] : null)
-    if (overlay && RemoteLayout && region === 'header') props = overlayBoxProps(props)
+    const props = areaWrapperProps(region, transitions, layers, RemoteLayout ? sticky[region] : null)
+    if (RemoteLayout && region === 'header') {
+      // The same boxes on every page, the name on one that keeps the header's height.
+      const { outer, inner } = headerAreaProps(props, overlay)
+      return <div {...outer}>{inner ? <div {...inner}>{children}</div> : children}</div>
+    }
     return props ? <div {...props}>{children}</div> : children
   }
 

@@ -82,13 +82,15 @@ export function createPageRenderer({ website, shell }) {
    *   parametric pages made from them (`Website#forgetData`), and files these, all in this
    *   synchronous call, so a Website reused across requests renders each against its own and
    *   no other request runs in between. Absent, the render reads whatever the store holds.
-   * @param {boolean} [options.sectionData] - also say which records each section showed, for the
-   *   page's Markdown: `sections`, which `renderPageMarkdown(page, { sections })`
-   *   (`@uniweb/projections`) writes after each section. Read from the store this render read, after
-   *   its HTML (`section-records.js`), so a render that does not ask does no more work than before.
+   * @param {boolean} [options.sectionData] - also say what the page's Markdown carries:
+   *   `sections`, the records each section showed, and on a record page `record`, its own record as
+   *   this render read it. Hand both to `renderPageMarkdown(page, { record, sections })`
+   *   (`@uniweb/projections`). Read from the store this render read, after its HTML
+   *   (`section-records.js`), so a render that does not ask does no more work than before.
    * @returns {{ outcome: 'rendered'|'notFound'|'failed', html: string|null,
    *   page: Object|null, error: {type: string, message: string}|null,
-   *   sections?: Array<{ id: string, data: Object }> }} `sections` when asked, on a page with `html`
+   *   sections?: Array<{ id: string, data: Object }>, record?: Object|null }} `sections` when asked,
+   *   on a page with `html`; `record` beside it on a record page, null when its route names none
    *   `notFound` means the URL names nothing, and `html` says whether there is a page to
    *   send for it. Send `html` with your not-found status when it is set, and the shell
    *   when it is not:
@@ -189,7 +191,11 @@ export function createPageRenderer({ website, shell }) {
     })
     const rendered = { outcome: missing ? 'notFound' : 'rendered', html, page, error: null }
     // In this same synchronous call, so the store holds this page's answers and no other request's.
-    if (sectionData) rendered.sections = sectionRecords(page)
+    if (sectionData) {
+      const shown = sectionRecords(page)
+      rendered.sections = shown.sections
+      if (shown.record !== undefined) rendered.record = shown.record
+    }
     return rendered
   }
 

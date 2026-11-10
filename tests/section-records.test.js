@@ -42,6 +42,8 @@ const foundation = {
       Plain: {},
       ArticleBody: { data: { article: { schema: '@/article', single: true } } },
       Related: { data: { related: '@/article' } },
+      // shows the page's record whole
+      WholeBody: { data: { article: { schema: '@/article', single: true, whole: true } } },
       Ghost: { data: { tiers: '@/tier' } }, // declared, and not in the foundation's code
     },
   },
@@ -55,6 +57,7 @@ const foundation = {
   Plain: () => h('p', null, 'plain'),
   ArticleBody: ({ content }) => h('article', null, content.data.article?.title ?? 'none'),
   Related: list('related'),
+  WholeBody: ({ content }) => h('article', null, content.data.article?.text ?? 'none'),
 }
 
 const doc = (...nodes) => ({ type: 'doc', content: nodes })
@@ -108,6 +111,11 @@ function site({ pages = [] } = {}) {
           section('Related', 'related', { fetch: { query: 'articles', as: 'related', current: 'exclude' } }),
         ],
       },
+      { route: '/library', title: 'Library', fetch: { query: 'articles', as: 'articles', path: '/data/articles.json' }, sections: [section('Plain', 'library')] },
+      { route: '/library/:slug', parent: '/library', isDynamic: true, paramName: 'slug', title: 'Read', sections: [section('WholeBody', 'read')] },
+      { route: '/people', title: 'People', fetch: { query: 'members', as: 'members', path: '/data/members.json' }, sections: [section('Plain', 'people')] },
+      // no section of it shows its record
+      { route: '/people/:slug', parent: '/people', isDynamic: true, paramName: 'slug', title: 'Person', sections: [section('Plain', 'person')] },
       ...pages,
     ],
   }
@@ -122,6 +130,8 @@ function transport() {
     '/data/members.json': MEMBERS,
     '/data/articles.json': ARTICLES,
     '/data/menu.json': [{ $name: 'home', title: 'Home' }],
+    // a record's own compiled file holds it whole
+    '/data/articles/a.json': { ...ARTICLES[0], text: 'The whole article.' },
   }
   return vi.fn(async (url) => {
     const body = Object.entries(files).find(([path]) => String(url).includes(path))?.[1] ?? null
@@ -203,6 +213,26 @@ describe('render(…, { sectionData }) — what each section showed', () => {
     expect(result.html).toContain('<article>A post</article>')
     // The others, linked to their page as every record a section receives is (`$route`).
     expect(result.sections).toEqual([{ id: 'section-related', data: { related: [{ ...ARTICLES[1], $route: '/blog/b' }] } }])
+    // …and the render hands its own record over beside them, as its section received it.
+    expect(result.record).toEqual({ ...ARTICLES[0], $route: '/blog/a' })
+  })
+
+  it('⭐ a record page\'s own record comes whole when the page received it whole', async () => {
+    const { result } = await rendered('/library/a')
+    expect(result.html).toContain('<article>The whole article.</article>')
+    expect(result.record?.text).toBe('The whole article.')
+    expect(result.sections).toEqual([])
+  })
+
+  it('a record page no section of which shows its record still has it: the answer its own question got', async () => {
+    const { result } = await rendered('/people/ada')
+    expect(result.sections).toEqual([])
+    expect(result.record).toEqual(MEMBERS[0])
+  })
+
+  it('a page that is not a record page has no `record`', async () => {
+    const { result } = await rendered('/pricing')
+    expect('record' in result).toBe(false)
   })
 
   it('⭐ an answer a static build prerendered into the section is its records, under its fetch\'s name; a tagged block is not', async () => {

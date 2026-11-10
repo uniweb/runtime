@@ -24,7 +24,7 @@
  *   - **Left out:** a key the section holds as a tagged block in its own content (` ```yaml:tag `, or
  *     a concept block), which the page's Markdown already shows as it was written; a record page's
  *     own record (a key whose fetch uses this page's record, `current: only`), which its Markdown
- *     writes once, as the page's (`renderPageMarkdown`'s `record`); and a key with no value, `null` —
+ *     writes once, as the page's, from `record` (`pageRecordOf`); and a key with no value, `null` —
  *     nothing fills it, or its fetch failed, never ran or is still out.
  *   - **Whose:** each body section and its child sections, under its own id, and the insets in a
  *     section, under the id of the section they sit in, since a page's Markdown has no place of their
@@ -34,32 +34,67 @@
  */
 import { sectionDomId } from '@uniweb/core/section-id'
 import { declaredKeys } from '@uniweb/core/data-keys'
-import { blockFillsOf, blockRouteQuery, fillIsPageRecord } from '@uniweb/core/page-data'
+import { blockFillsOf, blockRouteQuery, fillIsPageRecord, heldPageRecord } from '@uniweb/core/page-data'
 import { getComponentMeta, receivedData } from './prepare-props.js'
 
 /**
- * The records each of a page's sections showed, read after the page's render.
+ * The records each of a page's sections showed, and a record page's own record, read after the
+ * page's render: what its Markdown carries (`renderPageMarkdown(page, { record, sections })`).
  *
  * @param {Object} page - the Page just rendered, its Website the one `globalThis.uniweb` names
- * @returns {Array<{ id: string, data: Object }>} in page order, one entry per section, child section
- *   or inset that showed any, `id` the section's DOM id (`sectionDomId`) and `data` its records by name
+ * @returns {{ sections: Array<{ id: string, data: Object }>, record: Object|null|undefined }}
+ *   `sections` in page order, one entry per section, child section or inset that showed any, `id`
+ *   the section's DOM id (`sectionDomId`) and `data` its records by name. `record` a record page's
+ *   own (`pageRecordOf`): null when its route names none, undefined off a record page
  */
 export function sectionRecords(page) {
-  const out = []
-  for (const block of page?.getBodyBlocks?.() ?? []) visit(block, sectionDomId(block), out)
-  return out
+  const sections = []
+  // The page's own record as its sections received it, which `sections` leaves out.
+  const shown = []
+  for (const block of page?.getBodyBlocks?.() ?? []) visit(block, sectionDomId(block), sections, shown)
+  return { sections, record: pageRecordOf(page, shown) }
 }
 
-function visit(block, id, out) {
+function visit(block, id, sections, shown) {
   if (!block) return
-  const data = recordsOf(block)
-  if (data) out.push({ id, data })
-  for (const inset of block.insets || []) visit(inset, id, out)
-  for (const child of block.childBlocks || []) visit(child, sectionDomId(child), out)
+  const data = recordsOf(block, shown)
+  if (data) sections.push({ id, data })
+  for (const inset of block.insets || []) visit(inset, id, sections, shown)
+  for (const child of block.childBlocks || []) visit(child, sectionDomId(child), sections, shown)
+}
+
+/**
+ * ⭐ A RECORD PAGE'S OWN RECORD, AS ITS RENDER READ IT — the most of it the page held, so its
+ * Markdown carries what its sections drew: whole when a section received it whole, or when the
+ * record index holds it whole; else as a section received it; else the answer the page's own
+ * question got (`heldPageRecord`, `@uniweb/core/page-data`), which names the page and says whether
+ * it exists.
+ *
+ * @param {Object} page
+ * @param {Array<{ value: *, whole: boolean }>} shown
+ * @returns {Object|null|undefined}
+ */
+function pageRecordOf(page, shown) {
+  if (!page?.dynamicContext) return undefined
+  const one = (value) => (Array.isArray(value) ? (value[0] ?? null) : value)
+  const whole = shown.find((s) => s.whole && one(s.value))
+  if (whole) return one(whole.value)
+  const website = page.website
+  const fetcher = website?.fetcher
+  const own = heldPageRecord(page, {
+    website,
+    peek: (request) => fetcher?.peek?.(request, { website, page, block: null }),
+    peekRecord: (id) => fetcher?.peekRecord?.(id),
+  })
+  const seen = shown.map((s) => one(s.value)).find(Boolean) ?? null
+  const id = (own ?? seen)?.$uuid
+  const held = typeof id === 'string' && id ? fetcher?.peekRecord?.(id) : null
+  if (held?.whole === true && held.record) return held.record
+  return seen ?? own
 }
 
 /** One block's records by name, or null when it showed none. */
-function recordsOf(block) {
+function recordsOf(block, shown) {
   // A type the foundation doesn't have renders as an error box, and its render asks for no data.
   if (!globalThis.uniweb?.getComponent?.(block.type)) return null
   const meta = getComponentMeta(block.type)
@@ -89,8 +124,13 @@ function recordsOf(block) {
         route = blockRouteQuery(block)
         fills = blockFillsOf(block, meta, route)
       }
-      const cfg = fills.get(key)?.cfg
-      if (!cfg?.as || fillIsPageRecord(block, cfg, route)) continue
+      const fill = fills.get(key)
+      const cfg = fill?.cfg
+      if (!cfg?.as) continue
+      if (fillIsPageRecord(block, cfg, route)) {
+        shown.push({ value, whole: fill.whole === true })
+        continue
+      }
       name = cfg.as
     }
     if (Object.hasOwn(out, name) && !sameValue(out[name], value)) name = key

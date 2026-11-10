@@ -468,6 +468,26 @@ describe('what crosses the door', () => {
     expect(browser.entityStore.resolve(block, getComponentMeta(block.type))).toMatchObject({ status: 'ready' })
   })
 
+  // ⛔ Until 2026-11-10 the list was in the order the answers arrived, and a page's HTML carries it,
+  // so two builds of one site wrote different bytes for the same pages (176 files in one project).
+  it('⭐ the list is in one order however its answers arrive: by key', async () => {
+    const keysWhen = async (slow) => {
+      const website = initPrerender(site(), foundation, []).activeWebsite
+      const { fetch: answer } = transport()
+      const fetch = async (url, init) => {
+        if (String(url).includes(slow)) await new Promise((done) => setTimeout(done, 20))
+        return answer(url, init)
+      }
+      const entries = await loadPageData({ website, route: '/posts', fetch })
+      return entries.map((entry) => deriveCacheKey(entry.config))
+    }
+    const tocLast = await keysWhen('/data/toc.json')
+    const postsLast = await keysWhen('/data/posts.json')
+    expect(tocLast.length).toBeGreaterThanOrEqual(3) // the page's posts, the layout's menu and toc
+    expect(postsLast).toEqual(tocLast)
+    expect(tocLast).toEqual([...tocLast].sort())
+  })
+
   it('⛔ a page with no data has an empty list, whatever else it asks for: an entry would shorten its life', async () => {
     const icon = { type: 'image', attrs: { role: 'icon', library: 'lu', name: 'house' } }
     const content = { type: 'doc', content: [{ type: 'paragraph', content: [icon] }] }

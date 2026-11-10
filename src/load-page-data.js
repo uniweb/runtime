@@ -59,7 +59,8 @@ import { pageIcons, dataIcons, iconRequests } from './page-icons.js'
  *   (`page-icons.js`). They are not entries of the list this returns. A caller with its own
  *   answer for icons says `false`; a static build says `true`, beside the site-wide prefetch.
  * @returns {Promise<Array<{ config: Object, outcome: 'fetched'|'failed'|'skipped', data: *, meta?: Object, error?: string }>>}
- *   one entry per request the render will make, keyed downstream by `deriveCacheKey(config)`.
+ *   one entry per request the render will make, keyed downstream by `deriveCacheKey(config)`, and
+ *   in the order of those keys.
  *   ⛔ The page's data and nothing else: a host counts this list to decide how long to keep the
  *   page, so one more entry shortens its life, and one that fails can end it.
  */
@@ -110,7 +111,7 @@ export async function loadPageData({ website, route, fetch, dev = false, locale 
     defaultFetcher: createDefaultFetcher({ basePath: website.config?.base || '', dev, fetch }),
   })
 
-  /** One entry per request, in the order they were first asked for. */
+  /** One entry per request, its first answer, by its key. */
   const entries = new Map()
   const record = (request, entry) => {
     const key = deriveCacheKey(request)
@@ -167,5 +168,10 @@ export async function loadPageData({ website, route, fetch, dev = false, locale 
   // only icons the graph holds, waits for nothing more.
   if (askIcons) await askIcons(dataIcons([...entries.values()].map((entry) => entry.data)))
 
-  return [...entries.values()]
+  // ⭐ IN THE ORDER OF THEIR KEYS, never the order the answers came in, which is the network's or
+  // the disk's. A page's HTML carries this list, so in arrival order two builds of one site wrote
+  // different bytes for the same pages (176 files in one project, 2026-11-10), and a deploy sent
+  // them again. Nothing reads the order: `hydrateDataStore` files each entry under its key, and the
+  // record index keeps a record's brief and its whole apart (`DataStore#upsertRecord`).
+  return [...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, entry]) => entry)
 }

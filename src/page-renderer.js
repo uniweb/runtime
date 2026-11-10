@@ -39,6 +39,7 @@ import { hydrateDataStore } from './wire-foundation.js'
 import { loadPageData } from './load-page-data.js'
 import { requireTransport } from './require-transport.js'
 import { whileReadingIcons } from './page-icons.js'
+import { sectionRecords } from './section-records.js'
 
 /**
  * A renderer bound to one initialized Website and one shell.
@@ -81,8 +82,13 @@ export function createPageRenderer({ website, shell }) {
    *   parametric pages made from them (`Website#forgetData`), and files these, all in this
    *   synchronous call, so a Website reused across requests renders each against its own and
    *   no other request runs in between. Absent, the render reads whatever the store holds.
+   * @param {boolean} [options.sectionData] - also say which records each section showed, for the
+   *   page's Markdown: `sections`, which `renderPageMarkdown(page, { sections })`
+   *   (`@uniweb/projections`) writes after each section. Read from the store this render read, after
+   *   its HTML (`section-records.js`), so a render that does not ask does no more work than before.
    * @returns {{ outcome: 'rendered'|'notFound'|'failed', html: string|null,
-   *   page: Object|null, error: {type: string, message: string}|null }}
+   *   page: Object|null, error: {type: string, message: string}|null,
+   *   sections?: Array<{ id: string, data: Object }> }} `sections` when asked, on a page with `html`
    *   `notFound` means the URL names nothing, and `html` says whether there is a page to
    *   send for it. Send `html` with your not-found status when it is set, and the shell
    *   when it is not:
@@ -95,7 +101,7 @@ export function createPageRenderer({ website, shell }) {
    *   - `page` set, `html: null`, `error` set — that page broke while rendering; `error`
    *     says what broke.
    */
-  function render(target, { inject = {}, fetchedData } = {}) {
+  function render(target, { inject = {}, fetchedData, sectionData = false } = {}) {
     if (fetchedData !== undefined && !Array.isArray(fetchedData)) {
       throw new Error('createPageRenderer: `fetchedData` must be the array of entries the page carries')
     }
@@ -181,7 +187,10 @@ export function createPageRenderer({ website, shell }) {
       sectionOverrideCSS: result.sectionOverrideCSS,
       icons,
     })
-    return { outcome: missing ? 'notFound' : 'rendered', html, page, error: null }
+    const rendered = { outcome: missing ? 'notFound' : 'rendered', html, page, error: null }
+    // In this same synchronous call, so the store holds this page's answers and no other request's.
+    if (sectionData) rendered.sections = sectionRecords(page)
+    return rendered
   }
 
   return { website, render, failingSection: (page, message) => failingSectionOf(page, message) }

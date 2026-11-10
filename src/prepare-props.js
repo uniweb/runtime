@@ -142,7 +142,21 @@ export function applyDefaults(params, defaults) {
  * section received every fetch that reached it and every tagged block it had.
  */
 function assembleData(block, meta, entityData) {
-  const declared = block.website?.declaredKeys ? block.website.declaredKeys(meta) : []
+  const declared = declaredOf(block, meta)
+  const data = collectDeclared(block, declared, entityData)
+  // What the section holds and this leaves out — the keys the dev warning reports.
+  warnUndeclaredBlocks(block, Object.keys(block.heldData || {}).filter((key) => !Object.hasOwn(data, key)))
+  block.parsedContent.data = data
+  return declared
+}
+
+/** The keys a block's component receives: its own `data:`, then its foundation's. */
+function declaredOf(block, meta) {
+  return block.website?.declaredKeys ? block.website.declaredKeys(meta) : []
+}
+
+/** Each declared key's value, by the order `assembleData` states: held, delivered, else `null`. */
+function collectDeclared(block, declared, entityData) {
   const held = block.heldData || {}
   const data = {}
   for (const [key] of declared) {
@@ -150,10 +164,27 @@ function assembleData(block, meta, entityData) {
     else if (entityData && entityData[key] !== undefined) data[key] = entityData[key]
     else data[key] = null
   }
-  // What the section holds and this leaves out — the keys the dev warning reports.
-  warnUndeclaredBlocks(block, Object.keys(held).filter((key) => !Object.hasOwn(data, key)))
-  block.parsedContent.data = data
-  return declared
+  return data
+}
+
+/**
+ * ⭐ WHAT A SECTION'S COMPONENT RECEIVES UNDER THE KEYS IT DECLARES, BEFORE ANY FOUNDATION HANDLER —
+ * `content.data` as `prepareProps` assembles it, its records linked (`linkOwnRecords`) and a
+ * `single` key holding one, worked out without touching the block. For a caller reporting what a
+ * section received, after its render: a page's Markdown (`section-records.js`). ⛔ Never for
+ * rendering, which is `prepareProps`'.
+ *
+ * @param {Object} block
+ * @param {Object|null} meta - its component's runtime meta
+ * @param {Object|null} [entityData] - what the entity store delivered for it, as the render read it
+ * @returns {{ declared: Array, data: Object }}
+ */
+export function receivedData(block, meta, entityData = null) {
+  const declared = declaredOf(block, meta)
+  // A stand-in carries the data through the linking, so the block's own is left as its render left it.
+  const probe = { parsedContent: { data: collectDeclared(block, declared, entityData) }, fetch: block.fetch, website: block.website }
+  block.website?.entityStore?.linkOwnRecords?.(probe)
+  return { declared, data: oneRecordEach(probe.parsedContent.data, declared) }
 }
 
 /**
@@ -168,14 +199,18 @@ function assembleData(block, meta, entityData) {
  * object is replaced, never written into.
  */
 function holdOneRecord(block, declared) {
-  const data = block.parsedContent.data
+  block.parsedContent.data = oneRecordEach(block.parsedContent.data, declared)
+}
+
+/** `data` with each `single` key's list cut to its first record, or `data` itself when none is. */
+function oneRecordEach(data, declared) {
   let out = null
   for (const [key, , , single] of declared) {
     if (single !== true || !Array.isArray(data?.[key])) continue
     out = out || { ...data }
     out[key] = data[key][0] ?? null
   }
-  if (out) block.parsedContent.data = out
+  return out || data
 }
 
 /**

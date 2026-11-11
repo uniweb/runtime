@@ -104,7 +104,7 @@ export const ISOLATE_API = Object.freeze({
   prefetchIcons: '0.6.14',
   renderAppearanceBootScript: '0.8.30',
   // a page's look in its HTML: the scheme class on `<html>`, and the script where the browser decides
-  writePageAppearance: UNRELEASED,
+  writePageAppearance: '1.6.2',
   // page resolution
   resolvePage: '0.9.5',
   // which page a route names

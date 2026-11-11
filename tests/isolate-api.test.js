@@ -85,16 +85,23 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
   // the implementation against itself and pass for any value; literals are what
   // make raising the floor a deliberate edit a reviewer sees. It is also the
   // number a publisher ratchets, so a silent move is the thing to prevent.
-  it('the floor is 1.2.3 — the first runtime whose render takes the page’s own data', () => {
-    expect(MIN_USABLE_RUNTIME).toBe('1.2.3')
+  it('the floor is 1.6.2 — the first runtime that exports writePageAppearance', () => {
+    expect(MIN_USABLE_RUNTIME).toBe('1.6.2')
     expect(MIN_USABLE_RUNTIME).toMatch(/^\d+\.\d+\.\d+$/)
 
-    // ⭐ 2026-11-02 — raised on the WIRE, and it leads again: an incompatibility, at a host's request.
+    // ⭐ 2026-11-11 — raised by an EXPORT, and the export map leads again: `writePageAppearance` first
+    // shipped in 1.6.2. It is in the published tarball's `dist/ssr.js` and not in 1.6.1's, and 1.6.2 is
+    // the channel's `latest` (both read 2026-11-11). Its UNRELEASED stamp was replaced after that
+    // publish [Diego, 2026-11-11: "yes, go ahead with the stamp"]. It moves no site: a publish already
+    // takes the newest runtime above the floor, and a site already published keeps its runtime.
+    expect(ISOLATE_API.writePageAppearance).toBe('1.6.2')
+    expect(compareVersions(MIN_USABLE_RUNTIME, WIRE_FLOOR)).toBeGreaterThan(0)
+
+    // ⭐ 2026-11-02 — raised on the WIRE, and it led until the raise above: an incompatibility, at a host's request.
     // Its render relies on `render(target, { fetchedData })` and `Website#makeCurrent`, first in 1.2.3
     // (checked in the 1.2.2 and 1.2.3 tarballs). Below it the option is ignored without a word, so a
     // page would render against whatever the graph kept. Neither is an export, so the map can't say it.
     expect(WIRE_FLOOR).toBe('1.2.3')
-    expect(compareVersions(MIN_USABLE_RUNTIME, WIRE_FLOOR)).toBe(0)
 
     // ⭐ 2026-10-24 — raised by an EXPORT, and the export map led until the raise above: `pageShell`,
     // `foundationCssUrl`, `dataScript` and `jsonForScript` first shipped in 1.1.16. They are in the
@@ -160,8 +167,9 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
     expect(ISOLATE_API.loadPageData).toBe('0.26.6')
     expect(compareVersions(WIRE_FLOOR, ISOLATE_API.loadPageData)).toBeGreaterThan(0)
     // ⛔ and the wire's own floor names a PUBLISHED version: 1.2.3 is on npm and in the channel's
-    // index (read 2026-11-02), as 1.0.1 was when it was the wire's (2026-10-13).
-    expect(compareVersions(WIRE_FLOOR, MIN_USABLE_RUNTIME)).toBe(0)
+    // index (read 2026-11-02), as 1.0.1 was when it was the wire's (2026-10-13). The export map has
+    // led since 2026-11-11 (above), so the wire's sits below the floor.
+    expect(compareVersions(WIRE_FLOOR, MIN_USABLE_RUNTIME)).toBeLessThan(0)
 
     // the composed render entry, which was the floor until 0.17.0
     expect(ISOLATE_API.prefetchAndHydrate).toBe('0.14.2')

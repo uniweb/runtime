@@ -35,6 +35,23 @@ describe('injectPageContent renders into pageShell', () => {
     expect(html).toContain('<style id="uniweb-theme">')
   })
 
+  it("writes a dark site's scheme on the shell's <html>, and the script only with a switch", () => {
+    const withLook = (appearance) =>
+      injectPageContent(shell, '<h1>About</h1>', { ...page, website: { ...page.website, themeData: { ...page.website.themeData, appearance } } }, {})
+
+    const withSwitch = withLook({ default: 'dark', allowToggle: true })
+    expect(withSwitch).toContain('<html lang="en" class="scheme-dark">')
+    expect(withSwitch.match(/id="uniweb-appearance"/g)).toHaveLength(1)
+
+    const alwaysDark = withLook({ default: 'dark' })
+    expect(alwaysDark).toContain('<html lang="en" class="scheme-dark">')
+    expect(alwaysDark).not.toContain('id="uniweb-appearance"')
+
+    // A site with no appearance keeps its tag as the shell wrote it.
+    expect(html).toContain('<html lang="en">')
+    expect(html).not.toContain('id="uniweb-appearance"')
+  })
+
   it('leaves __DATA__ whole and parsing', () => {
     const data = JSON.parse(html.match(/<script id="__DATA__" type="application\/json">([\s\S]*?)<\/script>/)[1])
     expect(data.content.pages[0].sections[0].text).toBe('see <!-- this --> and </script>')

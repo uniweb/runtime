@@ -97,9 +97,12 @@ export { createPageRenderer, prefetchAndHydrate } from './page-renderer.js'
 // renders empty. The host supplies only the transport.
 export { collectSiteRecords } from './collect-records.js'
 
-// Appearance. injectPageContent() already emits this for every prerendered
-// page; exported for lanes that assemble a shell without a per-page render.
-export { renderAppearanceBootScript } from './appearance.js'
+// Appearance. `writePageAppearance` writes a page's look into its HTML: the scheme
+// class on its `<html>`, and the pre-paint script where the browser decides the
+// scheme. injectPageContent() calls it for every prerendered page, and a shell a
+// page starts as takes it too (@uniweb/build's site plugin). The script alone is
+// exported for lanes that assemble a shell without a per-page render.
+export { renderAppearanceBootScript, writePageAppearance } from './appearance.js'
 
 // ⭐ THE `__DATA__` ELEMENT A HOST WRITES INTO A PAGE'S SHELL — the boot payload as JSON a
 // `<script>` cannot end or misparse (every `<` as `<`), carrying only the served page's

@@ -4,6 +4,9 @@ import {
   resolveAppearanceBoot,
   initAppearance,
   renderAppearanceBootScript,
+  pageAppearance,
+  writeSchemeClass,
+  writePageAppearance,
 } from '../src/appearance.js'
 
 // Minimal browser stubs — the runtime's vitest env is 'node'.
@@ -237,6 +240,145 @@ describe('renderAppearanceBootScript', () => {
     for (const leaked of ['APPEARANCE_STORAGE_KEY', 'DARK_SCHEME_CLASS', 'LIGHT_SCHEME_CLASS', 'hasDarkScheme']) {
       expect(body).not.toContain(leaked)
     }
+  })
+})
+
+describe('pageAppearance — what a page carries, prerendered or a shell', () => {
+  // ⭐ The page is right before any script runs wherever every first visit gets one look, and the
+  // script comes along only where the browser knows something the render doesn't. ⛔ Until
+  // 2026-11-11 the page carried no class, so a site set to dark showed light where no script ran.
+  it('writes a dark default, whatever the system says', () => {
+    expect(pageAppearance({ default: 'dark', allowToggle: true }).scheme).toBe('dark')
+    expect(pageAppearance({ default: 'dark' }).scheme).toBe('dark')
+    expect(pageAppearance({ default: 'dark', respectSystemPreference: false }).scheme).toBe('dark')
+  })
+
+  it('writes the default of a site that does not follow the system', () => {
+    expect(
+      pageAppearance({ default: 'light', allowToggle: true, respectSystemPreference: false }).scheme
+    ).toBe('light')
+  })
+
+  it('writes no class where the system decides, so a dark system keeps the CSS that follows it', () => {
+    // `scheme-light` would switch off the `default: system` media block (`:root:not(.scheme-light)`).
+    expect(pageAppearance({ default: 'system', allowToggle: true }).scheme).toBeNull()
+    expect(pageAppearance({ default: 'system' }).scheme).toBeNull()
+    expect(pageAppearance({ default: 'light', allowToggle: true }).scheme).toBeNull()
+  })
+
+  it('brings the script where the browser decides: a switch, or a system to follow', () => {
+    for (const appearance of [
+      { default: 'dark', allowToggle: true },
+      { default: 'light', allowToggle: true, respectSystemPreference: false },
+      { default: 'system' },
+    ]) {
+      expect(pageAppearance(appearance).script).toBe(renderAppearanceBootScript(appearance))
+      expect(pageAppearance(appearance).script).toContain('<script id="uniweb-appearance">')
+    }
+  })
+
+  it('leaves the script out where the class says everything', () => {
+    expect(pageAppearance({ default: 'dark' }).script).toBe('')
+    expect(pageAppearance({ default: 'dark', allowToggle: false, respectSystemPreference: false }).script).toBe('')
+    expect(
+      pageAppearance({ default: 'light', schemes: ['light', 'dark'], respectSystemPreference: false }).script
+    ).toBe('')
+  })
+
+  it('carries nothing for a site that can never show dark', () => {
+    expect(pageAppearance(undefined)).toEqual({ scheme: null, script: '' })
+    expect(pageAppearance({ default: 'light', schemes: ['light'] })).toEqual({ scheme: null, script: '' })
+  })
+
+  // Its two promises, held against the browser's own resolver over every system and stored
+  // choice: a written class is what every first visit gets, and a page left without the script
+  // is one its browser could never change.
+  const sites = [
+    { default: 'dark', allowToggle: true },
+    { default: 'dark' },
+    { default: 'dark', allowToggle: false, respectSystemPreference: false },
+    { default: 'light', allowToggle: true, respectSystemPreference: false },
+    { default: 'light', schemes: ['light', 'dark'], respectSystemPreference: false },
+    { default: 'light', allowToggle: true },
+    { default: 'system', allowToggle: true },
+    { default: 'system' },
+  ]
+  for (const appearance of sites) {
+    it(`agrees with the browser for ${JSON.stringify(appearance)}`, () => {
+      const { scheme, script } = pageAppearance(appearance)
+      for (const prefersDark of [false, true]) {
+        for (const stored of [{}, { 'uniweb-appearance': 'light' }, { 'uniweb-appearance': 'dark' }]) {
+          stubStorage(stored)
+          stubMatchMedia(prefersDark)
+          stubDocument()
+          const resolved = initAppearance(appearance)
+          if (scheme && !stored['uniweb-appearance']) expect(resolved).toBe(scheme)
+          if (!script) expect(resolved).toBe(scheme)
+        }
+      }
+    })
+  }
+})
+
+describe('writeSchemeClass', () => {
+  it('adds the class to the html tag, beside its other attributes', () => {
+    expect(writeSchemeClass('<!DOCTYPE html>\n<html lang="en">\n<head>', 'dark')).toBe(
+      '<!DOCTYPE html>\n<html lang="en" class="scheme-dark">\n<head>'
+    )
+    expect(writeSchemeClass('<html><head>', 'light')).toBe('<html class="scheme-light"><head>')
+  })
+
+  it('replaces a scheme class the tag held, and keeps every other class', () => {
+    expect(writeSchemeClass('<html class="a scheme-light b" lang="en">', 'dark')).toBe(
+      '<html class="a b scheme-dark" lang="en">'
+    )
+    expect(writeSchemeClass("<html class='x'>", 'dark')).toBe('<html class="x scheme-dark">')
+  })
+
+  it('is idempotent', () => {
+    const once = writeSchemeClass('<html lang="en">', 'dark')
+    expect(writeSchemeClass(once, 'dark')).toBe(once)
+  })
+
+  it('leaves the page alone with no scheme, and touches only the html tag', () => {
+    expect(writeSchemeClass('<html lang="en">', null)).toBe('<html lang="en">')
+    expect(writeSchemeClass('<html lang="en"><body><p>&lt;html&gt;</p><htmlish></body>', 'dark')).toBe(
+      '<html lang="en" class="scheme-dark"><body><p>&lt;html&gt;</p><htmlish></body>'
+    )
+  })
+})
+
+describe('writePageAppearance', () => {
+  const SHELL = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<title>t</title>\n</head>\n<body><div id="root"></div></body>\n</html>'
+
+  it('writes the class and the script for a dark site with a switch', () => {
+    const html = writePageAppearance(SHELL, { default: 'dark', allowToggle: true })
+    expect(html).toContain('<html lang="en" class="scheme-dark">')
+    expect(html.match(/id="uniweb-appearance"/g)).toHaveLength(1)
+    expect(html.indexOf('id="uniweb-appearance"')).toBeLessThan(html.indexOf('</head>'))
+  })
+
+  it('writes the class alone where the browser can change nothing', () => {
+    const html = writePageAppearance(SHELL, { default: 'dark' })
+    expect(html).toContain('<html lang="en" class="scheme-dark">')
+    expect(html).not.toContain('id="uniweb-appearance"')
+  })
+
+  it('writes the script alone where the system decides', () => {
+    const html = writePageAppearance(SHELL, { default: 'system' })
+    expect(html).toContain('<html lang="en">')
+    expect(html).toContain('id="uniweb-appearance"')
+  })
+
+  it('leaves a light-only page as it was', () => {
+    expect(writePageAppearance(SHELL, { default: 'light', schemes: ['light'] })).toBe(SHELL)
+    expect(writePageAppearance(SHELL, undefined)).toBe(SHELL)
+  })
+
+  it('is idempotent, as a prerendered page written into a shell that has both', () => {
+    const appearance = { default: 'dark', allowToggle: true }
+    const once = writePageAppearance(SHELL, appearance)
+    expect(writePageAppearance(once, appearance)).toBe(once)
   })
 })
 

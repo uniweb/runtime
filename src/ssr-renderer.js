@@ -36,7 +36,7 @@ import { resolveLayoutTransitions, resolveLayoutLayers, areaWrapperProps } from 
 import { layoutStickiness, sectionStickyProps, sectionScrollMargin, zoneProps } from './sticky.js'
 import { headerOverlay, overlayBoxProps, openingUnderHeader, underHeaderProps, headerAreaProps } from './under-header.js'
 import { DefaultLayout } from './default-layout.js'
-import { renderAppearanceBootScript } from './appearance.js'
+import { writePageAppearance } from './appearance.js'
 import { documentTitle } from './document-title.js'
 import { escapeHtml } from '@uniweb/core/page-shell'
 import { jsonForScript } from '@uniweb/core/data-script'
@@ -667,18 +667,17 @@ export { escapeHtml }
 export function injectPageContent(html, renderedContent, page, options = {}) {
   let result = html
 
-  // Pre-paint appearance script. Prerendered HTML carries real content styled
-  // from :root (light) tokens, so a dark visitor would see a flash of light
-  // before the bundle boots and applies the class. Read off the page's
-  // website back-ref rather than a parameter: every lane builds the same graph,
-  // so this needs no plumbing and no per-lane opt-in. Idempotent, because
-  // @uniweb/build's injectBuildData may run over this HTML afterwards.
-  if (!result.includes('id="uniweb-appearance"')) {
-    const bootScript = renderAppearanceBootScript(page?.website?.themeData?.appearance)
-    if (bootScript) {
-      result = result.replace('</head>', () => `  ${bootScript}\n</head>`)
-    }
-  }
+  // The page's look (`writePageAppearance`, appearance.js). Prerendered HTML
+  // carries real content styled from :root (light) tokens, so a page shows the
+  // wrong scheme until something applies its class. Its `<html>` is written in
+  // the scheme every first visit gets, where the browser can't change that, and
+  // the pre-paint script is added only where the browser knows something the
+  // render doesn't: a visitor's choice, or the system's preference. Read off the
+  // page's website back-ref rather than a parameter: every lane builds the same
+  // graph, so this needs no plumbing and no per-lane opt-in. Idempotent, because
+  // the shell may carry both already (@uniweb/build's site plugin writes them),
+  // and @uniweb/build's injectBuildData may run over this HTML afterwards.
+  result = writePageAppearance(result, page?.website?.themeData?.appearance)
 
   // Site-wide theme CSS. Derived from the website graph
   // (`website.themeData`), so it belongs on THIS side of the seam — every

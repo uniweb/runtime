@@ -9,14 +9,25 @@
  *      section renders with the wrong tokens and then flips, and it covers every
  *      delivery mode because all three start() branches funnel into initRuntime.
  *
- *   2. Prerendered HTML — `renderAppearanceBootScript()` serializes the SAME
- *      function into a synchronous <head> script. HTML that ships real body
- *      content is styled from :root (light) tokens until a bundle loads, so
- *      without this a dark visitor sees a flash of light. The script is emitted
- *      by injectPageContent() in ssr-renderer.js, which every prerender lane
- *      goes through — the framework's SSG and the cloud worker's JIT render
- *      alike. Emitting it from a lane-specific injector is how the cloud lane
- *      silently missed it once already.
+ *   2. A page's HTML — `writePageAppearance()` writes what `pageAppearance()` says
+ *      the page carries. injectPageContent() in ssr-renderer.js calls it for a
+ *      prerendered page, on every prerender lane, the framework's SSG and a host's
+ *      render alike; emitting from a lane-specific injector is how the hosted lane
+ *      silently missed it once already. @uniweb/build's site plugin calls it for
+ *      the shell a page the browser renders itself starts as (`uniweb dev`, a
+ *      build that doesn't prerender), whose empty page paints its background too.
+ *      A page paints before the runtime's module script runs, styled from :root
+ *      (light) tokens unless a scheme class says otherwise, and its HTML is one
+ *      document for every visitor. So:
+ *        - its `<html>` is written in the scheme every first visit resolves to,
+ *          where the browser can't change that (a dark default, or a site that
+ *          doesn't follow the system), and the page is right before any script
+ *          runs, and with none;
+ *        - the SAME function, serialized into a synchronous <head> script,
+ *          corrects what only the browser knows: a visitor's choice, on a site
+ *          with a switch, and the system's preference, where it decides. Only a
+ *          script ahead of the body runs before the first paint. A page that
+ *          needs neither carries no script.
  *
  * Why serialize instead of hand-writing the inline script: the two paths must
  * agree exactly. `applyBootScheme` is therefore written to be SELF-CONTAINED —
@@ -163,12 +174,91 @@ export function initAppearance(appearance) {
 }
 
 /**
- * Emit the pre-paint <script> for prerendered HTML.
+ * What a page's HTML carries for its look, a prerendered page and a shell alike.
+ *
+ * - `scheme`: the class its `<html>` is written with, the scheme every first visit
+ *   resolves to, or null when the visitor's system decides it. A dark default is
+ *   dark whatever the system says, since `applyBootScheme` follows a system only
+ *   to dark, and a site that doesn't follow the system shows its default.
+ *   ⛔ Never `light` for a site that follows the system: under `default: system`
+ *   the theme's `@media (prefers-color-scheme: dark)` block is scoped to
+ *   `:root:not(.scheme-light)`, so a page written `scheme-light` would stay light
+ *   for a dark system's visitor until a script ran, and for good without one.
+ * - `script`: the pre-paint script, or '' when the browser knows nothing the
+ *   render doesn't: no switch, so no visitor's choice to apply, and a scheme the
+ *   system can't change.
+ *
+ * ⛔ Until 2026-11-11 a page's `<html>` carried no class, and every page of a site
+ * with dark carried the script. So a site set to dark depended on a script for its
+ * look, and a reader that ran none (scripts off, a strict content security policy)
+ * saw it light.
+ *
+ * @param {Object} [appearance] - the resolved theme.yml `appearance:` block
+ * @returns {{ scheme: 'light'|'dark'|null, script: string }}
+ */
+export function pageAppearance(appearance) {
+  const opts = resolveAppearanceBoot(appearance)
+  if (!opts) return { scheme: null, script: '' }
+
+  const scheme = opts.fallback === 'dark' || !opts.respectSystem ? opts.fallback : null
+  const script = opts.honorStored || scheme === null ? bootScript(opts) : ''
+  return { scheme, script }
+}
+
+/**
+ * `html` carrying the page's look (`pageAppearance`): the scheme class on its
+ * `<html>`, and the pre-paint script before `</head>` where the browser decides.
+ * Idempotent, since a page's HTML may pass through more than one writer: a
+ * prerendered page starts as a shell that may carry both already.
+ *
+ * @param {string} html - a page's HTML, or the shell it starts as
+ * @param {Object} [appearance] - the resolved theme.yml `appearance:` block
+ * @returns {string}
+ */
+export function writePageAppearance(html, appearance) {
+  const { scheme, script } = pageAppearance(appearance)
+  let result = writeSchemeClass(html, scheme)
+  if (script && !result.includes('id="uniweb-appearance"')) {
+    result = result.replace('</head>', () => `  ${script}\n</head>`)
+  }
+  return result
+}
+
+/**
+ * `html` with its `<html>` start tag carrying the class of `scheme`, in place of
+ * either scheme class it held, every other class kept. Unchanged for no scheme,
+ * or with no `<html>` tag. Idempotent, since a page's HTML may pass through more
+ * than one injector.
+ *
+ * @param {string} html
+ * @param {'light'|'dark'|null} scheme
+ * @returns {string}
+ */
+export function writeSchemeClass(html, scheme) {
+  if (scheme !== 'dark' && scheme !== 'light') return html
+  const name = scheme === 'dark' ? 'scheme-dark' : 'scheme-light'
+
+  return html.replace(/<html(\s[^>]*)?>/i, (tag, attrs = '') => {
+    const held = attrs.match(/\sclass\s*=\s*(?:"([^"]*)"|'([^']*)')/i)
+    if (!held) return `<html${attrs} class="${name}">`
+    const kept = (held[1] ?? held[2])
+      .split(/\s+/)
+      .filter((c) => c && c !== 'scheme-dark' && c !== 'scheme-light')
+    return `<html${attrs.replace(held[0], () => ` class="${[...kept, name].join(' ')}"`)}>`
+  })
+}
+
+/**
+ * The pre-paint <script> alone, for a caller that writes no scheme class.
  *
  * Returns '' when the site has no dark scheme — a light-only page always renders
  * light, so there is nothing to correct before paint and no reason to ship the
- * bytes. Pure SPA builds don't need it either: the body is empty until the
- * bundle renders and initAppearance() runs before that first render.
+ * bytes. A page whose body is empty until the bundle renders needs it too: its
+ * background paints in the light tokens until the bundle boots, about 0.4 s on a
+ * dark site under `uniweb dev`. Exported for a lane that assembles a shell
+ * without a per-page render (`ssr.js`); a page's HTML is written by
+ * writePageAppearance() instead, which adds the class and leaves this out where
+ * the class says everything.
  *
  * Only a boolean and a JSON-quoted 'light'/'dark' are interpolated, both derived
  * from resolveAppearanceBoot rather than taken from the theme verbatim, so
@@ -179,8 +269,11 @@ export function initAppearance(appearance) {
  */
 export function renderAppearanceBootScript(appearance) {
   const opts = resolveAppearanceBoot(appearance)
-  if (!opts) return ''
+  return opts ? bootScript(opts) : ''
+}
 
+/** The pre-paint `<script>`, for what resolveAppearanceBoot returned. */
+function bootScript(opts) {
   const call = `(${applyBootScheme.toString()})(${opts.respectSystem}, ${JSON.stringify(opts.fallback)}, ${opts.honorStored})`
 
   return `<script id="uniweb-appearance">${call}</script>`

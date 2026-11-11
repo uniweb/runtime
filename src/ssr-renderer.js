@@ -676,7 +676,7 @@ export function injectPageContent(html, renderedContent, page, options = {}) {
   if (!result.includes('id="uniweb-appearance"')) {
     const bootScript = renderAppearanceBootScript(page?.website?.themeData?.appearance)
     if (bootScript) {
-      result = result.replace('</head>', `  ${bootScript}\n</head>`)
+      result = result.replace('</head>', () => `  ${bootScript}\n</head>`)
     }
   }
 
@@ -694,7 +694,7 @@ export function injectPageContent(html, renderedContent, page, options = {}) {
   if (themeCss && !result.includes('id="uniweb-theme"')) {
     result = result.replace(
       '</head>',
-      `  <style id="uniweb-theme">\n${themeCss}\n    </style>\n</head>`
+      () => `  <style id="uniweb-theme">\n${themeCss}\n    </style>\n</head>`
     )
   }
 
@@ -706,14 +706,14 @@ export function injectPageContent(html, renderedContent, page, options = {}) {
   if (themeData?.links && !result.includes(FONT_LINKS_MARKER)) {
     result = result.replace(
       '</head>',
-      `  ${FONT_LINKS_MARKER}\n${themeData.links}\n</head>`
+      () => `  ${FONT_LINKS_MARKER}\n${themeData.links}\n</head>`
     )
   }
 
   // Inject per-page section override CSS before </head>
   if (options.sectionOverrideCSS) {
     const overrideStyle = `<style id="uniweb-page-overrides">\n${options.sectionOverrideCSS}\n</style>`
-    result = result.replace('</head>', `${overrideStyle}\n</head>`)
+    result = result.replace('</head>', () => `${overrideStyle}\n</head>`)
   }
 
   // The icons this page drew, which the browser reads before its first render (`setup.js`), so it
@@ -723,10 +723,16 @@ export function injectPageContent(html, renderedContent, page, options = {}) {
     result = result.replace('</head>', () => `  ${iconScript}\n</head>`)
   }
 
-  // Replace the empty root div with pre-rendered content
+  // Replace the empty root div with pre-rendered content.
+  //
+  // ⭐ A REPLACER FUNCTION, here and wherever this file inserts text that is not a fixed literal: in
+  // a replacement STRING, `$$`, `$&`, `` $` `` and `$'` are patterns, so a page's own words were
+  // rewritten. ⛔ Until 2026-11-11 a page saying `$$x$$` was served as `$x$`, and `$&` as the
+  // `<div id="root"></div>` it replaced, on every lane that prerenders — what a crawler, a link
+  // preview and the first paint read (`tests/inserted-text.test.js`).
   result = result.replace(
     /<div id="root">[\s\S]*?<\/div>/,
-    `<div id="root">${renderedContent}</div>`
+    () => `<div id="root">${renderedContent}</div>`
   )
 
   // Update the document title — by the rule the SPA sets `document.title` with
@@ -737,7 +743,7 @@ export function injectPageContent(html, renderedContent, page, options = {}) {
   if (title) {
     result = result.replace(
       /<title>.*?<\/title>/,
-      `<title>${escapeHtml(title)}</title>`
+      () => `<title>${escapeHtml(title)}</title>`
     )
   }
 
@@ -853,7 +859,7 @@ export function generate404Html({ baseHtml, website, siteContent }) {
     const basePath = website.basePath || ''
     html = html.replace(
       /<div id="root">[\s\S]*?<\/div>/,
-      `<div id="root">${default404Html(basePath)}</div>`
+      () => `<div id="root">${default404Html(basePath)}</div>`
     )
   }
 
@@ -869,7 +875,7 @@ export function generate404Html({ baseHtml, website, siteContent }) {
       `if(p.some(function(x){return x.test(r)})){` +
       `var el=document.getElementById('root');if(el)el.innerHTML='';` +
       `}})()</script>`
-    html = html.replace('</body>', `${dynamicScript}\n</body>`)
+    html = html.replace('</body>', () => `${dynamicScript}\n</body>`)
   }
 
   return { html, hasNotFoundPage: !!notFoundPage }

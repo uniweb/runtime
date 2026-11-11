@@ -161,9 +161,10 @@ export function renderBlock(block, { as = 'section', stickySelf = false } = {}) 
   // foundation data and content handlers, param defaults, guaranteed
   // content structure, and the props handler.
   // See prepare-props.js for the pipeline details.
-  const prepared = prepareProps(block, meta, entityData)
-  const params = prepared.params
-  const content = { ...prepared.content, ...block.properties }
+  //
+  // ⭐ `content` is the section's body and `params` its frontmatter, and neither is copied into the
+  // other — as in `BlockRenderer.jsx`, which says why.
+  const { content, params } = prepareProps(block, meta, entityData)
 
   const componentProps = { content, params, block }
 

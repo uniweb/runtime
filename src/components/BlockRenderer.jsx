@@ -143,12 +143,15 @@ export default function BlockRenderer({ block, as = 'section', stickySelf = fals
   // block.parsedContent.data, foundation data and content handlers,
   // param defaults, guaranteed content structure, and the props handler.
   // See prepare-props.js for the pipeline details.
-  const prepared = prepareProps(block, meta, entityData)
-  const params = prepared.params
-  const content = {
-    ...prepared.content,
-    ...block.properties,     // Frontmatter params overlay (legacy support)
-  }
+  //
+  // ⭐ `content` is the section's body and `params` its frontmatter, and neither is copied into the
+  // other: a param named like a content field — `items: 2`, `title:` — reaches the component as a
+  // param and leaves the field as the body gave it. Twinned in `ssr-renderer.js`. ⛔ Until 2026-11-11
+  // every frontmatter param was spread over `content` too, so `items: 2` replaced the section's
+  // items with the number 2, and a `title:` in the frontmatter replaced the heading. It was added in
+  // January for a component reading `theme` from its content, and `theme` has not reached the
+  // params since 2026-09-28 (`@uniweb/schemas/section`).
+  const { content, params } = prepareProps(block, meta, entityData)
 
   const componentProps = {
     content,

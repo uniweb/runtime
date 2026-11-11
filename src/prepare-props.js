@@ -31,11 +31,8 @@ function guaranteeItemStructure(item) {
     insets: item.insets || [],
     media: item.media || [],
     snippets: item.snippets || [],
-    buttons: item.buttons || [],
     data: item.data || {},
-    cards: item.cards || [],
     documents: item.documents || [],
-    forms: item.forms || [],
     quotes: item.quotes || [],
     headings: item.headings || [],
     ...(item.math && item.math.length ? { math: item.math } : {}),
@@ -46,6 +43,14 @@ function guaranteeItemStructure(item) {
 /**
  * Guarantee content structure exists
  * Returns a flat content object with all standard fields guaranteed to exist
+ *
+ * ⭐ Only the fields the content parser gives, for the section and for each item: a field guaranteed
+ * here that nothing fills invites a developer to read it. ⛔ Until 2026-11-11 this also guaranteed `buttons`,
+ * `cards`, `forms` and `alignment`, which the parser stopped giving when it dropped its
+ * compatibility layer (February 2026): each was always empty, filled only by a frontmatter param
+ * of the same name until the params overlay went too. A button is a link with a `role`, in
+ * `links`; a card is an item; a form is the section type's own (kit's `useSubmit`); alignment is a
+ * param its `meta.js` declares.
  *
  * @param {Object} parsedContent - Raw parsed content from semantic parser (flat structure)
  * @returns {Object} Content with guaranteed flat structure
@@ -58,7 +63,6 @@ export function guaranteeContentStructure(parsedContent) {
     title: content.title || '',
     pretitle: content.pretitle || '',
     subtitle: content.subtitle || '',
-    alignment: content.alignment || null,
 
     // Flat body fields
     paragraphs: content.paragraphs || [],
@@ -72,11 +76,8 @@ export function guaranteeContentStructure(parsedContent) {
     // the order written, each with its `kind`: what a `media` slot holds (2026-09-29).
     media: content.media || [],
     snippets: content.snippets || [],
-    buttons: content.buttons || [],
     data: content.data || {},
-    cards: content.cards || [],
     documents: content.documents || [],
-    forms: content.forms || [],
     quotes: content.quotes || [],
     headings: content.headings || [],
 

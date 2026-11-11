@@ -92,8 +92,9 @@ describe('the isolate API — what @uniweb/runtime/ssr promises a host', () => {
     // ⭐ 2026-11-11 — raised by an EXPORT, and the export map leads again: `writePageAppearance` first
     // shipped in 1.6.2. It is in the published tarball's `dist/ssr.js` and not in 1.6.1's, and 1.6.2 is
     // the channel's `latest` (both read 2026-11-11). Its UNRELEASED stamp was replaced after that
-    // publish [Diego, 2026-11-11: "yes, go ahead with the stamp"]. It moves no site: a publish already
-    // takes the newest runtime above the floor, and a site already published keeps its runtime.
+    // publish [Diego, 2026-11-11: "yes, go ahead with the stamp"]. From the channel publish that carries
+    // it, a site published from the app or the CLI gets 1.6.2 or higher, so the raise moves every site
+    // at its next publish [Diego: "if I publish a site from the app, it will get the minUsable or higher"].
     expect(ISOLATE_API.writePageAppearance).toBe('1.6.2')
     expect(compareVersions(MIN_USABLE_RUNTIME, WIRE_FLOOR)).toBeGreaterThan(0)
 

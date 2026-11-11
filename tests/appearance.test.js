@@ -59,9 +59,21 @@ describe('initAppearance — scheme resolution', () => {
     expect(initAppearance({ default: 'light', allowToggle: true })).toBe('dark')
   })
 
-  it('honors a stored light preference even when the default is dark', () => {
+  it('honors a stored light preference on a dark site with a switch', () => {
     stubStorage({ 'uniweb-appearance': 'light' })
-    expect(initAppearance({ default: 'dark' })).toBe('light')
+    expect(initAppearance({ default: 'dark', allowToggle: true })).toBe('light')
+  })
+
+  // ⭐ On a site with no switch a stored choice is another site's — the key is the origin's: one
+  // served on the same localhost port, or the site this one replaced at its address. ⛔ Until
+  // 2026-11-11 it applied, and a site set to one look showed the other.
+  it('ignores a stored choice on a site with no switch', () => {
+    stubStorage({ 'uniweb-appearance': 'light' })
+    // `appearance: dark`, as @uniweb/theming normalizes it.
+    expect(initAppearance({ default: 'dark', allowToggle: false, respectSystemPreference: false })).toBe('dark')
+    // `appearance: system`: the visitor's system decides, not another site's choice.
+    stubMatchMedia(true)
+    expect(initAppearance({ default: 'system', allowToggle: false, respectSystemPreference: true })).toBe('dark')
   })
 
   it('ignores a malformed stored value', () => {
@@ -117,8 +129,8 @@ describe('initAppearance — scheme resolution', () => {
         throw new Error('SecurityError')
       },
     }
-    expect(() => initAppearance({ default: 'dark' })).not.toThrow()
-    expect(initAppearance({ default: 'dark' })).toBe('dark')
+    expect(() => initAppearance({ default: 'dark', allowToggle: true })).not.toThrow()
+    expect(initAppearance({ default: 'dark', allowToggle: true })).toBe('dark')
   })
 
   it('survives a missing matchMedia', () => {
@@ -213,7 +225,7 @@ describe('renderAppearanceBootScript', () => {
       respectSystemPreference: '"); alert(2); //',
     })
     expect(script).not.toContain('alert(')
-    expect(script).toContain(')(true, "light")')
+    expect(script).toContain(')(true, "light", true)')
   })
 
   it('carries no free identifiers from module scope', () => {

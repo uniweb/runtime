@@ -47,8 +47,14 @@ export const LIGHT_SCHEME_CLASS = 'scheme-light'
 /**
  * Resolve and apply the visitor's color scheme.
  *
- * Precedence: stored visitor preference → OS preference (when the site opts in)
- * → the theme's declared default.
+ * Precedence: stored visitor preference (on a site with a switch) → OS preference
+ * (when the site opts in) → the theme's declared default.
+ *
+ * ⭐ A STORED CHOICE COUNTS ONLY ON A SITE WITH A SWITCH (`allowToggle`). The key is
+ * the origin's, so on a site with none a stored value is another site's: one served
+ * on the same `localhost` port, or the site this one replaced at its address. ⛔ Until
+ * 2026-11-11 it applied anyway, so a site set to one look showed the other to a
+ * visitor who had chosen it elsewhere, with no switch to undo it.
  *
  * SELF-CONTAINED ON PURPOSE — see the module header. This function is both
  * called directly (SPA boot) and serialized with toString() into the pre-paint
@@ -63,14 +69,17 @@ export const LIGHT_SCHEME_CLASS = 'scheme-light'
  *
  * @param {boolean} respectSystem - follow prefers-color-scheme when unset
  * @param {'light'|'dark'} fallback - the theme's declared default
+ * @param {boolean} [honorStored] - the site offers a switch, so a stored choice is the visitor's
  * @returns {'light'|'dark'} the scheme applied
  */
-export function applyBootScheme(respectSystem, fallback) {
+export function applyBootScheme(respectSystem, fallback, honorStored) {
   var stored = null
-  try {
-    stored = localStorage.getItem('uniweb-appearance')
-  } catch (e) {
-    // Safari private mode and some embedded webviews throw on access
+  if (honorStored) {
+    try {
+      stored = localStorage.getItem('uniweb-appearance')
+    } catch (e) {
+      // Safari private mode and some embedded webviews throw on access
+    }
   }
 
   var hasStored = stored === 'light' || stored === 'dark'
@@ -126,7 +135,7 @@ export function applyBootScheme(respectSystem, fallback) {
  * a light-only site correctly gets no class and no inline script.
  *
  * @param {Object} [appearance] - the resolved theme.yml `appearance:` block
- * @returns {{respectSystem: boolean, fallback: 'light'|'dark'}|null}
+ * @returns {{respectSystem: boolean, fallback: 'light'|'dark', honorStored: boolean}|null}
  */
 export function resolveAppearanceBoot(appearance) {
   if (!appearance || !hasDarkScheme(appearance)) return null
@@ -134,6 +143,8 @@ export function resolveAppearanceBoot(appearance) {
   return {
     respectSystem: appearance.respectSystemPreference !== false,
     fallback: appearance.default === 'dark' ? 'dark' : 'light',
+    // Only a site with a switch has a choice of its own to remember (`applyBootScheme`).
+    honorStored: appearance.allowToggle === true,
   }
 }
 
@@ -148,7 +159,7 @@ export function initAppearance(appearance) {
   const opts = resolveAppearanceBoot(appearance)
   if (!opts) return null
 
-  return applyBootScheme(opts.respectSystem, opts.fallback)
+  return applyBootScheme(opts.respectSystem, opts.fallback, opts.honorStored)
 }
 
 /**
@@ -170,7 +181,7 @@ export function renderAppearanceBootScript(appearance) {
   const opts = resolveAppearanceBoot(appearance)
   if (!opts) return ''
 
-  const call = `(${applyBootScheme.toString()})(${opts.respectSystem}, ${JSON.stringify(opts.fallback)})`
+  const call = `(${applyBootScheme.toString()})(${opts.respectSystem}, ${JSON.stringify(opts.fallback)}, ${opts.honorStored})`
 
   return `<script id="uniweb-appearance">${call}</script>`
 }

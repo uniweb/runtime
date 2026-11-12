@@ -23,7 +23,8 @@ import { sectionDomId } from '@uniweb/core/section-id'
 import { Background } from './background.js'
 import { routePatternToRegex, isDynamicRoute } from '@uniweb/core/route-match'
 import { DEFAULT_ICON_BASE, iconUrl } from '@uniweb/core/icon-corpus'
-import { buildSectionOverrides, FONT_LINKS_MARKER } from '@uniweb/theming'
+import { FONT_LINKS_MARKER } from '@uniweb/theming'
+import { pageOverrideCSS, PAGE_OVERRIDES_ID } from './page-overrides.js'
 import { prepareProps, getComponentMeta } from './prepare-props.js'
 import { default404Html } from './default-404.js'
 import {
@@ -584,11 +585,9 @@ export function renderPage(page, website) {
     return { error: classifyRenderError(err) }
   }
 
-  // Build per-page section override CSS (theme pinning, component vars)
-  const appearance = website.themeData?.appearance
-  // Every block the page renders — each layout area it shows, a sidebar too; the builder walks
-  // their child sections. The SPA renderer passes the same (`PageRenderer.jsx`).
-  const sectionOverrideCSS = buildSectionOverrides(page.getAllBlocks(), appearance)
+  // The page's section overrides (theme pinning, component vars): the one build the browser's
+  // renderer asks for too (`page-overrides.js`, `PageRenderer.jsx`).
+  const sectionOverrideCSS = pageOverrideCSS(page, website.themeData?.appearance)
 
   return { renderedContent, sectionOverrideCSS }
 }
@@ -711,7 +710,7 @@ export function injectPageContent(html, renderedContent, page, options = {}) {
 
   // Inject per-page section override CSS before </head>
   if (options.sectionOverrideCSS) {
-    const overrideStyle = `<style id="uniweb-page-overrides">\n${options.sectionOverrideCSS}\n</style>`
+    const overrideStyle = `<style id="${PAGE_OVERRIDES_ID}">\n${options.sectionOverrideCSS}\n</style>`
     result = result.replace('</head>', () => `${overrideStyle}\n</head>`)
   }
 

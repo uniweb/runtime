@@ -6,14 +6,14 @@
  * Manages head meta tags for SEO and social sharing.
  */
 
-import React, { useMemo, useEffect, useLayoutEffect, useReducer, useRef } from 'react'
+import React, { useMemo, useEffect, useLayoutEffect, useReducer } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import BlockRenderer from './BlockRenderer.jsx'
 import Layout from './Layout.jsx'
 import { useHeadMeta } from '../hooks/useHeadMeta.js'
 import { useSectionViews } from '../hooks/useSectionViews.js'
 import { pageCommitted } from '../navigation.js'
-import { buildSectionOverrides } from '@uniweb/theming'
+import { pageOverrideCSS, writePageOverrides } from '../page-overrides.js'
 import { carryQuery } from '@uniweb/core/resolve-route'
 import { Default404 } from '../default-404.js'
 
@@ -52,56 +52,20 @@ export function ChildBlocks({ blocks, from, wrapAs }) {
 }
 
 /**
- * Section override styles — pre-built CSS for all section-level overrides on the active page.
- * Injects a <style> tag into <head> (after uniweb-theme) so overrides
- * cascade correctly and don't live inside the React root.
+ * The page's section overrides — its component vars and its sections' `theme:` maps — as one
+ * stylesheet in <head>, after the theme's, outside the React root (`page-overrides.js`).
+ *
+ * ⭐ Built from the page's blocks set up first, so the page's first render in the browser has them,
+ * as the prerendered page does: `Layout` sets the blocks up only after this has rendered.
+ * ⭐ Written in a layout effect: before the browser paints the page, and before a view transition
+ * captures it, from `pageCommitted` in PageRenderer's own layout effect, which runs after this
+ * child's. At the first commit it takes over the stylesheet the prerender wrote.
  */
 function SectionOverrideStyles({ page, appearance }) {
-  const styleRef = useRef(null)
+  const css = useMemo(() => (page ? pageOverrideCSS(page, appearance) : ''), [page, appearance])
 
-  const css = useMemo(() => {
-    if (!page) return ''
-    // Every block the page renders — each layout area it shows, a sidebar too; the builder
-    // walks their child sections. The SSR twin passes the same (`ssr-renderer.js`).
-    const blocks = page.getAllBlocks()
-    return buildSectionOverrides(blocks, appearance)
-  }, [page, appearance])
-
-  useEffect(() => {
-    if (!css) {
-      if (styleRef.current) {
-        styleRef.current.remove()
-        styleRef.current = null
-      }
-      return
-    }
-
-    if (!styleRef.current) {
-      // Reuse the SSR-injected element if present to avoid duplicates
-      styleRef.current = document.getElementById('uniweb-page-overrides') || document.createElement('style')
-      styleRef.current.id = 'uniweb-page-overrides'
-      if (!styleRef.current.parentNode) {
-        // Not yet in the DOM — insert after uniweb-theme if it exists, otherwise append to head
-        const themeStyle = document.getElementById('uniweb-theme')
-        if (themeStyle && themeStyle.nextSibling) {
-          themeStyle.parentNode.insertBefore(styleRef.current, themeStyle.nextSibling)
-        } else if (themeStyle) {
-          themeStyle.parentNode.appendChild(styleRef.current)
-        } else {
-          document.head.appendChild(styleRef.current)
-        }
-      }
-    }
-
-    styleRef.current.textContent = css
-
-    return () => {
-      if (styleRef.current) {
-        styleRef.current.remove()
-        styleRef.current = null
-      }
-    }
-  }, [css])
+  useLayoutEffect(() => writePageOverrides(document, css), [css])
+  useLayoutEffect(() => () => writePageOverrides(document, ''), [])
 
   return null
 }

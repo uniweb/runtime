@@ -163,6 +163,7 @@ function scrollToElement(elementId, retries = 5) {
   const element = document.getElementById(elementId)
   if (element) {
     element.scrollIntoView({ behavior: 'smooth' })
+    realignAfterFonts(element)
     return
   }
 
@@ -172,6 +173,33 @@ function scrollToElement(elementId, retries = 5) {
       setTimeout(() => scrollToElement(elementId, retries - 1), 50)
     })
   }
+}
+
+/**
+ * Scroll to a section once more when the page's web fonts have loaded, if they were still loading
+ * when it was first scrolled to and the visitor hasn't scrolled since.
+ *
+ * Text set in a fallback font wraps differently, so what sits above the section, a stuck header's
+ * lines above all, can change height once the fonts arrive: on a page opened at a section, WebKit
+ * measured a header at 137px, then 88px, and the section landed some 50px off its place, with nothing
+ * to align it again. With the fonts already loaded there is nothing to do, and a visitor who has
+ * scrolled, by wheel, touch or key, keeps where they went.
+ *
+ * @param {Element} element - the section scrolled to
+ * @param {Document} [doc]
+ * @param {Window} [win]
+ */
+export function realignAfterFonts(element, doc = typeof document !== 'undefined' ? document : null, win = typeof window !== 'undefined' ? window : null) {
+  const fonts = doc?.fonts
+  if (!fonts || !win || fonts.status === 'loaded' || typeof fonts.ready?.then !== 'function') return
+  let moved = false
+  const mark = () => { moved = true }
+  const events = ['wheel', 'touchmove', 'keydown']
+  for (const name of events) win.addEventListener(name, mark, { passive: true, once: true })
+  fonts.ready.then(() => {
+    for (const name of events) win.removeEventListener(name, mark)
+    if (!moved && element.isConnected) element.scrollIntoView({ behavior: 'auto' })
+  })
 }
 
 /**

@@ -510,6 +510,15 @@ export { resolvePage } from './resolve-page.js'
 /**
  * Classify an SSR rendering error.
  *
+ * ⭐ A component that calls a hook prerenders like any other. A hook error here means React's
+ * renderer and the foundation's hooks reached different copies of React, or a hook was called
+ * outside a component. `message` says that, so a developer looks for the second React rather
+ * than taking the hooks out.
+ *
+ * ⛔ Until 2026-11-23 it said "contains components with React hooks (renders client-side)". An
+ * agent whose piped build loaded React twice read it as "a page with a hook can't prerender" and
+ * rewrote its header to avoid one, which changed nothing.
+ *
  * @param {Error} err
  * @returns {{ type: 'hooks'|'null-component'|'unknown', message: string }}
  */
@@ -519,14 +528,16 @@ export function classifyRenderError(err) {
   if (msg.includes('Invalid hook call') || msg.includes('useState') || msg.includes('useEffect')) {
     return {
       type: 'hooks',
-      message: 'contains components with React hooks (renders client-side)',
+      message:
+        'a hook call failed ("Invalid hook call"). Hooks prerender; this usually means two copies ' +
+        'of React were loaded, or a hook was called outside a component',
     }
   }
 
   if (msg.includes('Element type is invalid') && msg.includes('null')) {
     return {
       type: 'null-component',
-      message: 'a component resolved to null (often hook-related, renders client-side)',
+      message: 'a component resolved to null',
     }
   }
 

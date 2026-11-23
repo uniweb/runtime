@@ -37,6 +37,23 @@ describe('prepareProps — content.data from the declared keys', () => {
     expect(prepareProps(makeBlock(), null, { profile: [{ name: 'Ada' }] }).content.data).toEqual({})
   })
 
+  it('a whole key holding only briefs (a static build\'s prerendered list) takes the whole records delivered', () => {
+    const briefs = [{ $name: 'a', title: 'A' }]
+    const whole = [{ $name: 'a', brief: { title: 'A' }, body: { text: 'Full' } }]
+    const meta = { data: { article: { schema: '@/post', single: true, whole: true } } }
+    expect(prepareProps(makeBlock({ held: { article: briefs } }), meta, { article: whole }).content.data.article).toEqual(whole[0])
+    // While the whole records are on their way, the briefs stand in.
+    expect(prepareProps(makeBlock({ held: { article: briefs } }), meta, null).content.data.article).toEqual(briefs[0])
+  })
+
+  it('CONTROL — a key that expects briefs, or holds records already whole, takes what it holds', () => {
+    const briefs = [{ $name: 'a', title: 'A' }]
+    const whole = [{ $name: 'a', brief: { title: 'A' }, body: { text: 'Full' } }]
+    const delivered = { article: [{ $name: 'b', title: 'B' }] }
+    expect(prepareProps(makeBlock({ held: { article: briefs } }), { data: { article: { schema: '@/post', single: true } } }, delivered).content.data.article).toEqual(briefs[0])
+    expect(prepareProps(makeBlock({ held: { article: whole } }), { data: { article: { schema: '@/post', single: true, whole: true } } }, delivered).content.data.article).toEqual(whole[0])
+  })
+
   it('`[]` is an answer and stays one; nothing delivered is `null`', () => {
     const block = makeBlock()
     expect(prepareProps(block, { data: { posts: null, teams: null } }, { posts: [] }).content.data).toEqual({ posts: [], teams: null })

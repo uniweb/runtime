@@ -9,6 +9,8 @@
  * This enables simpler component code by ensuring predictable prop shapes.
  */
 
+import { isBriefList } from '@uniweb/core/page-data'
+
 /**
  * Guarantee item has flat content structure
  *
@@ -156,14 +158,21 @@ function declaredOf(block, meta) {
   return block.website?.declaredKeys ? block.website.declaredKeys(meta) : []
 }
 
-/** Each declared key's value, by the order `assembleData` states: held, delivered, else `null`. */
+/**
+ * Each declared key's value, by the order `assembleData` states: held, delivered, else `null`.
+ * ⭐ A key that expects whole records and holds only briefs — a static build's prerendered list —
+ * takes the whole records the store completed them to (`@uniweb/core/page-data`'s `blockFills`),
+ * and the briefs stand in while those are on their way.
+ */
 function collectDeclared(block, declared, entityData) {
   const held = block.heldData || {}
   const data = {}
-  for (const [key] of declared) {
-    if (held[key] !== undefined) data[key] = held[key]
+  for (const [key, , whole] of declared) {
+    const holds = held[key] !== undefined
+    const completing = holds && whole === true && isBriefList(held[key])
+    if (holds && !completing) data[key] = held[key]
     else if (entityData && entityData[key] !== undefined) data[key] = entityData[key]
-    else data[key] = null
+    else data[key] = holds ? held[key] : null
   }
   return data
 }

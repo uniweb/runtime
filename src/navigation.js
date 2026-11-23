@@ -251,3 +251,20 @@ function nextPageCommit() {
 export function pageCommitted() {
   for (const settle of [...commitWaiters]) settle()
 }
+
+/**
+ * Whether the path names something the router shows: a page, a redirect, or a page served from
+ * elsewhere, by the one rule every lane resolves a URL with (`Website#resolveRoute`). A path that
+ * names none is an address the site's host answers, never one of the site's pages.
+ *
+ * ⛔ Until 2026-11-23 the router took every path on the site's origin, so a link to a route its
+ * host answers (`@uniweb/api`'s `adminHref`) drew the site's not-found page and never left it.
+ *
+ * @param {Object} website - The active Website
+ * @param {string} routeHref - Where the link goes, as a path, base path removed
+ * @returns {boolean}
+ */
+export function isPageOf(website, routeHref) {
+  if (typeof website?.resolveRoute !== 'function') return true
+  return website.resolveRoute(routeHref.split(/[?#]/)[0] || '/').kind !== 'notFound'
+}

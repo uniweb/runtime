@@ -15,7 +15,7 @@
 import { useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { localeOfPath } from '@uniweb/core/resolve-route'
-import { navigateInApp, readsData } from '../navigation.js'
+import { navigateInApp, readsData, isPageOf } from '../navigation.js'
 
 /**
  * Check if a URL is internal (same origin, no external protocol)
@@ -255,6 +255,11 @@ export function useLinkInterceptor(options = {}) {
 
       // Opt out: anchors marked for full-page reload (e.g., <Link reload>)
       if (anchor.hasAttribute('data-reload')) return
+
+      // A link to an address the site has no page at is the browser's: a route its host answers
+      // itself (a sign-in handed to its backend, a file, a feed), or a page that isn't there,
+      // which the host then answers with the site's not-found page and a 404.
+      if (!href.startsWith('#') && !isPageOf(website, routeHref)) return
 
       // Prevent the default browser navigation
       event.preventDefault()

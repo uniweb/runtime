@@ -19,7 +19,8 @@ vi.mock('react-router-dom', () => ({
   useLocation: () => ({ pathname: '/', hash: '' }),
 }))
 // The navigation itself is `navigation.test.js`'s subject: here it hands the route straight on.
-vi.mock('../src/navigation.js', () => ({
+vi.mock('../src/navigation.js', async (importOriginal) => ({
+  ...(await importOriginal()),
   navigateInApp: (navigate, to, ...options) => navigate(to, ...options),
   readsData: () => false,
 }))
@@ -34,13 +35,14 @@ function site(config = {}, page = '/About-Us') {
         name: 'T',
         defaultLanguage: 'en',
         languages: ['en', 'fr'],
-        i18n: { routeTranslations: { fr: { '/About-Us': '/a-propos' } } },
+        i18n: { routeTranslations: { fr: { '/About-Us': '/a-propos', '/blog': '/blogue' } } },
         ...config,
       },
       theme: {},
       pages: [
         { route: '/', isIndex: true, title: 'Home', sections: [] },
         { route: '/About-Us', title: 'About', sections: [] },
+        { route: '/blog', title: 'Blog', sections: [] },
       ],
     },
   })
@@ -184,5 +186,35 @@ describe('localeSwitchOf: the locale and page a path names, when it leaves the a
 
   it('and none on a site of one locale', () => {
     expect(localeSwitchOf('/fr/a-propos', site({ languages: ['en'] }))).toBe(null)
+  })
+})
+
+// ⛔ Until 2026-11-23 the router took every path on the site's origin: `@uniweb/api`'s `adminHref`
+// (`/_api/auth/member-handoff`), clicked, drew the site's not-found page and never reached the host.
+describe('a link to an address the site has no page at is the browser\'s', () => {
+  it.each([
+    ['a route the host answers', '/_api/auth/member-handoff'],
+    ['the same, with a query', '/_api/auth/providers?x=1'],
+    ['a same-origin URL to one', 'https://site.test/_api/auth/member-handoff'],
+    ['a page the site does not have', '/nowhere'],
+  ])('%s', (_, href) => {
+    const event = click(site({ languages: ['en'] }, '/'), { href })
+    expect(event.preventDefault).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('under the base path too', () => {
+    const website = site({ languages: ['en'] }, '/')
+    website.setBasePath('/docs/')
+    const event = click(website, { href: '/docs/_api/auth/member-handoff' })
+    expect(event.preventDefault).not.toHaveBeenCalled()
+  })
+
+  it('while a page of the site, a container redirect and a fragment stay the router\'s', () => {
+    for (const href of ['/About-Us', '/About-Us?tab=2', '/', '#team']) {
+      navigate.mockClear()
+      const event = click(site({ languages: ['en'] }, '/'), { href })
+      expect(event.preventDefault).toHaveBeenCalled()
+    }
   })
 })

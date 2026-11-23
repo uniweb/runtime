@@ -32,7 +32,7 @@ import { ChildBlocks } from './components/PageRenderer.jsx'
 import Background from './components/Background.jsx'
 import { wireFoundationCapabilities, hydrateDataStore, ensureThemeCss } from './wire-foundation.js'
 import { injectFontLinks } from './font-links.js'
-import { navigateInApp } from './navigation.js'
+import { navigateInApp, isPageOf } from './navigation.js'
 
 // Re-export so existing consumers importing hydrateDataStore from
 // setup.js keep working. The implementation moved to wire-foundation.js
@@ -56,9 +56,14 @@ const InAppLink = React.forwardRef(function InAppLink(
   ref,
 ) {
   const navigate = useRouterNavigate()
+  // An address the site has no page at is the browser's, as for a plain link
+  // (`useLinkInterceptor`): React Router's own click handler leaves it alone too.
+  const leaves = typeof props.to === 'string' && props.to.startsWith('/') && !props.to.startsWith('//')
+    && !isPageOf(globalThis.uniweb?.activeWebsite, props.to)
 
   const handleClick = (e) => {
     if (onClick) onClick(e)
+    if (leaves) return
     if (e.defaultPrevented) return
     if (e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) return
     if (e.button !== 0) return
@@ -74,6 +79,7 @@ const InAppLink = React.forwardRef(function InAppLink(
   return React.createElement(RouterLink, {
     ref,
     ...props,
+    reloadDocument: leaves || props.reloadDocument,
     onClick: handleClick,
     replace,
     state,

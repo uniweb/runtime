@@ -12,8 +12,10 @@
  * moment the bundle loaded (`Home` → `Home | Acme`), and a crawler that runs no script
  * indexed the shorter one.
  *
- * `<page title> | <site name>`; the page title alone when the site has no name; the empty
- * string when the page has no title — a caller then leaves the title it already has.
+ * `<page title> | <site name>`; the page title alone when the site has no name, or when the
+ * page's title is the site's name (a home page titled as its site, which would otherwise read
+ * `Acme | Acme`); the empty string when the page has no title — a caller then leaves the
+ * title it already has.
  *
  * @param {string|number|null|undefined} pageTitle - the page's display title (`page.getTitle()`)
  * @param {string|null|undefined} siteName - the site's name (`website.name`)
@@ -22,5 +24,6 @@
 export function documentTitle(pageTitle, siteName) {
   if (!pageTitle) return ''
   const title = String(pageTitle)
-  return siteName ? `${title} | ${siteName}` : title
+  if (!siteName || title.trim() === String(siteName).trim()) return title
+  return `${title} | ${siteName}`
 }

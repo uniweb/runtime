@@ -66,6 +66,11 @@ describe('documentTitle — the rule', () => {
     expect(documentTitle(null, 'Acme')).toBe('')
   })
 
+  it('is the page title alone when it is the site name', () => {
+    expect(documentTitle('The Harbour Club', 'The Harbour Club')).toBe('The Harbour Club')
+    expect(documentTitle('Acme ', 'Acme')).toBe('Acme ')
+  })
+
   it('carries a numeric page title as text', () => {
     expect(documentTitle(2024, 'Acme')).toBe('2024 | Acme')
   })
